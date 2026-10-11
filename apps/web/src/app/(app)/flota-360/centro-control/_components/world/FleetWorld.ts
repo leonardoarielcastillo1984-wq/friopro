@@ -25,6 +25,14 @@ const YARD_SPEED = 8;
 const HW_SPEED = 15;
 const HW_EDGE = 40;
 
+// Decide si un tractor que vuelve acoplado estaciona el conjunto junto (rig)
+// o desacopla el semi en su dársena — determinista por unidad (~1/3 acoplados)
+const keepsRig = (id: string): boolean => {
+  let h = 0;
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 997;
+  return h % 3 === 0;
+};
+
 interface Entry {
   unit: CCUnit;
   vehicle: Vehicle | null;
@@ -37,6 +45,8 @@ interface Entry {
   tag: CSS2DObject;
   tagEl: HTMLDivElement;
   hw?: { dir: 1 | -1; mode: 'loop' | 'leaving' | 'joining' };
+  attachedTo?: string | null;   // trailer viajando dentro de la combi de este tractor
+  carrying?: string | null;     // tractor que lleva acoplado este semi (id de unidad)
   headlight?: THREE.Sprite;
   taillight?: THREE.Sprite;
   beacon?: THREE.Sprite;
@@ -420,7 +430,11 @@ export class FleetWorld {
     // Agrupar por destino
     const byGroup = new Map<SlotGroup, CCUnit[]>();
     for (const u of units) {
-      const g = this.S.groupFor(u.status, kindFor(u.tipo));
+      let g = this.S.groupFor(u.status, kindFor(u.tipo));
+      // Tractor que vuelve acoplado y no desacopla: estaciona el conjunto junto (rig)
+      const prev = this.entries.get(u.id);
+      if (prev?.carrying && u.status === 'disponible' && kindFor(u.tipo) === 'tractor'
+        && this.S.slots.rig?.length && keepsRig(u.id)) g = 'rig';
       if (!byGroup.has(g)) byGroup.set(g, []);
       byGroup.get(g)!.push(u);
     }
@@ -527,8 +541,12 @@ export class FleetWorld {
     e.ready.then(() => {
       const v = e.vehicle;
       if (!v) return;
+      // Semi viajando dentro de una combi: queda oculto mientras lo lleva el tractor
+      if (e.attachedTo) { v.stop(); v.root.visible = false; e.tag.visible = false; return; }
+      // Un semirremolque no circula solo por la ruta: viaja acoplado a un tractor
+      if (v.kind === 'trailer' && e.group === 'route') { v.stop(); v.root.visible = false; e.tag.visible = false; return; }
       v.root.visible = e.shown;
-      v.setBobtail(['shop', 'hold', 'tractores', 'inactive'].includes(e.group));
+      v.setBobtail(['shop', 'hold', 'tractores', 'inactive'].includes(e.group) || (e.group === 'route' && !e.carrying));
       this.styleEntry(e);
       if (!e.shown) { v.stop(); return; }
 
@@ -538,10 +556,32 @@ export class FleetWorld {
         return;
       }
       const s = e.slot!;
-      if (s.virtual) { e.hw = undefined; v.stop(); v.setPose(s.x, s.z, s.heading); v.root.userData.slot = s; }
+      if (s.virtual) { e.hw = undefined; v.stop(); v.setPose(s.x, s.z, s.heading); v.root.userData.slot = s; if (e.carrying && e.group !== 'rig') this.releaseTrailer(e); }
       else if (animate && v.kind !== 'trailer') this.driveToSlot(e, s);
-      else if (!live || !v.moving) { e.hw = undefined; v.stop(); v.setPose(s.x, s.z, s.heading); v.root.userData.slot = s; }
+      else if (!live || !v.moving) { e.hw = undefined; v.stop(); v.setPose(s.x, s.z, s.heading); v.root.userData.slot = s; if (e.carrying && e.group !== 'rig') this.releaseTrailer(e); }
     });
+  }
+
+  // Reserva un semirremolque estacionado en la fila S-A para acoplar
+  private pickTrailer(e: Entry): Entry | null {
+    for (const t of this.entries.values()) {
+      if (t === e || t.attachedTo || !t.shown) continue;
+      const tv = t.vehicle;
+      if (!tv || tv.kind !== 'trailer' || !t.slot || t.slot.virtual || !t.slot.key.startsWith('S-A')) continue;
+      t.attachedTo = e.unit.id;
+      return t;
+    }
+    return null;
+  }
+
+  // Deja el semi acoplado en su dársena y libera la vinculación (sin animación)
+  private releaseTrailer(e: Entry) {
+    const te = e.carrying ? this.entries.get(e.carrying) : undefined;
+    e.carrying = null;
+    if (!te || te.attachedTo !== e.unit.id) return;
+    te.attachedTo = null;
+    const tv = te.vehicle;
+    if (tv && te.slot && te.shown) { tv.stop(); tv.setPose(te.slot.x, te.slot.z, te.slot.heading); tv.root.visible = true; }
   }
 
   private styleEntry(e: Entry) {
@@ -549,7 +589,7 @@ export class FleetWorld {
     if (!v || !e.glow || !e.outline) return;
     const color = STATUS_COLOR[e.unit.status];
     (e.glow.material as THREE.MeshBasicMaterial).color.setHex(color);
-    const bob = e.group === 'shop' || e.group === 'hold';
+    const bob = ['shop', 'hold', 'tractores', 'inactive'].includes(e.group) || (e.group === 'route' && !e.carrying);
     const L = v.kind === 'tractor' ? (bob ? 8.5 : 19) : v.kind === 'trailer' ? 14.5 : v.length + 1.2;
     const off = v.bodyCenterOffset;
     e.glow.scale.set(v.width + 2.6, L + 3, 1);
@@ -587,7 +627,29 @@ export class FleetWorld {
 
   private driveToSlot(e: Entry, s: Slot) {
     const v = e.vehicle!;
-    const from = this.leaveCurrent(e);
+    let from = this.leaveCurrent(e);
+    // Desacople: si vuelve acoplado y no es rig, deja el semi en su dársena
+    const te = e.carrying ? this.entries.get(e.carrying) : undefined;
+    if (te && te.attachedTo === e.unit.id && e.group !== 'rig') {
+      const ds = te.slot && !te.slot.virtual && te.slot.key.startsWith('S-A') ? te.slot : null;
+      if (ds) {
+        const stop: V2 = ds.attach;
+        v.drive([...this.S.ringPath(from, stop), stop], { speed: YARD_SPEED });
+        v.drive([[ds.x, ds.z + 4]], {
+          speed: 3.2, reverse: true,
+          onDone: () => {
+            te.attachedTo = null; e.carrying = null;
+            const tv = te.vehicle;
+            if (tv) { tv.stop(); tv.setPose(ds.x, ds.z, ds.heading); tv.root.visible = te.shown; }
+            v.setBobtail(true);
+          },
+        });
+        v.drive([stop], { speed: 4 });
+        from = stop;
+      } else {
+        this.releaseTrailer(e);
+      }
+    }
     const ring = this.S.ringPath(from, s.attach);
     v.drive([...ring, s.attach], { speed: YARD_SPEED });
     v.drive(s.approach, {
@@ -599,7 +661,28 @@ export class FleetWorld {
 
   private driveToHighway(e: Entry) {
     const v = e.vehicle!;
-    const from = this.leaveCurrent(e);
+    let from = this.leaveCurrent(e);
+    // Acople: el tractor pasa a buscar un semi de la fila antes de salir a la ruta
+    if (v.kind === 'tractor' && !e.carrying) {
+      const te = this.pickTrailer(e);
+      if (te && te.slot) {
+        e.carrying = te.unit.id;
+        const ds = te.slot;
+        const stop: V2 = ds.attach;
+        v.drive([...this.S.ringPath(from, stop), stop], { speed: YARD_SPEED });
+        v.drive([[ds.x, ds.z + 4]], {
+          speed: 3.2, reverse: true,
+          onDone: () => {
+            const tv = te.vehicle;
+            if (tv) { tv.stop(); tv.root.visible = false; }
+            te.tag.visible = false;
+            v.setBobtail(false);
+          },
+        });
+        v.drive([stop], { speed: 4 });
+        from = stop;
+      }
+    }
     const gate = this.S.routes.gateJoin;
     v.drive([...this.S.ringPath(from, gate), gate], { speed: YARD_SPEED });
     v.drive(this.S.routes.outToHighway(), { speed: YARD_SPEED * 0.8 });
@@ -610,6 +693,16 @@ export class FleetWorld {
 
   private placeOnHighway(e: Entry) {
     const v = e.vehicle!;
+    // Colocación directa (sin animación): acoplar un semi disponible si es tractor
+    if (v.kind === 'tractor' && !e.carrying) {
+      const te = this.pickTrailer(e);
+      if (te) {
+        e.carrying = te.unit.id;
+        if (te.vehicle) te.vehicle.root.visible = false;
+        te.tag.visible = false;
+        v.setBobtail(false);
+      }
+    }
     const dir: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
     const x = this.S.bounds.x0 + Math.random() * (this.S.bounds.x1 - this.S.bounds.x0);
     const lane = dir === 1 ? this.S.hwLaneE : this.S.hwLaneW;

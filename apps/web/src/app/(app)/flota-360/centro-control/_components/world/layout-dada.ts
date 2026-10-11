@@ -7,7 +7,7 @@
 //     con dársenas de camiones en su cara oeste y sur
 //   · Playa de camiones: gran patio de hormigón abierto centro-sur,
 //     con filas de semirremolques DADA al sur
-//   · Acopio: patios de guarda a ambos lados de la calle oeste, al sur
+//   · Calle de salida: boulevard dedicado en la franja oeste hacia el portón
 //   · Fuera de servicio: esquina sudeste cercada con rayado
 //   · Inactivas: lote de tierra al este (portón de servicio)
 //   · Frente del taller (sur): boxes interiores con unidad a medio entrar
@@ -48,8 +48,6 @@ export const BUILDINGS: BuildingDef[] = [
   { key: 'taller', model: 'factory', label: 'TALLER', sub: 'Mantenimiento y reparación', x: 64, z: -20, rot: 0, scale: 1.8, labelY: 30 },
   // Lavadero de camiones (franja norte, junto a la garita)
   { key: 'lavadero', model: 'car-wash', label: 'LAVADERO', sub: 'Lavado de unidades', x: 20, z: -87, rot: 0, scale: 1.2, labelY: 10 },
-  // Cartel flotante de zona (sin edificio)
-  { key: 'z-acopio', model: '', label: 'ACOPIO', sub: 'Guarda y repuestos', x: -96, z: 53, rot: 0, scale: 1, labelY: 8 },
 ];
 
 // ── Slots por estado ──
@@ -58,7 +56,7 @@ export const BUILDINGS: BuildingDef[] = [
 // cajones cerrados tipo dársena — más angostos porque el tractor va bobtail
 function tractoresSlots(): Slot[] {
   const out: Slot[] = [];
-  for (let x = -56; x <= -8; x += 4.8) {
+  for (let x = -56; x <= 7; x += 7) {
     // Fila A (norte): trompa al norte
     out.push({ key: `TR-A${out.length + 1}`, x, z: -18, heading: H_N, attach: [-82, -18], approach: [[-74, -18], [x - 8, -18], [x, -18]], exit: [[x, -8], [-74, -8], [-74, 26]] });
     // Fila B (sur): trompa al sur
@@ -71,7 +69,7 @@ function tractoresSlots(): Slot[] {
 function rigidSlots(): Slot[] {
   const out: Slot[] = [];
   for (let x = -56; x <= -4; x += 6.5) {
-    out.push({ key: `R-A${out.length + 1}`, x, z: 12, heading: H_S, attach: [-82, 26], approach: [[-74, 26], [-74, 18], [x - 9, 18], [x, 12]], exit: [[x, 18], [-74, 18], [-74, 26]] });
+    out.push({ key: `R-A${out.length + 1}`, x, z: 13, heading: H_S, attach: [-82, 26], approach: [[-74, 26], [-74, 18], [x - 9, 18], [x, 13]], exit: [[x, 18], [-74, 18], [-74, 26]] });
   }
   return out;
 }
@@ -84,12 +82,20 @@ function semiSlots(): Slot[] {
     key: `S-A${i + 1}`, x, z: 38, heading: H_N, attach: [x, 26],
     approach: [[x, 32], [x, 38]], exit: [[x, 26]],
   }));
-  const xs2 = [-42, -33, -24, -15, -6, 3, 12, 30, 39, 48];
+  const xs2 = [-42, -33, -24, -15, -6, 3, 12];
   xs2.forEach((x, i) => out.push({
     key: `S-B${i + 1}`, x, z: 52, heading: H_N, attach: [x, 26],
     approach: [[x, 34], [x, 46], [x, 52]], exit: [[x, 34], [x, 26]],
   }));
   return out;
+}
+
+// Rigs (tractor + semi sin desacoplar, según checklist): extremo este de la fila sur
+function rigSlots(): Slot[] {
+  return [30, 39, 48].map((x, i) => ({
+    key: `RIG-${i + 1}`, x, z: 52, heading: H_N, attach: [x, 26],
+    approach: [[x, 34], [x, 46], [x, 52]], exit: [[x, 34], [x, 26]],
+  }));
 }
 
 // Taller: boxes interiores (unidad a medio entrar por el portón del frente)
@@ -159,6 +165,7 @@ export const SLOTS: Record<SlotGroup, Slot[]> = {
   tractores: tractoresSlots(),
   rigid: rigidSlots(),
   semi: semiSlots(),
+  rig: rigSlots(),
   shop: shopSlots(),
   hold: holdSlots(),
   inactive: inactiveSlots(),
@@ -172,11 +179,14 @@ export function extraSlots(group: SlotGroup): Slot[] {
   const out: Slot[] = [];
   switch (group) {
     case 'tractores':
-      for (let i = 0; i < 4; i++) out.push(mk(`TRX${i}`, -1.2 + i * 4.8, -18, H_N));
-      for (let i = 0; i < 4; i++) out.push(mk(`TRY${i}`, -1.2 + i * 4.8, -2, H_S));
+      for (let i = 0; i < 2; i++) out.push(mk(`TRX${i}`, -63 - i * 7, -18, H_N));
+      for (let i = 0; i < 2; i++) out.push(mk(`TRY${i}`, -63 - i * 7, -2, H_S));
       break;
     case 'rigid':
-      for (let i = 0; i < 4; i++) out.push(mk(`RX${i}`, 2.5 + i * 6.5, 12, H_S));
+      for (let i = 0; i < 3; i++) out.push(mk(`RX${i}`, 2.5 + i * 6.5, 13, H_S));
+      break;
+    case 'rig':
+      for (let i = 0; i < 2; i++) out.push(mk(`RIGX${i}`, 57 + i * 9, 52, H_N));
       break;
     case 'semi':
       out.push(mk('SX-A0', 15, 38, H_N)); out.push(mk('SX-A1', -57, 38, H_N));
@@ -215,12 +225,12 @@ export function groupFor(status: VisualStatus, kind: VehicleKind): SlotGroup {
 }
 
 export const GROUP_LABEL: Record<SlotGroup, string> = {
-  tractores: 'Tractores', rigid: 'Camiones', semi: 'Semirremolques', shop: 'Taller', hold: 'Fuera de servicio',
-  inactive: 'Inactivas', livianos: 'Lavadero', route: 'En ruta',
+  tractores: 'Tractores', rigid: 'Camiones', semi: 'Semirremolques', rig: 'Acopladas',
+  shop: 'Taller', hold: 'Fuera de servicio', inactive: 'Inactivas', livianos: 'Lavadero', route: 'En ruta',
 };
 
 export const GROUP_ANCHOR: Record<SlotGroup, V2> = {
-  tractores: [-30, -10], rigid: [-30, 12], semi: [4, 44], shop: [66, 22], hold: [92, 40],
+  tractores: [-30, -10], rigid: [-30, 13], semi: [4, 44], rig: [40, 46], shop: [66, 22], hold: [92, 40],
   inactive: [132, 6], livianos: [-10, -78], route: [60, HIGHWAY_Z - 9],
 };
 
@@ -263,14 +273,8 @@ function buildPropsList(): { props: PropDef[]; lamps: V2[] } {
   p('fuel-tank', 36, -91, 0, 1); p('fuel-tank', 36, -85, 0, 1);
   p('traffic-barrel', 3, -80); p('traffic-barrel', 34, -80);
   p('toolbox', 4, -90, 0.4);
-  // Patio de acopio oeste: racks, pallets y caños a ambos lados de la calle
-  for (let z = 12; z <= 42; z += 6) { p('pallet-rack', -103, z, Math.PI / 2); p('pallet-rack', -96, z, Math.PI / 2); }
-  for (let z = 12; z <= 30; z += 6) p('pallet-rack', -70, z, Math.PI / 2);
-  for (let i = 0; i < 6; i++) p('wooden-pallet', -104 + (i % 3) * 5, 48 + Math.floor(i / 3) * 4, i * 0.3);
-  for (let i = 0; i < 4; i++) p('concrete-pipe', -68, 36 + i * 4.4, Math.PI / 2);
-  for (let i = 0; i < 3; i++) p('gas-cylinder', -93 + i * 1.4, 20 + (i % 2) * 2);
-  p('steel-beam-stack', -99, 44, Math.PI / 2); p('conveyor-belt', -99, 38, Math.PI / 2);
-  p('toolbox', -92, 14, -0.3); p('dumpster', -66, 54, Math.PI / 2);
+  // Calle de salida oeste: balizas de canalización
+  for (let z = -40; z <= 48; z += 22) { p('traffic-barrel', -90, z); p('traffic-barrel', -104, z); }
   // Algunos livianos de personal cerca del lavadero
   const cars = ['hatchback', 'pickup-truck', 'hatchback'];
   [-43.2, -36.4, -29.6].forEach((x, i) => p(cars[i], x, -64.5, i % 2 ? Math.PI : 0));
@@ -318,7 +322,7 @@ function buildVegetationList(): VegItem[] {
   for (let x = -52; x <= 20; x += 14) { if (r() > 0.4) plant(x, -63); } // islas de la playa
   for (let x = -98; x < -68; x += 9) { plant(x, -72); }        // junto a la garita
   items.push({ x: -70, z: -52, model: 'oak-tree', scale: 1.3 }); // árbol de la isla del acceso
-  plant(-100, -64); plant(-104, -50);
+  plant(-100, -64);
   for (let x = 34; x < 100; x += 11) plant(x, -80);            // jardín noreste interior
   for (let x = 34; x < 100; x += 11) { if (r() > 0.4) plant(x + 5, -86); }
   for (let z = -50; z < 0; z += 12) plant(106, z);             // borde este del taller
@@ -381,9 +385,11 @@ export function paintYard(t: GroundTools) {
   t.concrete(28, -56, 102, 14);
   // Apron del lavadero (franja norte)
   asphalt(-52, -92, 28, -62);
-  // Patios de acopio del oeste (a ambos lados de la calle)
-  t.concrete(-106, 8, -90, 56);
-  t.concrete(-74, 8, -64, 56);
+  // Calle de salida oeste (ex acopio): boulevard dedicado hacia el portón
+  asphalt(-105, -52, -89, 56);
+  line(-97, -48, -97, 52, WHITE, 0.12, [3, 3]);
+  text('SALIDA', -97, -38, 'rgba(240,240,232,.7)', 3);
+  text('SALIDA', -97, 44, 'rgba(240,240,232,.7)', 3);
   // Franja de semirremolques (sur)
   asphalt(-58, 32, 66, 56);
   // Calle al portón de servicio este
@@ -411,16 +417,16 @@ export function paintYard(t: GroundTools) {
   // Cajones cerrados tipo dársena por tipo de unidad
   t.g.strokeStyle = WHITE; t.g.lineWidth = 0.12 * t.S;
   for (const s of SLOTS.tractores) {
-    t.g.strokeRect(t.X(s.x - 2.4), t.Z(s.z - 4.2), 4.8 * t.S, 8.4 * t.S);
+    t.g.strokeRect(t.X(s.x - 2.5), t.Z(s.z - 4.2), 5 * t.S, 8.4 * t.S);
   }
   for (const s of SLOTS.rigid) {
     t.g.strokeRect(t.X(s.x - 2.6), t.Z(s.z - 5.5), 5.2 * t.S, 11 * t.S);
   }
   text('TRACTORES', -32, -25.8, 'rgba(240,240,232,.7)', 2.4);
   text('CAMIONES', -32, 19.5, 'rgba(240,240,232,.7)', 2.4);
-  // Cajones de semirremolques
-  for (const s of SLOTS.semi) {
-    const z0 = s.key.startsWith('S-A') ? 32 : 46;
+  // Cajones de semirremolques y de unidades acopladas (rig)
+  for (const s of [...SLOTS.semi, ...SLOTS.rig]) {
+    const z0 = s.z - 6;
     line(s.x - 4.4, z0, s.x - 4.4, z0 + 12, WHITE, 0.13);
     line(s.x + 4.4, z0, s.x + 4.4, z0 + 12, WHITE, 0.13);
     line(s.x - 4.4, z0 + 12, s.x + 4.4, z0 + 12, WHITE, 0.13);
