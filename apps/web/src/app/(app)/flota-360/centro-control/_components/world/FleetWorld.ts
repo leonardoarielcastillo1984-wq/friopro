@@ -528,7 +528,7 @@ export class FleetWorld {
       const v = e.vehicle;
       if (!v) return;
       v.root.visible = e.shown;
-      v.setBobtail(e.group === 'shop' || e.group === 'hold');
+      v.setBobtail(['shop', 'hold', 'tractores', 'inactive'].includes(e.group));
       this.styleEntry(e);
       if (!e.shown) { v.stop(); return; }
 

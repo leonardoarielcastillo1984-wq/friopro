@@ -33,7 +33,8 @@ function dadaDemoUnits(): CCUnit[] {
     id, dominio, tipo, status, statusLabel: LABEL[status],
     conductor: 'J. Pérez', currentOdometer: 90000, alerts: [], source: 'demo', x: 0, y: 0,
   });
-  for (let i = 0; i < 30; i++) extras.push(mk(`dada-t${i}`, `AE ${300 + i} QZ`, 'TRACTOR', 'disponible'));
+  for (let i = 0; i < 26; i++) extras.push(mk(`dada-t${i}`, `AE ${300 + i} QZ`, 'TRACTOR', 'disponible'));
+  for (let i = 0; i < 10; i++) extras.push(mk(`dada-c${i}`, `AE ${400 + i} KJ`, 'CAMION', 'disponible'));
   for (let i = 0; i < 14; i++) extras.push(mk(`dada-s${i}`, `AC ${700 + i} AB`, 'SEMI', 'disponible'));
   for (let i = 0; i < 16; i++) extras.push(mk(`dada-l${i}`, `AF ${100 + i} CD`, 'PICKUP', i < 12 ? 'disponible' : 'en_viaje'));
   for (let i = 0; i < 3; i++) extras.push(mk(`dada-w${i}`, `AD ${500 + i} RT`, 'TRACTOR', 'en_taller'));
