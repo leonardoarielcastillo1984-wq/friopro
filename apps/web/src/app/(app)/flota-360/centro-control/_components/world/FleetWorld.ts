@@ -18,6 +18,10 @@ import {
 } from './layout-core';
 import { genericScenario } from './layout';
 
+// Punto donde el tractor termina la reversa bajo el semi: 4 m hacia la caja
+// del semirremolque, según la orientación del cajón (trompa N o S).
+const underKingpin = (s: Slot): V2 => [s.x - 4 * Math.sin(s.heading), s.z - 4 * Math.cos(s.heading)];
+
 const ISO_DIR = new THREE.Vector3(1, 0.8165, 1).normalize();
 const CAM_DIST = 420;
 const BASE_HALF_H = 112;
@@ -777,7 +781,7 @@ export class FleetWorld {
       if (ds) {
         const stop: V2 = ds.attach;
         v.drive([...this.S.ringPath(from, stop), stop], { speed: YARD_SPEED });
-        v.drive([[ds.x, ds.z + 4]], {
+        v.drive([underKingpin(ds)], {
           speed: 3.2, reverse: true,
           onDone: () => {
             te.attachedTo = null; e.carrying = null;
@@ -812,7 +816,7 @@ export class FleetWorld {
         const ds = te.slot;
         const stop: V2 = ds.attach;
         v.drive([...this.S.ringPath(from, stop), stop], { speed: YARD_SPEED });
-        v.drive([[ds.x, ds.z + 4]], {
+        v.drive([underKingpin(ds)], {
           speed: 3.2, reverse: true,
           onDone: () => {
             const tv = te.vehicle;
