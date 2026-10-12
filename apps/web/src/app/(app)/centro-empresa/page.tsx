@@ -20,17 +20,17 @@ export default function VistaGeneralPage() {
   useEffect(() => {
     (async () => {
       try {
-        const [{ config: c }, r] = await Promise.all([fetchConfig(), fetchResumen()]);
+        const [{ config: c }, r, pref] = await Promise.all([fetchConfig(), fetchResumen(), templatePref()]);
         setConfig(c);
         setData(r);
-        setTpl(templatePref() ?? c.defaultTemplate);
+        setTpl(pref ?? c.defaultTemplate);
       } catch { /* mostrar vacío */ }
     })();
   }, []);
 
   const choose = (t: TemplateKey) => {
     setTpl(t);
-    saveTemplatePref(t);
+    void saveTemplatePref(t);
     router.push(t === 'campus' ? '/centro-empresa/campus' : '/centro-empresa/procesos');
   };
 
@@ -56,6 +56,22 @@ export default function VistaGeneralPage() {
           <small>Vista consolidada de la organización</small>
         </div>
       </header>
+
+      {r && (
+        <div className="ce-score">
+          {(() => {
+            const score = r.departamentos ? Math.round((r.enObjetivo / r.departamentos) * 100) : 0;
+            const cls = r.criticos > 0 ? 'crit' : r.conDesvio > 0 ? 'warn' : 'ok';
+            return <><span className={`num ${cls}`}>{score}%</span><small>Salud del campus<br />{r.enObjetivo} de {r.departamentos} departamentos en objetivo</small></>;
+          })()}
+          <div className="ce-badges">
+            <span className={`ce-badge ${r.criticos === 0 && r.departamentos > 0 ? 'earned' : ''}`}>🛡️ Sin críticos</span>
+            <span className={`ce-badge ${r.conDesvio === 0 && r.criticos === 0 && r.departamentos > 0 ? 'earned' : ''}`}>✨ Campus impecable</span>
+            <span className={`ce-badge ${r.sinDatos === 0 && r.departamentos > 0 ? 'earned' : ''}`}>📊 Datos completos</span>
+            <span className={`ce-badge ${(r.ncVencidas ?? -1) === 0 ? 'earned' : ''}`}>⏱️ Nada vencido</span>
+          </div>
+        </div>
+      )}
 
       {r && (
         <div className="ce-kpis">

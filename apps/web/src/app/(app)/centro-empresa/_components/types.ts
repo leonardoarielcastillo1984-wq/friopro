@@ -18,6 +18,8 @@ export interface EmpresaDept {
   enabled: boolean;
   campusPos?: { x: number; z: number } | null;
   procPos?: { x: number; z: number } | null;
+  processId?: string | null;
+  umbrales?: { warn?: number | null; crit?: number | null } | null;
 }
 
 export interface EmpresaConn {
@@ -36,10 +38,24 @@ export interface EmpresaConfig {
 export interface DeptKpi { label: string; value: string | number }
 export interface DeptAlerta { label: string; nivel: 'warn' | 'crit' }
 
+export interface ProcesoLink { id: string; name: string; code?: string | null; owner?: string | null }
+export interface Subproceso { id: string; name: string; code?: string | null }
+
 export interface DeptResumen extends Pick<EmpresaDept, 'key' | 'name' | 'sub' | 'responsable' | 'moduleHref' | 'layer'> {
   kpis: DeptKpi[];
   alertas: DeptAlerta[];
   salud: DeptSalud;
+  processId?: string | null;
+  proceso?: ProcesoLink | null;
+  subprocesos?: Subproceso[];
+}
+
+export interface ProcesoDisponible {
+  id: string;
+  name: string;
+  code?: string | null;
+  layer: string;
+  parentId?: string | null;
 }
 
 export interface ResumenEjecutivo {

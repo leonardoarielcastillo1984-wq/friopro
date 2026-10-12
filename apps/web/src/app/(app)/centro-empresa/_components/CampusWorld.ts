@@ -47,6 +47,8 @@ interface ConnEntry {
 export interface CampusWorldOptions {
   onSelectDept?: (key: string | null) => void;
   onSelectConn?: (conn: EmpresaConn | null) => void;
+  onMoveDept?: (key: string, x: number, z: number) => void;
+  onHover?: (key: string | null, x: number, y: number) => void;
 }
 
 export class CampusWorld {
@@ -75,6 +77,8 @@ export class CampusWorld {
   private pointer = { down: false, dragging: false, pan: false, x: 0, y: 0 };
   private selectedKey: string | null = null;
   private hoveredKey: string | null = null;
+  private editMode = false;
+  private dragKey: string | null = null;
   private hoveredConn: ConnEntry | null = null;
   private tween: { t: number; dur: number; from: THREE.Vector3; to: THREE.Vector3; z0: number; z1: number } | null = null;
   private template: TemplateKey = 'campus';
@@ -157,6 +161,13 @@ export class CampusWorld {
       const e = this.buildings.get(key);
       if (e) this.tweenTo(e.target, 1.9);
     }
+  }
+
+  // Modo edición: arrastrar edificios para reposicionarlos.
+  setEditMode(on: boolean) {
+    this.editMode = on;
+    if (!on) this.dragKey = null;
+    this.renderer.domElement.style.cursor = on ? 'move' : 'grab';
   }
 
   // Vista de impacto (preparado): atenúa todo menos los keys dados.
@@ -453,6 +464,16 @@ export class CampusWorld {
     const el = this.renderer.domElement;
     el.style.cursor = 'grab';
     el.addEventListener('pointerdown', (ev) => {
+      // Modo edición: si se agarró un edificio, arrastre de posición.
+      if (this.editMode && ev.button === 0) {
+        const hit = this.rayAt(ev);
+        if (hit.building) {
+          this.dragKey = hit.building;
+          el.setPointerCapture(ev.pointerId);
+          el.style.cursor = 'move';
+          return;
+        }
+      }
       this.pointer.down = true; this.pointer.dragging = false; this.pointer.pan = ev.button === 2 || ev.shiftKey;
       this.pointer.x = ev.clientX; this.pointer.y = ev.clientY;
       el.setPointerCapture(ev.pointerId);
@@ -460,6 +481,7 @@ export class CampusWorld {
     });
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     el.addEventListener('pointermove', (ev) => {
+      if (this.dragKey) { this.dragMove(ev); return; }
       if (this.pointer.down) {
         const dx = ev.clientX - this.pointer.x, dy = ev.clientY - this.pointer.y;
         if (Math.abs(dx) + Math.abs(dy) > 4) this.pointer.dragging = true;
@@ -476,6 +498,15 @@ export class CampusWorld {
       }
     });
     el.addEventListener('pointerup', (ev) => {
+      if (this.dragKey) {
+        const k = this.dragKey;
+        this.dragKey = null;
+        const e = this.buildings.get(k);
+        if (e) this.opts.onMoveDept?.(k, e.root.position.x, e.root.position.z);
+        if (this.template === 'procesos') this.rebuildConnections();
+        el.style.cursor = this.editMode ? 'move' : 'grab';
+        return;
+      }
       el.style.cursor = 'grab';
       const wasDrag = this.pointer.dragging;
       this.pointer.down = false; this.pointer.dragging = false;
@@ -485,6 +516,24 @@ export class CampusWorld {
       ev.preventDefault();
       this.setZoom(this.zoom * (ev.deltaY < 0 ? 1.12 : 0.9));
     }, { passive: false });
+  }
+
+  private dragMove(ev: PointerEvent) {
+    const e = this.buildings.get(this.dragKey!);
+    if (!e) return;
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const nd = new THREE.Vector2(
+      ((ev.clientX - r.left) / r.width) * 2 - 1,
+      -((ev.clientY - r.top) / r.height) * 2 + 1
+    );
+    this.raycaster.setFromCamera(nd, this.camera);
+    const pt = new THREE.Vector3();
+    if (this.raycaster.ray.intersectPlane(this.groundPlane, pt)) {
+      // Snap suave a grilla de 2 unidades
+      e.root.position.set(Math.round(pt.x / 2) * 2, 0, Math.round(pt.z / 2) * 2);
+      e.target.copy(e.root.position);
+      e.from.copy(e.root.position);
+    }
   }
 
   private panBy(dx: number, dy: number) {
@@ -535,6 +584,7 @@ export class CampusWorld {
       c.tubeMat.color.setHex(c === this.hoveredConn ? 0xfbbf24 : 0x38bdf8);
     });
     this.renderer.domElement.style.cursor = building || conn ? 'pointer' : 'grab';
+    this.opts.onHover?.(building, ev.clientX, ev.clientY);
   }
 
   private click(ev: PointerEvent) {

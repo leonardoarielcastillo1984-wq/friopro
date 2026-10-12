@@ -1946,6 +1946,9 @@ model User {
   // Granular permissions per module (JSON: { "dashboard": "view", "documents": "edit", ... })
   permissions Json?
 
+  // Preferencias de UI por usuario (JSON: { "centroEmpresa": { "template": "campus" }, ... })
+  preferences Json?
+
   // Audit
   createdAt        DateTime          @default(now()) @db.Timestamptz
   updatedAt        DateTime          @updatedAt @db.Timestamptz

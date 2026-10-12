@@ -23,6 +23,8 @@ interface EmpresaDept {
   enabled: boolean;
   campusPos?: { x: number; z: number };
   procPos?: { x: number; z: number };
+  processId?: string | null;                         // proceso real del mapa (opcional)
+  umbrales?: { warn?: number | null; crit?: number | null } | null; // alertas → semáforo
 }
 
 interface EmpresaConn {
@@ -90,6 +92,11 @@ const deptSchema = z.object({
   enabled: z.boolean(),
   campusPos: z.object({ x: z.number(), z: z.number() }).optional().nullable(),
   procPos: z.object({ x: z.number(), z: z.number() }).optional().nullable(),
+  processId: z.string().uuid().optional().nullable(),
+  umbrales: z.object({
+    warn: z.number().min(0).optional().nullable(),
+    crit: z.number().min(0).optional().nullable(),
+  }).optional().nullable(),
 });
 
 const configSchema = z.object({
@@ -114,7 +121,8 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
   const prisma = () => (app as any).prisma;
 
   // Consulta defensiva: devuelve null si el modelo/campo no existe o falla.
-  const safe = async <T>(fn: () => Promise<T>): Promise<T | null> => {
+  // Tipado any a propósito: prisma() es any y un genérico aquí colapsa a {}.
+  const safe = async (fn: () => Promise<any>): Promise<any> => {
     try { return await fn(); } catch { return null; }
   };
 
@@ -154,12 +162,51 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
     return reply.send({ ok: true, config: parsed.data });
   });
 
+  // ── Procesos reales del tenant (para el configurador) ────
+  app.get('/procesos-disponibles', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const items = await safe(() => prisma().process.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { id: true, name: true, code: true, layer: true, parentId: true },
+      orderBy: [{ layer: 'asc' }, { name: 'asc' }],
+    }));
+    return reply.send({ procesos: items ?? [] });
+  });
+
+  // ── Preferencia de plantilla por usuario (User.preferences) ─
+  const resolveUser = async (req: FastifyRequest) => {
+    const userId = (req as any).auth?.userId;
+    if (!userId) return null;
+    const platformUser = await prisma().platformUser.findUnique({ where: { id: userId }, select: { email: true } });
+    if (!platformUser) return null;
+    return prisma().user.findUnique({ where: { email: platformUser.email } });
+  };
+
+  app.get('/preferencia', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const user = await resolveUser(req).catch(() => null);
+    const pref = (user?.preferences as any)?.centroEmpresa?.template;
+    return reply.send({ template: pref === 'campus' || pref === 'procesos' ? pref : null });
+  });
+
+  app.put('/preferencia', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { template } = z.object({ template: z.enum(['campus', 'procesos']) }).parse(req.body);
+    const user = await resolveUser(req).catch(() => null);
+    if (!user) return reply.send({ ok: false }); // no-employee: nada que persistir
+    const prefs = { ...((user.preferences as any) || {}), centroEmpresa: { template } };
+    await prisma().user.update({ where: { id: user.id }, data: { preferences: prefs } });
+    return reply.send({ ok: true });
+  });
+
   // ── Resumen agregado por departamento (solo lectura) ──────
   app.get('/resumen', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const now = new Date();
-    const in30d = new Date(now.getTime() + 30 * 86400e3);
 
     // Métricas transversales — cada una defensiva; null = fuente no disponible.
     const [
@@ -249,10 +296,47 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
     const saved = (s?.centroEmpresaConfig as EmpresaConfig | null) || null;
     const config: EmpresaConfig = saved?.departments?.length ? { ...DEFAULT_CONFIG, ...saved } : DEFAULT_CONFIG;
 
-    const departments = config.departments.filter((d) => d.enabled).map((d) => ({
-      key: d.key, name: d.name, sub: d.sub, responsable: d.responsable,
-      moduleHref: d.moduleHref, layer: d.layer, ...kpisFor(d.moduleKey),
-    }));
+    // Procesos reales vinculados por processId — KPIs del proceso (solo lectura)
+    const processIds = config.departments.map((d) => d.processId).filter(Boolean) as string[];
+    const procs = (processIds.length
+      ? await safe(() => prisma().process.findMany({
+          where: { tenantId, deletedAt: null, id: { in: processIds } },
+          select: {
+            id: true, name: true, code: true, owner: true,
+            _count: { select: { processIndicators: true, processRisks: true, children: true, sgiObjectives: true } },
+            children: { where: { deletedAt: null }, select: { id: true, name: true, code: true } },
+          },
+        }))
+      : null) ?? [];
+    const procById = new Map(procs.map((p: any) => [p.id, p]));
+
+    const departments = config.departments.filter((d) => d.enabled).map((d) => {
+      const agg = kpisFor(d.moduleKey);
+      const kpis = [...agg.kpis];
+      const alertas = [...agg.alertas];
+      let { salud } = agg;
+      const proc: any = d.processId ? procById.get(d.processId) : null;
+      if (proc) {
+        if (salud === 'nodata') salud = 'ok';
+        kpis.push({ label: 'Indicadores del proceso', value: proc._count.processIndicators });
+        kpis.push({ label: 'Riesgos', value: proc._count.processRisks });
+        if (proc._count.children > 0) kpis.push({ label: 'Subprocesos', value: proc._count.children });
+        if (proc._count.sgiObjectives > 0) kpis.push({ label: 'Objetivos vinculados', value: proc._count.sgiObjectives });
+      }
+      // Umbrales configurados: N alertas activas → warn/crit (solo escala, nunca baja)
+      const u = d.umbrales;
+      const nAlerts = alertas.length;
+      if (u?.crit != null && nAlerts >= u.crit) salud = 'crit';
+      else if (u?.warn != null && nAlerts >= u.warn && salud !== 'crit') salud = 'warn';
+
+      return {
+        key: d.key, name: d.name, sub: d.sub, responsable: d.responsable,
+        moduleHref: d.moduleHref, layer: d.layer, kpis, alertas, salud,
+        processId: d.processId ?? null,
+        proceso: proc ? { id: proc.id, name: proc.name, code: proc.code, owner: proc.owner } : null,
+        subprocesos: proc ? proc.children.map((c: any) => ({ id: c.id, name: c.name, code: c.code })) : [],
+      };
+    });
 
     // Consolidado ejecutivo
     const crits = departments.filter((d) => d.salud === 'crit').length;

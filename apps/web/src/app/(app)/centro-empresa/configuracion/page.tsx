@@ -5,8 +5,8 @@
 // ============================================================
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, Save, RotateCcw } from 'lucide-react';
-import { fetchConfig, saveConfig } from '../_components/data';
-import type { EmpresaConfig, EmpresaDept, DeptLayer } from '../_components/types';
+import { fetchConfig, saveConfig, fetchProcesos } from '../_components/data';
+import type { EmpresaConfig, EmpresaDept, DeptLayer, ProcesoDisponible } from '../_components/types';
 import '../centro.css';
 
 const LAYERS: { value: DeptLayer; label: string }[] = [
@@ -46,6 +46,7 @@ const slug = (s: string) =>
 export default function ConfiguracionPage() {
   const [config, setConfig] = useState<EmpresaConfig | null>(null);
   const [models, setModels] = useState<string[]>([]);
+  const [procesos, setProcesos] = useState<ProcesoDisponible[]>([]);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newName, setNewName] = useState('');
@@ -55,6 +56,7 @@ export default function ConfiguracionPage() {
       setConfig(JSON.parse(JSON.stringify(config)));
       setModels(models);
     }).catch(() => {});
+    fetchProcesos().then(setProcesos);
   }, []);
 
   const mutate = (fn: (c: EmpresaConfig) => void) => {
@@ -146,26 +148,59 @@ export default function ConfiguracionPage() {
           <div className="ce-section" style={{ borderTop: 'none' }}>
             <h4>Departamentos / procesos ({config.departments.length})</h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div className="ce-dept" style={{ opacity: .6, padding: '4px 12px' }}>
+              <div className="ce-dept-row" style={{ opacity: .6, padding: '0 12px' }}>
                 <span /><span>Nombre</span><span>Subtítulo</span><span>Responsable</span>
-                <span>Edificio</span><span>Capa</span><span>Activo</span><span />
+                <span>Edificio</span><span>Capa</span><span>Módulo</span><span />
               </div>
               {config.departments.map((d) => (
                 <div className="ce-dept" key={d.key} style={{ opacity: d.enabled ? 1 : .45 }}>
-                  <input type="checkbox" checked={d.enabled} onChange={(e) => setDept(d.key, { enabled: e.target.checked })} title="Visible en el campus" />
-                  <input value={d.name} onChange={(e) => setDept(d.key, { name: e.target.value })} />
-                  <input value={d.sub ?? ''} placeholder="Subtítulo" onChange={(e) => setDept(d.key, { sub: e.target.value })} />
-                  <input value={d.responsable ?? ''} placeholder="Responsable" onChange={(e) => setDept(d.key, { responsable: e.target.value })} />
-                  <select value={d.model} onChange={(e) => setDept(d.key, { model: e.target.value })}>
-                    {models.map((m) => <option key={m} value={m}>{MODEL_LABELS[m] ?? m}</option>)}
-                  </select>
-                  <select value={d.layer} onChange={(e) => setDept(d.key, { layer: e.target.value as DeptLayer })}>
-                    {LAYERS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-                  </select>
-                  <select value={d.moduleKey ?? ''} onChange={(e) => setModule(d.key, e.target.value)} title="Módulo vinculado (fuente de datos y link)">
-                    {MODULE_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-                  </select>
-                  <button className="del" onClick={() => removeDept(d.key)} title="Eliminar departamento"><Trash2 size={14} /></button>
+                  <div className="ce-dept-row">
+                    <input type="checkbox" checked={d.enabled} onChange={(e) => setDept(d.key, { enabled: e.target.checked })} title="Visible en el campus" />
+                    <input value={d.name} onChange={(e) => setDept(d.key, { name: e.target.value })} />
+                    <input value={d.sub ?? ''} placeholder="Subtítulo" onChange={(e) => setDept(d.key, { sub: e.target.value })} />
+                    <input value={d.responsable ?? ''} placeholder="Responsable" onChange={(e) => setDept(d.key, { responsable: e.target.value })} />
+                    <select value={d.model} onChange={(e) => setDept(d.key, { model: e.target.value })}>
+                      {models.map((m) => <option key={m} value={m}>{MODEL_LABELS[m] ?? m}</option>)}
+                    </select>
+                    <select value={d.layer} onChange={(e) => setDept(d.key, { layer: e.target.value as DeptLayer })}>
+                      {LAYERS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+                    </select>
+                    <select value={d.moduleKey ?? ''} onChange={(e) => setModule(d.key, e.target.value)} title="Módulo vinculado (fuente de datos y link)">
+                      {MODULE_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+                    </select>
+                    <button className="del" onClick={() => removeDept(d.key)} title="Eliminar departamento"><Trash2 size={14} /></button>
+                  </div>
+                  <div className="ce-dept-extra">
+                    <select
+                      value={d.processId ?? ''}
+                      onChange={(e) => setDept(d.key, { processId: e.target.value || null })}
+                      title="Proceso real del mapa (Contexto SGI)"
+                    >
+                      <option value=''>— Proceso del mapa: sin vincular —</option>
+                      {procesos.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.parentId ? '· ' : ''}{p.code ? `[${p.code}] ` : ''}{p.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number" min={0} placeholder="Warn ≥"
+                      value={d.umbrales?.warn ?? ''}
+                      title="Umbrales: N alertas activas → Seguimiento"
+                      onChange={(e) => setDept(d.key, { umbrales: { ...d.umbrales, warn: e.target.value === '' ? null : Number(e.target.value) } })}
+                    />
+                    <input
+                      type="number" min={0} placeholder="Crit ≥"
+                      value={d.umbrales?.crit ?? ''}
+                      title="Umbrales: N alertas activas → Crítico"
+                      onChange={(e) => setDept(d.key, { umbrales: { ...d.umbrales, crit: e.target.value === '' ? null : Number(e.target.value) } })}
+                    />
+                    <span className="ce-pos">
+                      {d.campusPos ? `campus ${d.campusPos.x},${d.campusPos.z}` : 'campus auto'}
+                      {' · '}
+                      {d.procPos ? `proc ${d.procPos.x},${d.procPos.z}` : 'proc auto'}
+                    </span>
+                  </div>
                 </div>
               ))}
               <div style={{ display: 'flex', gap: 8 }}>
