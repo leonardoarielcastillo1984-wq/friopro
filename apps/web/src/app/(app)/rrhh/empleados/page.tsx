@@ -590,7 +590,8 @@ export default function EmployeesPage() {
       // Convert API format to UI format
       const perms: any = {};
       modules.forEach((mod) => {
-        const level = apiPerms[mod.key] || 'none';
+        // Sub-permisos: si no hay valor guardado, heredan el nivel del padre
+        const level = apiPerms[mod.key] ?? (mod.parent ? apiPerms[mod.parent] : undefined) ?? 'none';
         perms[mod.key] = { access: level };
       });
       
@@ -607,7 +608,7 @@ export default function EmployeesPage() {
 
   // Lista de módulos — debe coincidir con las keys del sidebar (href sin '/').
   // El sidebar verifica perms[moduleKey] con moduleKey = href.replace(/^\//, '').
-  const modules = [
+  const modules: { key: string; label: string; icon: string; parent?: string }[] = [
     { key: 'dashboard', label: 'Inicio', icon: '🏠' },
     { key: 'command-center', label: 'Command Center', icon: '🧠' },
     { key: 'auditoria-readiness', label: 'Preparación de Auditoría', icon: '🗂️' },
@@ -629,6 +630,7 @@ export default function EmployeesPage() {
     { key: 'calendario', label: 'Calendario', icon: '📅' },
     { key: 'infraestructura', label: 'Infraestructura', icon: '📦' },
     { key: 'flota-360', label: 'Flota 360', icon: '🚛' },
+    { key: 'flota-360-centro-control', label: 'Centro de Control 3D', icon: '🛰️', parent: 'flota-360' },
     { key: 'reportes', label: 'Reportes', icon: '📊' },
     { key: 'resultados', label: 'Resultado de Negocio', icon: '💰' },
     { key: 'modo-de-uso', label: 'Centro de Ayuda', icon: '❓' },
@@ -2485,22 +2487,30 @@ export default function EmployeesPage() {
             <div className="space-y-3">
               {modules.map((module) => {
                 const currentAccess = permissions[module.key]?.access || 'none';
+                // Sub-permiso bloqueado cuando el módulo padre está en "Sin acceso"
+                const parentLocked = !!module.parent && (permissions[module.parent]?.access || 'none') === 'none';
                 return (
-                  <div key={module.key} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                  <div key={module.key} className={`border border-gray-200 rounded-lg p-4 transition-colors ${module.parent ? 'ml-10 border-l-4 border-l-gray-300' : ''} ${parentLocked ? 'opacity-50 bg-gray-50' : 'hover:bg-gray-50'}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <span className="text-2xl">{module.icon}</span>
-                        <span className="font-medium text-gray-900">{module.label}</span>
+                        <span className="font-medium text-gray-900">
+                          {module.parent && <span className="text-gray-400 mr-1">↳</span>}{module.label}
+                        </span>
+                        {parentLocked && <span className="text-xs text-gray-400 italic">requiere acceso a {modules.find((m) => m.key === module.parent)?.label}</span>}
                       </div>
                       
                       <div className="flex gap-2">
-                        <label className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition-colors ${
-                          currentAccess === 'none' ? 'bg-red-100 border-2 border-red-400' : 'bg-gray-100 hover:bg-gray-200'
+                        <label className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                          parentLocked ? 'bg-gray-100 cursor-not-allowed' : 'cursor-pointer'
+                        } ${
+                          currentAccess === 'none' ? 'bg-red-100 border-2 border-red-400' : parentLocked ? '' : 'bg-gray-100 hover:bg-gray-200'
                         }`}>
                           <input
                             type="radio"
                             name={`access-${module.key}`}
                             checked={currentAccess === 'none'}
+                            disabled={parentLocked}
                             onChange={() => setPermissions((prev: any) => ({
                               ...prev,
                               [module.key]: { access: 'none' }
@@ -2510,13 +2520,16 @@ export default function EmployeesPage() {
                           <span className="text-sm font-medium">Sin acceso</span>
                         </label>
 
-                        <label className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition-colors ${
-                          currentAccess === 'view' ? 'bg-blue-100 border-2 border-blue-400' : 'bg-gray-100 hover:bg-gray-200'
+                        <label className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                          parentLocked ? 'bg-gray-100 cursor-not-allowed' : 'cursor-pointer'
+                        } ${
+                          currentAccess === 'view' ? 'bg-blue-100 border-2 border-blue-400' : parentLocked ? '' : 'bg-gray-100 hover:bg-gray-200'
                         }`}>
                           <input
                             type="radio"
                             name={`access-${module.key}`}
                             checked={currentAccess === 'view'}
+                            disabled={parentLocked}
                             onChange={() => setPermissions((prev: any) => ({
                               ...prev,
                               [module.key]: { access: 'view' }
@@ -2526,13 +2539,16 @@ export default function EmployeesPage() {
                           <span className="text-sm font-medium">Ver</span>
                         </label>
 
-                        <label className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition-colors ${
-                          currentAccess === 'edit' ? 'bg-green-100 border-2 border-green-400' : 'bg-gray-100 hover:bg-gray-200'
+                        <label className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                          parentLocked ? 'bg-gray-100 cursor-not-allowed' : 'cursor-pointer'
+                        } ${
+                          currentAccess === 'edit' ? 'bg-green-100 border-2 border-green-400' : parentLocked ? '' : 'bg-gray-100 hover:bg-gray-200'
                         }`}>
                           <input
                             type="radio"
                             name={`access-${module.key}`}
                             checked={currentAccess === 'edit'}
+                            disabled={parentLocked}
                             onChange={() => setPermissions((prev: any) => ({
                               ...prev,
                               [module.key]: { access: 'edit' }

@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@/lib/auth-context';
+import { hasSubModulePermission } from '@/hooks/useModulePermission';
 import './fleet.css';
 import {
   LayoutDashboard, Wrench, Truck, Container, Link2, CalendarClock,
@@ -11,12 +13,13 @@ import {
   HardHat, Activity, Building2, Briefcase, Radar,
 } from 'lucide-react';
 
-const GROUPS: { label: string | null; items: { href: string; label: string; icon: any; exact?: boolean }[] }[] = [
+const GROUPS: { label: string | null; items: { href: string; label: string; icon: any; exact?: boolean; cc?: boolean }[] }[] = [
   {
     label: null,
     items: [
       { href: '/flota-360', label: 'Centro de trabajo', icon: LayoutDashboard, exact: true },
-      { href: '/flota-360/centro-control', label: 'Centro de Control', icon: Radar },
+      // Sub-permiso granular: 'flota-360-centro-control' dentro de 'flota-360'
+      { href: '/flota-360/centro-control', label: 'Centro de Control', icon: Radar, cc: true },
     ],
   },
   {
@@ -60,7 +63,7 @@ const GROUPS: { label: string | null; items: { href: string; label: string; icon
   },
 ];
 
-function NavContent({ pathname, onNavigate }: { pathname: string | null; onNavigate?: () => void }) {
+function NavContent({ pathname, onNavigate, allowCC }: { pathname: string | null; onNavigate?: () => void; allowCC?: boolean }) {
   return (
     <>
       <div className="flex items-center gap-2 px-2.5 mb-1 pb-3 border-b border-white/10">
@@ -89,7 +92,7 @@ function NavContent({ pathname, onNavigate }: { pathname: string | null; onNavig
             {group.label && (
               <span className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-blue-300/50">{group.label}</span>
             )}
-            {group.items.map((item) => {
+            {group.items.filter((item) => !item.cc || allowCC).map((item) => {
               const active = item.exact ? pathname === item.href : pathname?.startsWith(item.href);
               const Icon = item.icon;
               return (
@@ -117,13 +120,22 @@ function NavContent({ pathname, onNavigate }: { pathname: string | null; onNavig
 
 export default function Flota360Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { user, tenantRole, loading } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Admins siempre ven el item; empleados requieren el sub-permiso
+  // 'flota-360-centro-control' (hereda 'flota-360' si no está configurado).
+  const [allowCC, setAllowCC] = useState(false);
+  useEffect(() => {
+    if (loading) return;
+    const isAdmin = user?.globalRole === 'SUPER_ADMIN' || tenantRole === 'TENANT_ADMIN';
+    setAllowCC(isAdmin || hasSubModulePermission('flota-360-centro-control', 'flota-360'));
+  }, [loading, user?.globalRole, tenantRole]);
 
   return (
     <div className="fleet-shell flex gap-0 -m-4 sm:-m-6 min-h-[calc(100vh-4rem)]">
       {/* Sidebar desktop — única navegación visible dentro del módulo */}
       <aside className="hidden lg:flex flex-col w-[256px] shrink-0 bg-[#0d1b3d] py-4 px-2.5 sticky top-0 h-screen shadow-[1px_0_0_rgba(255,255,255,0.06)]">
-        <NavContent pathname={pathname} />
+        <NavContent pathname={pathname} allowCC={allowCC} />
       </aside>
 
       {/* Mobile: barra superior compacta + drawer propio del módulo */}
@@ -147,7 +159,7 @@ export default function Flota360Layout({ children }: { children: React.ReactNode
             >
               <X className="h-4 w-4" />
             </button>
-            <NavContent pathname={pathname} onNavigate={() => setMobileOpen(false)} />
+            <NavContent pathname={pathname} allowCC={allowCC} onNavigate={() => setMobileOpen(false)} />
           </aside>
         </>
       )}

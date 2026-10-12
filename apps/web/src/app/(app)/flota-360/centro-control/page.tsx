@@ -7,13 +7,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { FlaskConical, Pause, Play, RotateCcw } from 'lucide-react';
+import { FlaskConical, Pause, Play, RotateCcw, Lock } from 'lucide-react';
 import Scene3D from './_components/Scene3D';
 import { KpiBar, EventsPanel, UnitDetail, RouteMap, SectorPanel, AlertsPanel } from './_components/Panels';
 import { fetchCentroData } from './_components/data';
 import { applyDemoTick, advanceRoute, createDemoState, demoKpis } from './_components/DemoEngine';
 import type { CCUnit, CCEvent, Kpis, Mode, DemoSpeed } from './_components/types';
 import { scenarioForTenant, scenarioKeyForTenant, scenarioOverride, SCENARIOS, SCENARIO_LABELS } from './_components/world/scenario';
+import { hasSubModulePermission } from '@/hooks/useModulePermission';
 import Taller3D from './_components/Taller3D';
 import TallerPanel from './_components/TallerPanel';
 import { fetchTallerResumen, demoTallerSnapshot } from './_components/taller-data';
@@ -23,7 +24,15 @@ import './centro.css';
 const POLL_MS = 30_000;
 
 export default function CentroControlPage() {
-  const { tenant } = useAuth();
+  const { tenant, user, tenantRole, loading: authLoading } = useAuth();
+  // Guard: sub-permiso 'flota-360-centro-control' (admins siempre entran).
+  // null = verificando; no dispara fetches hasta resolver.
+  const [ccAllowed, setCcAllowed] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (authLoading) return;
+    const isAdmin = user?.globalRole === 'SUPER_ADMIN' || tenantRole === 'TENANT_ADMIN';
+    setCcAllowed(isAdmin || hasSubModulePermission('flota-360-centro-control', 'flota-360'));
+  }, [authLoading, user?.globalRole, tenantRole]);
   const defaultScenarioKey = useMemo(() => scenarioKeyForTenant(tenant), [tenant]);
   // Escenario visual del predio. Prioridad: ?yard= → sessionStorage → tenant.
   const [scenarioKey, setScenarioKey] = useState<string>(() => {
@@ -93,26 +102,26 @@ export default function CentroControlPage() {
   }, []);
 
   useEffect(() => {
-    if (mode !== 'real') return;
+    if (ccAllowed !== true || mode !== 'real') return;
     setLoading(true);
     loadReal();
     const t = setInterval(() => { if (!document.hidden) loadReal(); }, POLL_MS);
     return () => clearInterval(t);
-  }, [mode, loadReal]);
+  }, [mode, loadReal, ccAllowed]);
 
   // ── Taller Inteligente: snapshot agregado (REAL) o demo ──
   const inTaller = sector === 'taller' || tallerInside;
   useEffect(() => {
-    if (!inTaller) return;
+    if (!inTaller || ccAllowed !== true) return;
     if (mode === 'demo') { setTallerSnap(demoTallerSnapshot(units)); return; }
     let alive = true;
     fetchTallerResumen().then((s) => { if (alive) setTallerSnap(s); });
     return () => { alive = false; };
-  }, [inTaller, mode, units]);
+  }, [inTaller, mode, units, ccAllowed]);
 
   // ── Modo demo: tick engine ──
   useEffect(() => {
-    if (mode !== 'demo') return;
+    if (ccAllowed !== true || mode !== 'demo') return;
     const s = demoRef.current;
     const apply = () => {
       setUnits([...s.units]);
@@ -135,7 +144,7 @@ export default function CentroControlPage() {
       apply();
     }, interval);
     return () => clearInterval(t);
-  }, [mode, demoPaused, demoSpeed]);
+  }, [mode, demoPaused, demoSpeed, ccAllowed]);
 
   // ── Selección de unidad → ficha real ──
   const onSelectRef = useRef<(u: CCUnit) => void>(() => {});
@@ -167,6 +176,30 @@ export default function CentroControlPage() {
     setEvents([...s.events]);
     setKpis(demoKpis(s.units));
   };
+
+  if (ccAllowed === null) {
+    return (
+      <div className="cc-root" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <small style={{ color: '#94a3b8' }}>Verificando permisos…</small>
+      </div>
+    );
+  }
+
+  if (!ccAllowed) {
+    return (
+      <div className="cc-root" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div style={{ textAlign: 'center', maxWidth: 380, padding: 24 }}>
+          <Lock size={34} style={{ color: '#64748b', margin: '0 auto 14px' }} />
+          <h2 style={{ color: '#e2e8f0', margin: '0 0 8px', fontSize: 18 }}>Acceso restringido</h2>
+          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 18px' }}>
+            No tenés permiso para ver el Centro de Control. Pedile al administrador que habilite
+            “Centro de Control 3D” dentro de Flota 360 en tus permisos.
+          </p>
+          <a href="/flota-360" style={{ color: '#38bdf8', fontSize: 13 }}>← Volver a Centro de trabajo</a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="cc-root">
