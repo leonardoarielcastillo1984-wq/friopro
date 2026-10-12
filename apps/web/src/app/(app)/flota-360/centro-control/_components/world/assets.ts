@@ -13,6 +13,31 @@ const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
 const cache = new Map<string, Promise<GLTF>>();
 
+// Respuesta física por tipo de superficie, inferida del nombre del material.
+// Se aplica una sola vez por material (los clones lo comparten).
+const tuned = new WeakSet<THREE.Material>();
+function tunePBR(sm: THREE.MeshStandardMaterial) {
+  if (!sm || !sm.isMeshStandardMaterial || tuned.has(sm)) return;
+  tuned.add(sm);
+  if (sm.map) sm.map.anisotropy = 8;
+  const n = (sm.name || '').toLowerCase();
+  const vehicle = /^(semi-truck|delivery-truck|tow-truck|pickup-truck|hatchback|delivery-van|forklift)_/.test(n);
+  if (/tree|bush|hedge|leaf|foliage/.test(n)) {
+    sm.roughness = 0.9; sm.envMapIntensity = 0.5;
+  } else if (/glass|window|windshield/.test(n)) {
+    sm.roughness = 0.06; sm.metalness = 0.25; sm.envMapIntensity = 1.8;
+    sm.color.multiplyScalar(0.55);
+  } else if (/tire|rubber/.test(n)) {
+    sm.roughness = 0.9; sm.metalness = 0; sm.envMapIntensity = 0.4;
+  } else if (vehicle && /paint|stripe|body|trailer/.test(n)) {
+    sm.roughness = Math.min(sm.roughness, 0.38); sm.envMapIntensity = 1.15;
+  } else if (/chrome|steel|metal|rim/.test(n)) {
+    sm.roughness = Math.min(sm.roughness, 0.35); sm.metalness = Math.max(sm.metalness, 0.6);
+  } else if (/concrete|shell|facade/.test(n)) {
+    sm.roughness = Math.max(sm.roughness, 0.85); sm.envMapIntensity = 0.7;
+  }
+}
+
 export function loadModel(name: string): Promise<GLTF> {
   let p = cache.get(name);
   if (!p) {
@@ -23,10 +48,7 @@ export function loadModel(name: string): Promise<GLTF> {
           m.castShadow = true;
           m.receiveShadow = true;
           const mats = Array.isArray(m.material) ? m.material : [m.material];
-          mats.forEach((mat) => {
-            const sm = mat as THREE.MeshStandardMaterial;
-            if (sm.map) sm.map.anisotropy = 4;
-          });
+          mats.forEach((mat) => tunePBR(mat as THREE.MeshStandardMaterial));
         }
       });
       return g;

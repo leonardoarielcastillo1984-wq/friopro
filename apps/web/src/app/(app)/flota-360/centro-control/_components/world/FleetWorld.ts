@@ -151,6 +151,8 @@ export class FleetWorld {
   // ── Día / noche ──
   private hemi!: THREE.HemisphereLight;
   private sun!: THREE.DirectionalLight;
+  private envTex: THREE.Texture | null = null;
+  private groundMats: THREE.MeshStandardMaterial[] = [];
   private lightMix = 0;              // 0 = día, 1 = noche (interpolado)
   private lightTarget = 0;
   private lampGlows: THREE.Object3D[] = [];
@@ -208,12 +210,17 @@ export class FleetWorld {
     if (this.disposed) return;
 
     this.setupLights();
+    this.buildEnvironment();
     const S = this.S;
     const ground = buildGround(this.scene, this.renderer.capabilities.getMaxAnisotropy(), {
       bounds: S.bounds, highwayZ: S.highwayZ, highwayW: S.highwayW, paint: S.paint,
     });
     ground.matrixAutoUpdate = false;
     ground.updateMatrix();
+    this.scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh && m.userData.groundSurface) this.groundMats.push(m.material as THREE.MeshStandardMaterial);
+    });
     const gates = [
       { x: S.gateX, z: S.gateZ, edge: (S.gateSide === 1 ? 'S' : 'N') as 'S' | 'N', arm: true },
       ...(S.extraGates ?? []),
@@ -248,7 +255,37 @@ export class FleetWorld {
     sc.left = -210; sc.right = 210; sc.top = 190; sc.bottom = -190; sc.near = 10; sc.far = 700;
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.35;
+    this.sun.shadow.radius = 3;
     this.scene.add(this.sun, this.sun.target);
+  }
+
+  // Iluminación basada en imagen: cielo exterior (cenit, horizonte, suelo y
+  // disco solar) prefiltrado con PMREM. Da reflejos coherentes en vidrios,
+  // pintura, metal y pavimento mojado.
+  private buildEnvironment() {
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const sky = new THREE.Scene();
+    const geo = new THREE.SphereGeometry(100, 48, 24);
+    const mat = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      uniforms: {
+        top: { value: new THREE.Color(0x3f78c9) },
+        horizon: { value: new THREE.Color(0xdfe3e0) },
+        bottom: { value: new THREE.Color(0x4a4a3c) },
+      },
+      vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform vec3 top; uniform vec3 horizon; uniform vec3 bottom; varying vec3 vP; void main(){ float h = vP.y; vec3 c = h > 0.0 ? mix(horizon, top, pow(h, 0.55)) : mix(horizon, bottom, pow(-h, 0.35)); gl_FragColor = vec4(c, 1.0); }',
+    });
+    sky.add(new THREE.Mesh(geo, mat));
+    const discMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xfff1dc).multiplyScalar(40) });
+    const disc = new THREE.Mesh(new THREE.SphereGeometry(5, 16, 8), discMat);
+    disc.position.copy(this.sun.position).normalize().multiplyScalar(90);
+    sky.add(disc);
+    this.envTex = pmrem.fromScene(sky, 0.03).texture;
+    this.scene.environment = this.envTex;
+    pmrem.dispose();
+    geo.dispose(); mat.dispose(); disc.geometry.dispose(); discMat.dispose();
   }
 
   // ───────────────────────── Día / noche ─────────────────────────
@@ -291,11 +328,15 @@ export class FleetWorld {
   private applyLightMix() {
     const m = this.lightMix;
     const wx = this.weatherMix;
-    const DAY = { hemi: 1.25, sun: 2.5, exp: 1.05, fog: 0x8fa488, bg: 0x0b1220 };
-    const NIGHT = { hemi: 0.38, sun: 0.5, exp: 0.88, fog: 0x18202e, bg: 0x04070e };
+    const DAY = { hemi: 0.7, sun: 2.9, env: 0.75, exp: 1.0, fog: 0xa9b4b0, bg: 0x0b1220 };
+    const NIGHT = { hemi: 0.3, sun: 0.45, env: 0.07, exp: 0.9, fog: 0x18202e, bg: 0x04070e };
     const flash = this.flashT > 0 ? this.flashT / 0.3 : 0;
     this.hemi.intensity = (DAY.hemi + (NIGHT.hemi - DAY.hemi) * m) * (1 - 0.22 * wx) + flash * 1.4;
     this.sun.intensity = (DAY.sun + (NIGHT.sun - DAY.sun) * m) * (1 - 0.68 * wx);
+    this.scene.environmentIntensity = (DAY.env + (NIGHT.env - DAY.env) * m) * (1 - 0.3 * wx);
+    // Pavimento mojado: con lluvia baja la rugosidad y aparecen reflejos
+    const wet = Math.max(0, (wx - 0.6) / 0.4);
+    for (const gm of this.groundMats) gm.roughness = 1 - 0.42 * wet;
     this.renderer.toneMappingExposure = (DAY.exp + (NIGHT.exp - DAY.exp) * m) * (1 - 0.1 * wx) + flash * 0.08;
     const fogC = new THREE.Color(DAY.fog).lerp(new THREE.Color(NIGHT.fog), m).lerp(new THREE.Color(0x69748a), wx * 0.55);
     (this.scene.fog as THREE.Fog).color.copy(fogC);
@@ -1207,6 +1248,7 @@ export class FleetWorld {
     window.removeEventListener('pointerup', this.onUp);
     el.removeEventListener('wheel', this.onWheel);
     el.removeEventListener('pointerleave', this.onLeave);
+    this.envTex?.dispose();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh && m.geometry && m.parent?.name === 'fence') m.geometry.dispose();
