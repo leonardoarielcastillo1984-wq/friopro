@@ -611,6 +611,7 @@ export default function EmployeesPage() {
   const modules: { key: string; label: string; icon: string; parent?: string }[] = [
     { key: 'dashboard', label: 'Inicio', icon: '🏠' },
     { key: 'command-center', label: 'Command Center', icon: '🧠' },
+    { key: 'centro-empresa', label: 'Centro Empresarial', icon: '🏙️' },
     { key: 'auditoria-readiness', label: 'Preparación de Auditoría', icon: '🗂️' },
     { key: 'documents', label: 'Documentos', icon: '📄' },
     { key: 'rrhh', label: 'RRHH', icon: '👥' },

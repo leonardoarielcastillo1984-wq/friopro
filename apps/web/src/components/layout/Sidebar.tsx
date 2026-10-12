@@ -43,6 +43,7 @@ import {
   Brain,
   ListChecks,
   Wrench,
+  Building2,
 } from 'lucide-react';
 
 const mainNav = [
@@ -53,6 +54,7 @@ const mainNav = [
   { label: 'Resultado de Negocio', icon: TrendingUp, href: '/resultados' },
 
   { label: 'Command Center', icon: Brain, href: '/command-center' },
+  { label: 'Centro Empresarial', icon: Building2, href: '/centro-empresa' },
   { label: 'Preparación de Auditoría', icon: ListChecks, href: '/auditoria-readiness' },
   { label: 'Documentos', icon: FileText, href: '/documents' },
 
@@ -106,6 +108,7 @@ const MODULE_PLAN_REQUIREMENTS: Record<string, PlanTier> = {
   '/dashboard': 'BASIC',
   '/panel': 'BASIC',
   '/command-center': 'BASIC',
+  '/centro-empresa': 'PROFESSIONAL',
   '/auditoria-readiness': 'BASIC',
   '/documents': 'BASIC',
   '/contexto-sgi': 'BASIC',

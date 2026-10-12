@@ -151,6 +151,7 @@ import flotaRoutes from './routes/flota.js';
 import talleresRoutes from './routes/flota-talleres.js';
 import finanzasRoutes from './routes/finanzas.js';
 import fleetOpsRoutes from './routes/fleet-ops.js';
+import { centroEmpresaRoutes } from './routes/centro-empresa.js';
 import fleetRecurrenceRoutes from './routes/fleet-recurrence.js';
 import { driverHubRoutes } from './routes/driver-hub.js';
 import garantiasRoutes from './routes/garantias.js';
@@ -507,6 +508,7 @@ export async function buildApp() {
   await app.register(finanzasRoutes, { prefix: '/api/finanzas' });
   await app.register(fleetRecurrenceRoutes, { prefix: '/fleet-recurrence' });
   await app.register(fleetOpsRoutes, { prefix: '/fleet-ops' });
+  await app.register(centroEmpresaRoutes, { prefix: '/centro-empresa' });
   await app.register(driverHubRoutes, { prefix: '/driver-hub' });
 await app.register(garantiasRoutes, { prefix: '/garantias' });
 await app.register(digitalTwinRoutes, { prefix: '/digital-twin' });

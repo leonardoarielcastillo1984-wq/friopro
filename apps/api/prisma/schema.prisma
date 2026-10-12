@@ -2276,6 +2276,10 @@ model CompanySettings {
   // { bandStrategic, bandStrategicDesc, bandOperational, ..., endInTitle, legendLeft, ... }
   mapaGeneralLabels Json?
 
+  // Centro de Control Empresarial — campus 3D + mapa de procesos
+  // { defaultTemplate, departments: [{key,name,sub,responsable,model,moduleKey,moduleHref,layer,enabled,campusPos,procPos}], connections: [{from,to,label,tipo}] }
+  centroEmpresaConfig Json?
+
   // Metadata
   updatedAt   DateTime @updatedAt @db.Timestamptz
   updatedById String   @db.Uuid
@@ -13434,6 +13438,7 @@ model FinanzaGasto {
   @@index([fecha])
   @@index([tipoGasto])
   @@index([centroCostoId])
+  @@index([vehiculoId])
   @@index([proveedorRut])
   @@index([fechaVencimiento])
   @@map("finanza_gastos")
