@@ -12,6 +12,12 @@ export const SCENARIOS: Record<string, Scenario> = {
   dada: dadaScenario,
 };
 
+// Etiquetas para el selector de escenario en la UI del Centro de Control
+export const SCENARIO_LABELS: Record<string, string> = {
+  generic: 'Predio genérico',
+  dada: 'DADA',
+};
+
 // tenantId (uuid) o slug → clave de escenario. Agregar futuros predios aquí.
 const TENANT_SCENARIO: Record<string, string> = {
   // Ejemplo: 'a1b2c3d4-....': 'dada',

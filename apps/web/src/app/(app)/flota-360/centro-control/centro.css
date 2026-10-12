@@ -86,6 +86,20 @@
   background: var(--cc-orange);
   color: #431407;
 }
+/* selector de escenario del predio */
+.cc-scenario-select {
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cc-text);
+  background: rgba(8, 17, 32, .7);
+  border: 1px solid var(--cc-border);
+  border-radius: 8px;
+  cursor: pointer;
+  outline: none;
+}
+.cc-scenario-select:hover { border-color: rgba(148, 197, 255, .4); }
+.cc-scenario-select option { background: #0b1220; color: var(--cc-text); }
 .cc-demo-controls {
   display: inline-flex;
   gap: 4px;

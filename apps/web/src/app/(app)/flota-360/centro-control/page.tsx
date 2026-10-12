@@ -13,7 +13,7 @@ import { KpiBar, EventsPanel, UnitDetail, RouteMap, SectorPanel, AlertsPanel } f
 import { fetchCentroData } from './_components/data';
 import { applyDemoTick, advanceRoute, createDemoState, demoKpis } from './_components/DemoEngine';
 import type { CCUnit, CCEvent, Kpis, Mode, DemoSpeed } from './_components/types';
-import { scenarioForTenant } from './_components/world/scenario';
+import { scenarioForTenant, scenarioKeyForTenant, scenarioOverride, SCENARIOS, SCENARIO_LABELS } from './_components/world/scenario';
 import Taller3D from './_components/Taller3D';
 import TallerPanel from './_components/TallerPanel';
 import { fetchTallerResumen, demoTallerSnapshot } from './_components/taller-data';
@@ -24,7 +24,15 @@ const POLL_MS = 30_000;
 
 export default function CentroControlPage() {
   const { tenant } = useAuth();
-  const scenario = useMemo(() => scenarioForTenant(tenant), [tenant]);
+  const defaultScenarioKey = useMemo(() => scenarioKeyForTenant(tenant), [tenant]);
+  // Escenario visual del predio. Prioridad: ?yard= → sessionStorage → tenant.
+  const [scenarioKey, setScenarioKey] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    try {
+      return scenarioOverride() ?? sessionStorage.getItem('cc360-scenario') ?? '';
+    } catch { return scenarioOverride() ?? ''; }
+  });
+  const scenario = SCENARIOS[scenarioKey] ?? SCENARIOS[defaultScenarioKey] ?? scenarioForTenant(tenant);
   const [mode, setMode] = useState<Mode>('real');
   const [units, setUnits] = useState<CCUnit[]>([]);
   const [events, setEvents] = useState<CCEvent[]>([]);
@@ -181,6 +189,25 @@ export default function CentroControlPage() {
               <button onClick={resetDemo} aria-label="Reiniciar demostración" title="Reiniciar"><RotateCcw size={12} /></button>
             </div>
           )}
+          {Object.keys(SCENARIOS).length > 1 && (
+            <select
+              className="cc-scenario-select"
+              value={scenario.key}
+              onChange={(e) => {
+                const k = e.target.value;
+                setScenarioKey(k);
+                try { sessionStorage.setItem('cc360-scenario', k); } catch {}
+                setSector('general');
+                setTallerInside(false);
+              }}
+              aria-label="Escenario del predio"
+              title="Escenario del predio"
+            >
+              {Object.keys(SCENARIOS).map((k) => (
+                <option key={k} value={k}>{SCENARIO_LABELS[k] ?? k}</option>
+              ))}
+            </select>
+          )}
           <div className="cc-mode-toggle" role="group" aria-label="Modo de datos">
             <button className={mode === 'real' ? 'on' : ''} onClick={() => setMode('real')}>REAL</button>
             <button className={mode === 'demo' ? 'on demo' : ''} onClick={() => setMode('demo')}>DEMO</button>
@@ -224,6 +251,7 @@ export default function CentroControlPage() {
             />
           ) : (
             <Scene3D
+              key={scenario.key}
               units={units}
               selectedId={selected?.id ?? null}
               onSelect={onSelect}
