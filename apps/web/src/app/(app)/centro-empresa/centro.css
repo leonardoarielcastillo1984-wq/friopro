@@ -77,34 +77,86 @@
 .dot.ok { background: #34d399; } .dot.warn { background: #fbbf24; }
 .dot.crit { background: #f87171; } .dot.nodata { background: #64748b; }
 
-/* ── Etiquetas 3D (CSS2D) ── */
+/* ── Etiquetas 3D (CSS2D) — estilo mockup: ícono + texto + valor ── */
 .ce-tag {
-  text-align: center; pointer-events: none; user-select: none;
-  transform: translateY(-4px);
+  display: flex; align-items: center; gap: 7px; pointer-events: none;
+  user-select: none; transform: translateY(-6px);
+  background: rgba(10,22,40,.78); backdrop-filter: blur(3px);
+  border: 1px solid rgba(148,197,255,.25); border-radius: 999px;
+  padding: 4px 10px 4px 4px; white-space: nowrap;
 }
-.ce-tag b {
-  display: block; font-size: 11px; font-weight: 800; letter-spacing: .6px;
-  color: #eaf2ff; text-shadow: 0 1px 6px rgba(0,0,0,.8), 0 0 2px rgba(0,0,0,.9);
+.ce-tag .ico {
+  width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: #64748b; box-shadow: 0 0 8px rgba(0,0,0,.4);
 }
-.ce-tag i {
-  display: block; font-style: normal; font-size: 8.5px; color: #a8c3e8;
-  text-shadow: 0 1px 4px rgba(0,0,0,.9); max-width: 130px; margin: 0 auto;
-}
-.ce-tag .dot {
-  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-  margin-top: 3px; box-shadow: 0 0 6px currentColor;
-}
-.ce-tag[data-salud="ok"] .dot { background: #34d399; color: #34d399; }
-.ce-tag[data-salud="warn"] .dot { background: #fbbf24; color: #fbbf24; }
-.ce-tag[data-salud="crit"] .dot { background: #f87171; color: #f87171; }
-.ce-tag[data-salud="nodata"] .dot { background: #64748b; color: #64748b; }
-.ce-tag.sel b { color: #93c5fd; }
+.ce-tag .ico::after { content: ''; width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,.92); }
+.ce-tag[data-salud="ok"] .ico { background: #059669; }
+.ce-tag[data-salud="warn"] .ico { background: #d97706; }
+.ce-tag[data-salud="crit"] .ico { background: #dc2626; }
+.ce-tag[data-salud="nodata"] .ico { background: #475569; }
+.ce-tag .tx { display: flex; flex-direction: column; line-height: 1.15; text-align: left; }
+.ce-tag .tx b { font-size: 10.5px; font-weight: 800; letter-spacing: .4px; color: #eaf2ff; }
+.ce-tag .tx i { font-style: normal; font-size: 8px; color: #a8c3e8; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+.ce-tag .val { font-size: 11px; font-weight: 900; color: #eaf2ff; display: flex; align-items: center; gap: 2px; }
+.ce-tag .val em { font-style: normal; font-size: 8px; }
+.ce-tag .val em.up { color: #34d399; } .ce-tag .val em.down { color: #f87171; } .ce-tag .val em.flat { color: #fbbf24; }
+.ce-tag.sel { border-color: var(--ce-accent); box-shadow: 0 0 12px rgba(56,189,248,.35); }
 
 .ce-zone {
   font-size: 11px; font-weight: 800; letter-spacing: 2px;
-  color: rgba(148,197,255,.55); text-shadow: 0 1px 4px rgba(0,0,0,.7);
+  color: var(--zc, rgba(148,197,255,.55)); text-shadow: 0 1px 6px rgba(0,0,0,.85);
   pointer-events: none; user-select: none; white-space: nowrap;
+  background: rgba(10,22,40,.55); padding: 3px 12px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--zc, #38bdf8) 45%, transparent);
 }
+
+/* ── Leyenda lateral (mapa de procesos) ── */
+.ce-legend {
+  position: absolute; left: 12px; bottom: 56px; z-index: 6;
+  display: flex; flex-direction: column; gap: 5px;
+  background: rgba(10,22,40,.85); backdrop-filter: blur(6px);
+  border: 1px solid var(--ce-border); border-radius: 10px; padding: 10px 12px;
+  font-size: 10.5px; color: var(--ce-text);
+}
+.ce-legend b { font-size: 9.5px; text-transform: uppercase; letter-spacing: .8px; color: var(--ce-dim); }
+.ce-legend span { display: flex; align-items: center; gap: 7px; }
+.ce-legend .dot { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 6px currentColor; }
+.ce-legend .flow { width: 18px; height: 2px; background: #7dd3fc; border-radius: 1px; position: relative; }
+.ce-legend .flow::after { content: ''; position: absolute; right: -1px; top: -2.5px; border-left: 6px solid #7dd3fc; border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent; }
+.ce-legend .flow.dash { background: repeating-linear-gradient(90deg, #f59e0b 0 4px, transparent 4px 7px); }
+.ce-legend .flow.dash::after { border-left-color: #f59e0b; }
+
+/* ── Tabs del panel ── */
+.ce-tabs {
+  display: flex; border-bottom: 1px solid var(--ce-border);
+}
+.ce-tabs button {
+  flex: 1; background: transparent; border: none; color: var(--ce-dim);
+  font-size: 10.5px; font-weight: 700; padding: 8px 4px; cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.ce-tabs button.on { color: var(--ce-accent); border-bottom-color: var(--ce-accent); }
+.ce-panel-actions {
+  display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--ce-border);
+}
+.ce-btn.sm { padding: 6px 11px; font-size: 11px; text-decoration: none; }
+
+/* ── Barra inferior de KPIs ejecutivos ── */
+.ce-strip {
+  display: flex; gap: 10px; padding: 10px 4px 2px; overflow-x: auto;
+  flex-shrink: 0;
+}
+.ce-chip {
+  display: flex; align-items: center; gap: 9px; min-width: 150px;
+  background: var(--ce-panel); border: 1px solid var(--ce-border);
+  border-radius: 11px; padding: 9px 13px; color: var(--ce-dim);
+}
+.ce-chip b { display: block; font-size: 17px; font-weight: 800; color: var(--ce-text); }
+.ce-chip small { font-size: 9.5px; text-transform: uppercase; letter-spacing: .5px; }
+.ce-chip.ok svg { color: #34d399; } .ce-chip.ok b { color: #34d399; }
+.ce-chip.warn svg { color: #fbbf24; } .ce-chip.warn b { color: #fbbf24; }
+.ce-chip.crit svg { color: #f87171; } .ce-chip.crit b { color: #f87171; }
 
 /* ── Panel lateral departamento/conexión ── */
 .ce-panel {

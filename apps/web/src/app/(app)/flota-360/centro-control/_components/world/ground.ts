@@ -414,6 +414,11 @@ export function buildGround(scene: THREE.Scene, maxAniso: number, spec: GroundSp
   const tools: GroundTools = {
     g, X, Z, S, rect, noise, asphalt, concrete, lawn, vereda, dirt,
     line, arrow, zebra, hatchRect, text, WHITE, YELLOW,
+    // Máscara de superficies para formas libres (opcional para escenarios
+    // externos, ej. plaza circular del Centro Empresarial).
+    mg,
+    mx: (x: number) => (x - BOUNDS.x0) * MS,
+    mz: (z: number) => (z - BOUNDS.z0) * MS,
   };
 
   // Pintado propio del escenario

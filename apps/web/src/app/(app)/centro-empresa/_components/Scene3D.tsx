@@ -17,12 +17,13 @@ interface Props {
   selectedKey?: string | null;
   editMode?: boolean;
   impactKeys?: Set<string> | null;   // null = vista normal
+  tagData?: Map<string, { value?: string; dir?: 'up' | 'down' | 'flat' }>;
   onSelectDept?: (key: string | null) => void;
   onSelectConn?: (conn: EmpresaConn | null) => void;
   onMoveDept?: (key: string, x: number, z: number) => void;
 }
 
-export default function Scene3D({ depts, connections, salud, template, selectedKey, editMode, impactKeys, onSelectDept, onSelectConn, onMoveDept }: Props) {
+export default function Scene3D({ depts, connections, salud, template, selectedKey, editMode, impactKeys, tagData, onSelectDept, onSelectConn, onMoveDept }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<CampusWorld | null>(null);
@@ -48,6 +49,7 @@ export default function Scene3D({ depts, connections, salud, template, selectedK
 
   useEffect(() => { worldRef.current?.setTemplate(template); }, [template, ready]);
   useEffect(() => { worldRef.current?.setEditMode(!!editMode); }, [editMode, ready]);
+  useEffect(() => { if (tagData) worldRef.current?.setTagData(tagData); }, [tagData, ready]);
   useEffect(() => { worldRef.current?.focusOnly(impactKeys ?? null); }, [impactKeys, ready]);
   useEffect(() => {
     const w = worldRef.current;

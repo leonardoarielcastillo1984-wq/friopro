@@ -7,7 +7,8 @@
 // ============================================================
 import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { instance, placeOnGround } from '../../flota-360/centro-control/_components/world/assets';
+import { instance } from '../../flota-360/centro-control/_components/world/assets';
+import { buildCampusGround, campusTrees, buildFountain, buildProps, buildBandFrames, buildInterBandArrows, makeFlowArrow } from './campus-scene';
 import { layoutFor, type BuildingPlacement } from './scenario';
 import { SALUD_META, LAYER_META } from './types';
 import type { EmpresaDept, EmpresaConn, DeptSalud, TemplateKey } from './types';
@@ -85,6 +86,10 @@ export class CampusWorld {
   private depts: EmpresaDept[] = [];
   private connections: EmpresaConn[] = [];
   private salud = new Map<string, DeptSalud>();
+  private treesCtl: { update: (t: number) => void } | null = null;
+  private procDecor = new THREE.Group();
+  private bandMats: THREE.MeshBasicMaterial[] = [];
+  private tagData = new Map<string, { value?: string; dir?: 'up' | 'down' | 'flat' }>();
   onZoomChange?: (z: number) => void;
 
   constructor(container: HTMLElement, opts: CampusWorldOptions = {}) {
@@ -112,8 +117,7 @@ export class CampusWorld {
     this.scene.add(this.worldGroup, this.pathsGroup, this.zonesGroup);
 
     this.buildLights();
-    this.buildGround();
-    this.buildGreenery();
+    this.buildScene();
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(container);
@@ -134,6 +138,12 @@ export class CampusWorld {
     await this.buildBuildings();
     this.applyLayout(this.template, false);
     this.rebuildConnections();
+    // Escenografía alrededor de los edificios ya ubicados
+    const avoid = layoutFor(this.template, this.depts).placements.map((p) => ({ x: p.x, z: p.z, r: 11 }));
+    const trees = campusTrees(avoid);
+    this.treesCtl = trees;
+    this.scene.add(trees.group);
+    buildProps(avoid).then((g) => { if (!this.disposed) this.scene.add(g); }).catch(() => {});
   }
 
   async setTemplate(t: TemplateKey) {
@@ -207,6 +217,27 @@ export class CampusWorld {
     this.tween = { t: 0, dur: 0.9, from: this.target.clone(), to: to.clone(), z0: this.zoom, z1: zoom };
   }
 
+  // Datos extra de la etiqueta (valor KPI + flecha de tendencia)
+  setTagData(map: Map<string, { value?: string; dir?: 'up' | 'down' | 'flat' }>) {
+    this.tagData = map;
+    this.buildings.forEach((e) => this.renderTag(e));
+  }
+
+  // ═══ Construcción ═══
+  private buildScene() {
+    // Suelo fotorealista (mismo pipeline que flota-360)
+    buildCampusGround(this.scene, this.renderer.capabilities.getMaxAnisotropy());
+    // Fuente central de la plaza
+    this.scene.add(buildFountain());
+    // Decoración del mapa de procesos: bandas glow + flechas inter-banda
+    const bands = buildBandFrames();
+    const arrows = buildInterBandArrows();
+    this.bandMats = [...bands.mats, ...arrows.mats];
+    this.procDecor.add(bands.group, arrows.group);
+    this.procDecor.visible = false;
+    this.scene.add(this.procDecor);
+  }
+
   // ═══ Construcción ═══
   private buildLights() {
     const hemi = new THREE.HemisphereLight(0xbdd7ff, 0x1c2b3a, 0.75);
@@ -221,66 +252,6 @@ export class CampusWorld {
     const fill = new THREE.DirectionalLight(0x9db8ff, 0.35);
     fill.position.set(-100, 120, -60);
     this.scene.add(fill);
-  }
-
-  private buildGround() {
-    // Base oscura tipo losa
-    const g = new THREE.Mesh(
-      new THREE.PlaneGeometry(900, 900),
-      new THREE.MeshStandardMaterial({ color: 0x12233c, roughness: 0.95, metalness: 0 })
-    );
-    g.rotation.x = -Math.PI / 2;
-    g.receiveShadow = true;
-    g.name = 'ground';
-    this.worldGroup.add(g);
-
-    // Plaza central clara
-    const plaza = new THREE.Mesh(
-      new THREE.PlaneGeometry(130, 46),
-      new THREE.MeshStandardMaterial({ color: 0x1d3350, roughness: 0.9 })
-    );
-    plaza.rotation.x = -Math.PI / 2;
-    plaza.position.y = 0.02;
-    plaza.receiveShadow = true;
-    this.worldGroup.add(plaza);
-
-    // Ejes peatonales (cruz de la plaza)
-    const walk = new THREE.MeshBasicMaterial({ color: 0x2a4a73, transparent: true, opacity: 0.9 });
-    const h = new THREE.Mesh(new THREE.PlaneGeometry(190, 5), walk);
-    h.rotation.x = -Math.PI / 2; h.position.y = 0.04;
-    const v = new THREE.Mesh(new THREE.PlaneGeometry(5, 150), walk);
-    v.rotation.x = -Math.PI / 2; v.position.y = 0.04;
-    this.worldGroup.add(h, v);
-
-    // Fuente/mástil central con bandera (punto de identidad del campus)
-    const pole = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.35, 0.5, 16, 8),
-      new THREE.MeshStandardMaterial({ color: 0x8a9ab0, roughness: 0.4, metalness: 0.7 })
-    );
-    pole.position.set(0, 8, 0); pole.castShadow = true;
-    const flag = new THREE.Mesh(
-      new THREE.PlaneGeometry(6, 3.4),
-      new THREE.MeshBasicMaterial({ color: 0x3b82f6, side: THREE.DoubleSide })
-    );
-    flag.position.set(3.2, 13.8, 0);
-    this.worldGroup.add(pole, flag);
-  }
-
-  private async buildGreenery() {
-    // Vegetación de borde — decorativa, liviana
-    const spots: [string, number, number, number][] = [
-      ['pine-tree', -105, -40, 1.2], ['pine-tree', -105, 30, 1.1], ['oak-tree', -100, 75, 1],
-      ['oak-tree', 105, -60, 1.15], ['pine-tree', 108, 15, 1.05], ['oak-tree', 100, 70, 1.1],
-      ['cypress-tree', -40, -80, 1], ['cypress-tree', 45, -80, 1],
-      ['bush', -20, 20, 1], ['bush', 24, -16, 1], ['hedge', -70, 0, 1], ['hedge', 70, 0, 1],
-    ];
-    await Promise.all(spots.map(async ([model, x, z, s]) => {
-      try {
-        const o = await instance(model);
-        o.traverse((m) => { const mm = m as THREE.Mesh; if (mm.isMesh) { mm.castShadow = true; mm.receiveShadow = true; } });
-        this.worldGroup.add(placeOnGround(o, x, z, Math.random() * Math.PI * 2, s));
-      } catch { /* asset faltante: seguir */ }
-    }));
   }
 
   private async buildBuildings() {
@@ -339,10 +310,15 @@ export class CampusWorld {
   }
 
   private renderTag(e: BuildingEntry) {
+    const d = this.tagData.get(e.dept.key);
+    const arrow = d?.dir === 'up' ? '▲' : d?.dir === 'down' ? '▼' : '●';
     e.tagEl.innerHTML = `
-      <b>${esc(e.dept.name)}</b>
-      ${e.dept.sub ? `<i>${esc(e.dept.sub)}</i>` : ''}
-      <span class="dot"></span>`;
+      <span class="ico"></span>
+      <span class="tx">
+        <b>${esc(e.dept.name)}</b>
+        ${e.dept.sub ? `<i>${esc(e.dept.sub)}</i>` : ''}
+      </span>
+      <span class="val">${d?.value ? `${esc(d.value)} ` : ''}<em class="${d?.dir ?? 'flat'}">${arrow}</em></span>`;
   }
 
   // ═══ Layout / plantillas ═══
@@ -371,6 +347,7 @@ export class CampusWorld {
     });
 
     this.buildZones(layout.zones, animate);
+    this.procDecor.visible = template === 'procesos';
     if (animate) this.tweenTo(new THREE.Vector3(layout.fitX, 0, layout.fitZ), 1);
     else { this.target.set(layout.fitX, 0, layout.fitZ); this.zoom = 1; }
   }
@@ -378,27 +355,15 @@ export class CampusWorld {
   private buildZones(zones: { key: string; x0: number; z0: number; x1: number; z1: number; label: string }[], animate: boolean) {
     this.zonesGroup.clear();
     zones.forEach((z) => {
+      // Solo la etiqueta de banda — el glow lo aportan los marcos de procDecor
       const meta = LAYER_META[z.key as keyof typeof LAYER_META];
-      const w = z.x1 - z.x0, d = z.z1 - z.z0;
-      const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(w, d),
-        new THREE.MeshBasicMaterial({ color: meta?.tint ?? 0x1d3350, transparent: true, opacity: 0.35 })
-      );
-      mesh.rotation.x = -Math.PI / 2;
-      mesh.position.set((z.x0 + z.x1) / 2, 0.03, (z.z0 + z.z1) / 2);
-      // Borde sutil de banda
-      const edge = new THREE.Mesh(
-        new THREE.PlaneGeometry(w - 1.4, d - 1.4),
-        new THREE.MeshBasicMaterial({ color: 0x0a1628, transparent: true, opacity: 0.55 })
-      );
-      edge.rotation.x = -Math.PI / 2;
-      edge.position.set(mesh.position.x, 0.035, mesh.position.z);
       const el = document.createElement('div');
       el.className = 'ce-zone';
       el.textContent = z.label;
+      el.style.setProperty('--zc', '#' + (meta?.tint ?? 0x38bdf8).toString(16).padStart(6, '0'));
       const obj = new CSS2DObject(el);
-      obj.position.set((z.x0 + z.x1) / 2, 1, z.z1 - 3);
-      this.zonesGroup.add(mesh, edge, obj);
+      obj.position.set(z.x0 + 12, 1, (z.z0 + z.z1) / 2);
+      this.zonesGroup.add(obj);
     });
     this.zonesGroup.visible = zones.length > 0;
     if (!animate) this.zonesGroup.visible = zones.length > 0 && this.template === 'procesos';
@@ -427,6 +392,13 @@ export class CampusWorld {
       const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.5, 6, false), tubeMat);
       tube.userData.conn = conn;
 
+      // Flecha de flujo en el extremo destino
+      const arrow = makeFlowArrow();
+      const end = curve.getPoint(0.97);
+      const tan = curve.getTangent(0.97).normalize();
+      arrow.mesh.position.copy(end).addScaledVector(tan, 1.1);
+      arrow.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tan);
+
       // Pulsos luminosos que viajan por la conexión
       const pulses: THREE.Sprite[] = [];
       for (let i = 0; i < 2; i++) {
@@ -438,7 +410,7 @@ export class CampusWorld {
         pulses.push(sp);
       }
       const group = new THREE.Group();
-      group.add(tube, ...pulses);
+      group.add(tube, arrow.mesh, ...pulses);
       this.pathsGroup.add(group);
       this.conns.push({ conn, curve, tube, tubeMat, pulses, group });
     });
@@ -646,6 +618,14 @@ export class CampusWorld {
       // Halo seleccionado respira
       if (e.halo.visible) e.haloMat.opacity = 0.22 + Math.sin(this.time * 3) * 0.08;
     });
+
+    // Viento en los árboles + pulso del glow de bandas
+    this.treesCtl?.update(this.time);
+    if (this.procDecor.visible) {
+      this.bandMats.forEach((m, i) => {
+        if (i % 2 === 1 && i < 6) m.opacity = 0.5 + Math.sin(this.time * 1.7 + i) * 0.14;
+      });
+    }
 
     // Pulsos viajando por conexiones
     this.conns.forEach((c) => {

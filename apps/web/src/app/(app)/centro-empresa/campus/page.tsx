@@ -7,7 +7,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pencil } from 'lucide-react';
 import Scene3D from '../_components/Scene3D';
 import { DeptPanel } from '../_components/DeptPanel';
-import { fetchConfig, fetchResumen, saveConfig, impactSet } from '../_components/data';
+import { fetchConfig, fetchResumen, saveConfig, impactSet, tagDataFor } from '../_components/data';
+import { KpiStrip } from '../_components/KpiStrip';
 import type { EmpresaConfig, ResumenResponse, DeptSalud } from '../_components/types';
 import '../centro.css';
 
@@ -46,6 +47,8 @@ export default function CampusPage() {
     data?.departments.forEach((d) => m.set(d.key, d.salud));
     return m;
   }, [data]);
+
+  const tagData = useMemo(() => tagDataFor(data?.departments ?? []), [data]);
 
   const selDept = data?.departments.find((d) => d.key === selected) ?? null;
 
@@ -91,6 +94,7 @@ export default function CampusPage() {
             selectedKey={selected}
             editMode={editMode}
             impactKeys={impact ? new Set([impact.origin, ...impact.keys]) : null}
+            tagData={tagData}
             onSelectDept={(k) => { setSelected(k); if (!k) setImpact(null); }}
             onMoveDept={moveDept}
           />
@@ -114,6 +118,8 @@ export default function CampusPage() {
       ) : (
         <div className="ce3-wrap"><div className="ce3-loading">Cargando configuración…</div></div>
       )}
+
+      {data && <KpiStrip r={data.resumen} />}
 
       {selDept && <DeptPanel dept={selDept} onClose={() => setSelected(null)} onImpact={() => showImpact(selDept.key)} />}
     </div>

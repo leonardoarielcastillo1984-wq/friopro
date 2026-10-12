@@ -43,42 +43,48 @@ export const MODEL_TUNE: Record<string, { scale: number; labelY: number }> = {
 
 const tune = (model: string) => MODEL_TUNE[model] ?? { scale: 0.7, labelY: 14 };
 
-// ── Campus: grilla alrededor de una plaza central ────────────
+// ── Campus: anillos radiales alrededor de la plaza central ───
+// Estratégicos en el anillo interno, operativos al medio, apoyo
+// en el anillo externo — jerarquía organizativa visible.
+const RING_R: Record<DeptLayer, number> = { STRATEGIC: 34, OPERATIONAL: 48, SUPPORT: 62 };
+const RING_PHASE: Record<DeptLayer, number> = { STRATEGIC: Math.PI / 2, OPERATIONAL: 0, SUPPORT: Math.PI / 6 };
+
 function campusLayout(depts: EmpresaDept[]): CampusLayout {
   const enabled = depts.filter((d) => d.enabled);
-  const fixed = new Map(enabled.filter((d) => d.campusPos).map((d) => [d.key, d.campusPos!]));
+  const byLayer = new Map<DeptLayer, EmpresaDept[]>([['STRATEGIC', []], ['OPERATIONAL', []], ['SUPPORT', []]]);
+  enabled.filter((d) => !d.campusPos).forEach((d) => byLayer.get(d.layer)?.push(d));
 
-  // Auto-layout: dos hileras curvas alrededor de la plaza (0,0)
-  const auto = enabled.filter((d) => !d.campusPos);
-  const COLS = Math.ceil(auto.length / 2) || 1;
   const placements: BuildingPlacement[] = [];
-
-  auto.forEach((d, i) => {
-    const row = i < COLS ? 0 : 1;
-    const col = i % COLS;
-    const t = tune(d.model);
-    placements.push({
-      key: d.key,
-      x: -60 + col * (120 / Math.max(1, COLS - 1)),
-      z: row === 0 ? -52 : 56,
-      rot: row === 0 ? Math.PI : 0,
-      scale: t.scale,
-      labelY: t.labelY,
+  (Object.keys(RING_R) as DeptLayer[]).forEach((layer) => {
+    const group = byLayer.get(layer)!;
+    const n = group.length;
+    group.forEach((d, i) => {
+      // Arco de 240° para no apoyar edificios sobre la calle de acceso (sur)
+      const span = Math.PI * 1.35;
+      const a = n === 1 ? RING_PHASE[layer] : RING_PHASE[layer] - span / 2 + (span * i) / (n - 1);
+      const x = Math.cos(a) * RING_R[layer];
+      const z = -Math.sin(a) * RING_R[layer] - 4;
+      const t = tune(d.model);
+      placements.push({
+        key: d.key, x, z,
+        rot: Math.atan2(-x, -z) + Math.PI,   // mirando a la plaza
+        scale: t.scale, labelY: t.labelY,
+      });
     });
   });
 
   enabled.filter((d) => d.campusPos).forEach((d) => {
     const t = tune(d.model);
-    const p = fixed.get(d.key)!;
+    const p = d.campusPos!;
     placements.push({ key: d.key, x: p.x, z: p.z, rot: 0, scale: t.scale, labelY: t.labelY });
   });
 
-  return { placements, zones: [], fitX: 0, fitZ: 2, fitR: 110 };
+  return { placements, zones: [], fitX: 0, fitZ: 2, fitR: 120 };
 }
 
-// ── Procesos: tres bandas ISO 9001 ───────────────────────────
+// ── Procesos: tres bandas ISO 9001 (alineadas a campus-scene) ─
 const LAYER_ORDER: DeptLayer[] = ['STRATEGIC', 'OPERATIONAL', 'SUPPORT'];
-const BAND_Z: Record<DeptLayer, number> = { STRATEGIC: -58, OPERATIONAL: 0, SUPPORT: 58 };
+const BAND_Z: Record<DeptLayer, number> = { STRATEGIC: -30, OPERATIONAL: 0, SUPPORT: 30 };
 const BAND_LABEL: Record<DeptLayer, string> = {
   STRATEGIC: 'PROCESOS ESTRATÉGICOS',
   OPERATIONAL: 'PROCESOS OPERATIVOS',
@@ -101,7 +107,7 @@ function procesosLayout(depts: EmpresaDept[]): CampusLayout {
       const t = tune(d.model);
       placements.push({
         key: d.key,
-        x: auto.length === 1 ? 0 : -70 + i * (140 / (auto.length - 1)),
+        x: auto.length === 1 ? 0 : -64 + i * (128 / (auto.length - 1)),
         z,
         rot: layer === 'STRATEGIC' ? Math.PI : 0,
         scale: t.scale,
@@ -115,11 +121,11 @@ function procesosLayout(depts: EmpresaDept[]): CampusLayout {
   });
 
   const zones: Zone[] = LAYER_ORDER.map((l) => ({
-    key: l, x0: -95, z0: BAND_Z[l] - 26, x1: 95, z1: BAND_Z[l] + 26,
+    key: l, x0: -78, z0: BAND_Z[l] - 12, x1: 78, z1: BAND_Z[l] + 12,
     label: BAND_LABEL[l],
   }));
 
-  return { placements, zones, fitX: 0, fitZ: 0, fitR: 115 };
+  return { placements, zones, fitX: 0, fitZ: 0, fitR: 105 };
 }
 
 export function layoutFor(template: TemplateKey, depts: EmpresaDept[]): CampusLayout {

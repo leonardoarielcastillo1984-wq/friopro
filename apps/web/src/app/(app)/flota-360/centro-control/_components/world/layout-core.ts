@@ -178,6 +178,12 @@ export interface GroundTools {
   text: (txt: string, x: number, z: number, color: string, sizeM: number) => void;
   WHITE: string;
   YELLOW: string;
+  // Acceso opcional a la máscara de superficies (R=asfalto, G=hormigón,
+  // B=tierra, negro=pasto) para formas libres — ej. plazas circulares.
+  // mg pinta en coordenadas del canvas de máscara (usar mx/mz para escala).
+  mg?: CanvasRenderingContext2D;
+  mx?: (x: number) => number;
+  mz?: (z: number) => number;
 }
 
 // ── Escenario completo de un predio ──

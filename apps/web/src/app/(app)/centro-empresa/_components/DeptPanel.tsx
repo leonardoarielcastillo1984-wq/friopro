@@ -3,12 +3,14 @@
 // Panel lateral de un departamento / conexión seleccionada.
 // Datos siempre del agregador real — sin valores ficticios.
 // ============================================================
+import { useState } from 'react';
 import { SALUD_META, LAYER_META } from './types';
 import type { DeptResumen, EmpresaConn } from './types';
 import { X, ExternalLink, TrendingUp, Bell, Target } from 'lucide-react';
 
 export function DeptPanel({ dept, onClose, onImpact }: { dept: DeptResumen; onClose: () => void; onImpact?: () => void }) {
   const s = SALUD_META[dept.salud];
+  const [tab, setTab] = useState<'resumen' | 'indicadores' | 'alertas' | 'proceso'>('resumen');
   return (
     <aside className="ce-panel">
       <header>
@@ -18,70 +20,101 @@ export function DeptPanel({ dept, onClose, onImpact }: { dept: DeptResumen; onCl
         </div>
         <button onClick={onClose} aria-label="Cerrar"><X size={15} /></button>
       </header>
+      <nav className="ce-tabs">
+        {(['resumen', 'indicadores', 'alertas', 'proceso'] as const).map((t) => (
+          <button
+            key={t}
+            className={tab === t ? 'on' : ''}
+            onClick={() => setTab(t)}
+          >
+            {t === 'resumen' ? 'Resumen' : t === 'indicadores' ? 'Indicadores' : t === 'alertas' ? `Alertas${dept.alertas.length ? ` (${dept.alertas.length})` : ''}` : 'Proceso'}
+          </button>
+        ))}
+      </nav>
       <div className="ce-panel-body">
-        <div className="ce-row">
-          <span className="ce-k">Estado</span>
-          <span className={`ce-salud ${dept.salud}`}><i />{s.label}</span>
-        </div>
-        <div className="ce-row">
-          <span className="ce-k">Proceso</span>
-          <span>{LAYER_META[dept.layer]?.label ?? '—'}</span>
-        </div>
-        <div className="ce-row">
-          <span className="ce-k">Responsable</span>
-          <span>{dept.responsable || 'Sin asignar'}</span>
-        </div>
-
-        {dept.kpis.length > 0 && (
-          <div className="ce-block">
-            <b><TrendingUp size={12} /> Indicadores</b>
-            {dept.kpis.map((k, i) => (
-              <div key={i} className="ce-row"><span className="ce-k">{k.label}</span><span>{k.value}</span></div>
-            ))}
-          </div>
-        )}
-
-        {dept.alertas.length > 0 && (
-          <div className="ce-block">
-            <b><Bell size={12} /> Alertas</b>
-            {dept.alertas.map((a, i) => (
-              <div key={i} className={`ce-alert ${a.nivel}`}>{a.label}</div>
-            ))}
-          </div>
-        )}
-
-        {dept.proceso && (
-          <div className="ce-block">
-            <b><Target size={12} /> Proceso SGI</b>
-            <div className="ce-row"><span className="ce-k">Proceso</span><span>{dept.proceso.code ? `${dept.proceso.code} ` : ''}{dept.proceso.name}</span></div>
-            {dept.proceso.owner && <div className="ce-row"><span className="ce-k">Dueño</span><span>{dept.proceso.owner}</span></div>}
-            {!!dept.subprocesos?.length && (
-              <>
-                <span className="ce-k" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.6px' }}>Subprocesos ({dept.subprocesos.length})</span>
-                {dept.subprocesos.map((sp) => (
-                  <div key={sp.id} className="ce-sub">{sp.code ? <em>{sp.code}</em> : null}{sp.name}</div>
-                ))}
-              </>
+        {tab === 'resumen' && (
+          <>
+            <div className="ce-row">
+              <span className="ce-k">Estado</span>
+              <span className={`ce-salud ${dept.salud}`}><i />{s.label}</span>
+            </div>
+            <div className="ce-row">
+              <span className="ce-k">Capa</span>
+              <span>{LAYER_META[dept.layer].label}</span>
+            </div>
+            {dept.responsable && (
+              <div className="ce-row">
+                <span className="ce-k">Responsable</span>
+                <span>{dept.responsable}</span>
+              </div>
             )}
-          </div>
+            {dept.kpis.length > 0 && (
+              <div className="ce-block">
+                <b><TrendingUp size={12} /> Indicadores</b>
+                {dept.kpis.slice(0, 6).map((k, i) => (
+                  <div key={i} className="ce-row">
+                    <span className="ce-k">{k.label}</span>
+                    <span>{k.value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {dept.alertas.length > 0 && (
+              <div className="ce-block">
+                <b><Bell size={12} /> Alertas recientes</b>
+                {dept.alertas.slice(0, 3).map((a, i) => (
+                  <div key={i} className={`ce-alert ${a.nivel}`}>{a.label}</div>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
-        {dept.kpis.length === 0 && dept.alertas.length === 0 && !dept.proceso && (
-          <p className="ce-muted">Sin indicadores configurados para este departamento todavía.</p>
+        {tab === 'indicadores' && (
+          dept.kpis.length ? dept.kpis.map((k, i) => (
+            <div key={i} className="ce-row">
+              <span className="ce-k">{k.label}</span>
+              <span>{k.value}</span>
+            </div>
+          )) : <p className="ce-muted">Sin indicadores configurados para este departamento todavía.</p>
         )}
 
-        {dept.moduleHref && (
-          <a className="ce-modlink" href={dept.moduleHref}>
-            <ExternalLink size={12} /> Abrir módulo
-          </a>
+        {tab === 'alertas' && (
+          dept.alertas.length ? dept.alertas.map((a, i) => (
+            <div key={i} className={`ce-alert ${a.nivel}`}>{a.label}</div>
+          )) : <p className="ce-muted">Sin alertas activas — todo en orden.</p>
         )}
 
+        {tab === 'proceso' && (
+          dept.proceso ? (
+            <>
+              <div className="ce-row"><span className="ce-k">Proceso</span><span>{dept.proceso.code ? `${dept.proceso.code} ` : ''}{dept.proceso.name}</span></div>
+              {dept.proceso.owner && <div className="ce-row"><span className="ce-k">Dueño</span><span>{dept.proceso.owner}</span></div>}
+              {!!dept.subprocesos?.length && (
+                <div className="ce-block">
+                  <b>Subprocesos ({dept.subprocesos.length})</b>
+                  {dept.subprocesos.map((sp) => (
+                    <div key={sp.id} className="ce-sub">{sp.code ? <em>{sp.code}</em> : null}{sp.name}</div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : <p className="ce-muted">Departamento sin proceso del mapa vinculado — configurarlo en Configuración.</p>
+        )}
+      </div>
+
+      <footer className="ce-panel-actions">
         {onImpact && (
-          <button className="ce-impact on" onClick={onImpact}>
+          <button className="ce-btn ghost sm" onClick={onImpact}>
             <Target size={12} /> Ver impacto
           </button>
         )}
-      </div>
+        {dept.moduleHref && (
+          <a className="ce-btn sm" href={dept.moduleHref}>
+            <ExternalLink size={12} /> Abrir módulo
+          </a>
+        )}
+      </footer>
     </aside>
   );
 }

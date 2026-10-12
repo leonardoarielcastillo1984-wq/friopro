@@ -48,6 +48,21 @@ export async function saveTemplatePref(t: TemplateKey): Promise<void> {
   try { await apiFetch('/centro-empresa/preferencia', { method: 'PUT', json: { template: t } }); } catch {}
 }
 
+// ── Etiquetas sobre edificios ────────────────────────────────
+// Valor: primer KPI que contenga '%' (o el primero disponible).
+// Flecha: derivada de la salud (▲ ok · ▶ seguimiento · ▼ crítico).
+export function tagDataFor(depts: { key: string; salud: string; kpis: { label: string; value: string | number }[] }[]) {
+  const m = new Map<string, { value?: string; dir?: 'up' | 'down' | 'flat' }>();
+  for (const d of depts) {
+    const kpi = d.kpis.find((k) => String(k.value).includes('%')) ?? d.kpis[0];
+    m.set(d.key, {
+      value: kpi ? String(kpi.value) : undefined,
+      dir: d.salud === 'ok' ? 'up' : d.salud === 'crit' ? 'down' : d.salud === 'warn' ? 'flat' : undefined,
+    });
+  }
+  return m;
+}
+
 // ── Grafo de impacto ─────────────────────────────────────────
 // BFS desde un departamento siguiendo las conexiones configuradas.
 export function impactSet(

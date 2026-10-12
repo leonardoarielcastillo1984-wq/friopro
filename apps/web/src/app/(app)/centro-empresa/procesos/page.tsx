@@ -8,7 +8,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pencil } from 'lucide-react';
 import Scene3D from '../_components/Scene3D';
 import { DeptPanel, ConnPanel } from '../_components/DeptPanel';
-import { fetchConfig, fetchResumen, saveConfig, impactSet } from '../_components/data';
+import { fetchConfig, fetchResumen, saveConfig, impactSet, tagDataFor } from '../_components/data';
+import { KpiStrip } from '../_components/KpiStrip';
 import type { EmpresaConfig, ResumenResponse, DeptSalud, EmpresaConn } from '../_components/types';
 import '../centro.css';
 
@@ -48,6 +49,8 @@ export default function ProcesosPage() {
     data?.departments.forEach((d) => m.set(d.key, d.salud));
     return m;
   }, [data]);
+
+  const tagData = useMemo(() => tagDataFor(data?.departments ?? []), [data]);
 
   const selDept = data?.departments.find((d) => d.key === selected) ?? null;
 
@@ -92,10 +95,21 @@ export default function ProcesosPage() {
             selectedKey={selected}
             editMode={editMode}
             impactKeys={impact ? new Set([impact.origin, ...impact.keys]) : null}
+            tagData={tagData}
             onSelectDept={(k) => { setSelected(k); if (k) { setSelConn(null); } else { setImpact(null); } }}
             onSelectConn={(c) => { setSelConn(c); if (c) { setSelected(null); setImpact(null); } }}
             onMoveDept={moveDept}
           />
+          {/* Leyenda lateral — estilo mockup */}
+          <div className="ce-legend">
+            <b>Procesos</b>
+            <span><i className="dot" style={{ background: '#38bdf8' }} /> Estratégicos</span>
+            <span><i className="dot" style={{ background: '#34d399' }} /> Operativos</span>
+            <span><i className="dot" style={{ background: '#f59e0b' }} /> De Apoyo</span>
+            <b style={{ marginTop: 8 }}>Flujo de proceso</b>
+            <span><i className="flow" /> Flujo principal</span>
+            <span><i className="flow dash" /> Interdependencia</span>
+          </div>
           {impact && data && (
             <div className="ce3-impact">
               <h4>Impacto desde {data.departments.find((d) => d.key === impact.origin)?.name}</h4>
@@ -116,6 +130,8 @@ export default function ProcesosPage() {
       ) : (
         <div className="ce3-wrap"><div className="ce3-loading">Cargando configuración…</div></div>
       )}
+
+      {data && <KpiStrip r={data.resumen} />}
 
       {selDept && <DeptPanel dept={selDept} onClose={() => setSelected(null)} onImpact={() => showImpact(selDept.key)} />}
       {selConn && data && <ConnPanel conn={selConn} depts={data.departments} onClose={() => setSelConn(null)} />}
