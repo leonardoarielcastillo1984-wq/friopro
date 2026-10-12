@@ -7,7 +7,10 @@
 // ============================================================
 import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { instance, placeOnGround } from './assets';
+import { sheetMat } from './workshop';
 import { Vehicle } from './vehicles';
 import { kindFor } from './layout-core';
 import { BAY_COLOR, BAY_LABEL, type BayEstado } from '../taller-types';
@@ -28,6 +31,9 @@ export interface TallerBayState {
 export interface TallerWorldOptions {
   onSelectUnit: (id: string) => void;
   onSelectBay: (key: string) => void;
+  // px ocupados a la derecha por paneles superpuestos (el encuadre los descuenta)
+  rightInset?: () => number;
+  onZoomChange?: (z: number) => void;
 }
 
 interface BayDef {
@@ -48,6 +54,11 @@ const H = 90;      // largo de la nave (x)
 const W = 46;      // profundidad (z)
 const WALL_H = 8.5;
 const BAY_W = 13.5, BAY_D = 17;
+const CAM_DIST = 240;              // distancia fija (ortográfica: el zoom es camera.zoom)
+const PITCH = Math.atan(0.85);     // elevación de la cámara
+const ZOOM_MIN = 0.7, ZOOM_MAX = 5;
+// Volumen a encuadrar: nave + fila de espera del frente
+const FIT_BOX = new THREE.Box3(new THREE.Vector3(-H / 2 - 3, 0, -W / 2 - 1), new THREE.Vector3(H / 2 + 3, WALL_H + 1.5, W / 2 + 13));
 
 // Bahías configurables del taller (distribución demostrativa;
 // la ocupación real viene de los datos, no de esta geometría).
@@ -79,12 +90,17 @@ export class TallerWorld {
   private camTarget = new THREE.Vector2(0, 0);
   private yaw = Math.PI * 0.75;
   private yawTarget = Math.PI * 0.75;
-  private dist = 60;
-  private distTarget = 60;
+  private zoom = 1;
+  private zoomTarget = 1;
+  private viewHalf = 34;             // semialto del encuadre a zoom 1 (se ajusta al tamaño)
   private pointer = { down: false, dragging: false, rotate: false, x: 0, y: 0 };
+  private envTex: THREE.Texture | null = null;
 
   private entries = new Map<string, VehEntry>();
-  private bayMeshes = new Map<string, { pad: THREE.Mesh; label: CSS2DObject; labelEl: HTMLDivElement; strip: THREE.Mesh }>();
+  private bayMeshes = new Map<string, {
+    pad: THREE.Mesh; label: CSS2DObject; labelEl: HTMLDivElement;
+    strip: THREE.Mesh; fill: THREE.Mesh; frame: THREE.Mesh; lamp: THREE.Mesh;
+  }>();
   private bayStates = new Map<string, TallerBayState>();
   private mechs: THREE.Object3D[] = [];
   private selectedId: string | null = null;
@@ -111,9 +127,15 @@ export class TallerWorld {
     this.labels.domElement.className = 'cc3-labels';
     container.appendChild(this.labels.domElement);
 
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 2000);
+    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.5, 2000);
     this.scene.background = new THREE.Color(0x0d1117);
-    this.scene.fog = new THREE.Fog(0x0d1117, 300, 620);
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environment = this.envTex;
+    this.scene.environmentIntensity = 0.35;
+    pmrem.dispose();
+    this.target.set(FIT_BOX.getCenter(new THREE.Vector3()).x, FIT_BOX.getCenter(new THREE.Vector3()).z);
+    this.camTarget.copy(this.target);
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(container);
@@ -157,9 +179,10 @@ export class TallerWorld {
 
     // Piso de hormigón con textura pintada
     const floorTex = this.paintFloor();
+    // Piso epoxi: semimate, refleja luminarias
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(H, W),
-      new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.92, metalness: 0.02 }),
+      new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.42, metalness: 0.05, envMapIntensity: 0.9 }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
@@ -175,11 +198,13 @@ export class TallerWorld {
     apron.receiveShadow = true;
     grp.add(apron);
 
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x5a6472, roughness: 0.9 });
-    const wallMatIn = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.85 });
+    const aniso = this.renderer.capabilities.getMaxAnisotropy();
+    const wallMat = sheetMat(0xc4cad0, W / 2, WALL_H / 2, aniso);
+    const wallMatN = sheetMat(0xc4cad0, H / 2, WALL_H / 2, aniso);
+    const wallMatIn = new THREE.MeshStandardMaterial({ color: 0x3e4a5a, roughness: 0.5, metalness: 0.6 });
 
     // Pared fondo (norte)
-    const wN = new THREE.Mesh(new THREE.BoxGeometry(H, WALL_H, 0.6), wallMat);
+    const wN = new THREE.Mesh(new THREE.BoxGeometry(H, WALL_H, 0.6), wallMatN);
     wN.position.set(0, WALL_H / 2, -W / 2 - 0.3);
     wN.castShadow = wN.receiveShadow = true;
     grp.add(wN);
@@ -206,7 +231,7 @@ export class TallerWorld {
       col.castShadow = true;
       grp.add(col);
     }
-    const lintel = new THREE.Mesh(new THREE.BoxGeometry(H + 1.2, 1.4, 0.9), wallMat);
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(H + 1.2, 1.4, 0.9), wallMatIn);
     lintel.position.set(0, WALL_H - 0.7, W / 2);
     grp.add(lintel);
 
@@ -241,9 +266,17 @@ export class TallerWorld {
     const cv = document.createElement('canvas');
     cv.width = 1024; cv.height = 512;
     const g = cv.getContext('2d')!;
-    // Hormigón base
-    g.fillStyle = '#6a6f78';
+    // Epoxi gris industrial con paños y desgaste
+    g.fillStyle = '#7b8088';
     g.fillRect(0, 0, 1024, 512);
+    for (let i = 0; i < 60; i++) {
+      const x = Math.random() * 1024, y = Math.random() * 512, r = 30 + Math.random() * 90;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      const dark = Math.random() < 0.6;
+      gr.addColorStop(0, dark ? 'rgba(40,40,44,.16)' : 'rgba(200,204,210,.10)');
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+    }
     // Manchas/suciedad sutil
     for (let i = 0; i < 900; i++) {
       g.fillStyle = `rgba(${30 + Math.random() * 30},${30 + Math.random() * 30},${30 + Math.random() * 30},${0.05 + Math.random() * 0.08})`;
@@ -287,6 +320,19 @@ export class TallerWorld {
 
   private buildBays() {
     const stripGeo = new THREE.BoxGeometry(BAY_W, 0.08, 0.9);
+    const fillGeo = new THREE.PlaneGeometry(BAY_W - 0.4, BAY_D - 0.4).rotateX(-Math.PI / 2);
+    // Marco perimetral de la bahía (4 listones fusionados)
+    const T = 0.28;
+    const frameParts = [
+      new THREE.BoxGeometry(BAY_W, 0.07, T).translate(0, 0, -BAY_D / 2),
+      new THREE.BoxGeometry(BAY_W, 0.07, T).translate(0, 0, BAY_D / 2),
+      new THREE.BoxGeometry(T, 0.07, BAY_D).translate(-BAY_W / 2, 0, 0),
+      new THREE.BoxGeometry(T, 0.07, BAY_D).translate(BAY_W / 2, 0, 0),
+    ];
+    const frameGeo = mergeGeometries(frameParts, false)!;
+    const poleGeo = new THREE.CylinderGeometry(0.08, 0.1, 3.6, 8);
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x2b3240, roughness: 0.5, metalness: 0.6 });
+    const lampGeo = new THREE.SphereGeometry(0.42, 16, 10);
     for (const b of TALLER_BAYS) {
       // Pad invisible clickeable que cubre la bahía
       const pad = new THREE.Mesh(
@@ -305,6 +351,24 @@ export class TallerWorld {
       strip.position.set(b.x, 0.09, b.z + (b.heading === 0 ? BAY_D / 2 - 0.4 : -BAY_D / 2 + 0.4));
       this.scene.add(strip);
 
+      // Relleno translúcido + marco luminoso del color de estado
+      const c0 = parseInt(BAY_COLOR.disponible.slice(1), 16);
+      const fill = new THREE.Mesh(fillGeo, new THREE.MeshBasicMaterial({ color: c0, transparent: true, opacity: 0.12, depthWrite: false }));
+      fill.position.set(b.x, 0.03, b.z);
+      fill.renderOrder = 1;
+      this.scene.add(fill);
+      const frame = new THREE.Mesh(frameGeo, new THREE.MeshStandardMaterial({ color: c0, emissive: c0, emissiveIntensity: 0.8, roughness: 0.4 }));
+      frame.position.set(b.x, 0.05, b.z);
+      this.scene.add(frame);
+      // Baliza de estado en la esquina de la bahía
+      const px = b.x - BAY_W / 2 + 0.6, pz = b.z + (b.heading === 0 ? -BAY_D / 2 + 0.6 : BAY_D / 2 - 0.6);
+      const pole = new THREE.Mesh(poleGeo, poleMat);
+      pole.position.set(px, 1.8, pz); pole.castShadow = true;
+      this.scene.add(pole);
+      const lamp = new THREE.Mesh(lampGeo, new THREE.MeshStandardMaterial({ color: c0, emissive: c0, emissiveIntensity: 1.4, roughness: 0.2 }));
+      lamp.position.set(px, 3.8, pz);
+      this.scene.add(lamp);
+
       // Etiqueta de bahía (CSS2D)
       const el = document.createElement('div');
       el.className = 'ccw-bay';
@@ -316,9 +380,10 @@ export class TallerWorld {
       obj.position.set(b.x, 5.4, b.z + (b.heading === 0 ? -BAY_D / 2 - 0.8 : BAY_D / 2 + 0.8));
       this.scene.add(obj);
 
-      this.bayMeshes.set(b.key, { pad, label: obj, labelEl: el, strip });
+      this.bayMeshes.set(b.key, { pad, label: obj, labelEl: el, strip, fill, frame, lamp });
       this.bayStates.set(b.key, { estado: 'disponible', unidad: null });
     }
+    this.applyBayVisuals();
   }
 
   private async buildProps() {
@@ -440,11 +505,20 @@ export class TallerWorld {
     for (const [k, m] of this.bayMeshes) {
       const s = this.bayStates.get(k) ?? { estado: 'disponible' as BayEstado, unidad: null };
       const hex = parseInt(BAY_COLOR[s.estado].slice(1), 16);
-      const mat = m.strip.material as THREE.MeshStandardMaterial;
-      mat.color.setHex(hex);
-      mat.emissive.setHex(hex);
-      m.labelEl.innerHTML = `<b>${esc(k)}</b><span>${esc(BAY_LABEL[s.estado])}${s.unidad ? ` · ${esc(s.unidad.dominio)}` : ''}${s.otCode ? ` · ${esc(s.otCode)}` : ''}</span>`;
-      m.labelEl.style.borderColor = BAY_COLOR[s.estado];
+      for (const mesh of [m.strip, m.frame, m.lamp]) {
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        mat.color.setHex(hex);
+        mat.emissive.setHex(hex);
+      }
+      const fm = m.fill.material as THREE.MeshBasicMaterial;
+      fm.color.setHex(hex);
+      fm.opacity = s.estado === 'disponible' ? 0.08 : 0.18;
+      const col = BAY_COLOR[s.estado];
+      m.labelEl.className = `ccw-bay ccw-bay--${s.estado}`;
+      m.labelEl.innerHTML =
+        `<div class="ccw-bay-h" style="background:${col}"><b>${esc(k)}</b><span>${esc(BAY_LABEL[s.estado])}</span></div>` +
+        (s.unidad ? `<div class="ccw-bay-b"><strong>${esc(s.unidad.dominio)}</strong>${s.otCode ? `<em>${esc(s.otCode)}</em>` : ''}</div>` : '');
+      m.labelEl.style.borderColor = col;
     }
   }
 
@@ -485,13 +559,31 @@ export class TallerWorld {
 
   focusBay(key: string) {
     const b = TALLER_BAYS.find((x) => x.key === key);
-    if (b) { this.target.set(b.x, b.z); this.distTarget = 34; }
+    if (b) { this.target.set(b.x, b.z); this.zoomTarget = 2.4; }
+  }
+
+  focusUnit(id: string) {
+    const e = this.entries.get(id);
+    if (!e) return;
+    const p = e.vehicle.root.position;
+    this.target.set(p.x, p.z);
+    this.zoomTarget = Math.max(this.zoomTarget, 2.4);
   }
 
   resetView() {
-    this.target.set(0, 2);
+    const c = FIT_BOX.getCenter(new THREE.Vector3());
+    this.target.set(c.x, c.z);
     this.yawTarget = Math.PI * 0.75;
-    this.distTarget = 60;
+    this.zoomTarget = 1;
+    this.fit();
+  }
+
+  zoomBy(f: number) {
+    this.zoomTarget = THREE.MathUtils.clamp(this.zoomTarget * f, ZOOM_MIN, ZOOM_MAX);
+  }
+
+  rotateBy(rad: number) {
+    this.yawTarget = Math.max(Math.PI * 0.4, Math.min(Math.PI * 1.1, this.yawTarget + rad));
   }
 
   // ───────────────────────── Cámara / input ─────────────────────────
@@ -500,24 +592,66 @@ export class TallerWorld {
     const h = this.container.clientHeight || 1;
     this.renderer.setSize(w, h);
     this.labels.setSize(w, h);
-    const a = w / h;
-    const s = 34;
-    this.camera.left = -s * a; this.camera.right = s * a;
+    this.fit();
+  }
+
+  // Encuadre: el volumen de la nave entra completo en el área libre (ancho
+  // menos el panel derecho), con el centro desplazado hacia esa área.
+  private fit() {
+    const w = this.container.clientWidth || 1;
+    const h = this.container.clientHeight || 1;
+    const inset = Math.min(w * 0.5, Math.max(0, this.opts.rightInset?.() ?? 0));
+    const freeW = Math.max(120, w - inset);
+    const c = FIT_BOX.getCenter(new THREE.Vector3());
+    this.placeCamera(c.x, c.z, this.yawTarget);
+    this.camera.updateMatrixWorld(true);
+    const inv = this.camera.matrixWorldInverse;
+    let ex = 0, ey = 0;
+    const v = new THREE.Vector3();
+    for (const x of [FIT_BOX.min.x, FIT_BOX.max.x]) for (const y of [FIT_BOX.min.y, FIT_BOX.max.y]) for (const z of [FIT_BOX.min.z, FIT_BOX.max.z]) {
+      v.set(x, y, z).applyMatrix4(inv);
+      ex = Math.max(ex, Math.abs(v.x)); ey = Math.max(ey, Math.abs(v.y));
+    }
+    this.viewHalf = Math.max(ey, ex * h / freeW) * 1.06;
+    const s = this.viewHalf, a = w / h;
+    const off = inset * s / h;                  // corrimiento del centro hacia el área libre
+    this.camera.left = -s * a + off; this.camera.right = s * a + off;
     this.camera.top = s; this.camera.bottom = -s;
     this.camera.updateProjectionMatrix();
+    this.placeCamera(this.camTarget.x, this.camTarget.y, this.yaw);
+  }
+
+  private placeCamera(tx: number, tz: number, yaw: number) {
+    const hd = CAM_DIST * Math.cos(PITCH);
+    this.camera.position.set(tx + Math.sin(yaw) * hd, CAM_DIST * Math.sin(PITCH), tz + Math.cos(yaw) * hd);
+    this.camera.lookAt(tx, 0, tz);
   }
 
   private applyCamera() {
-    this.camTarget.lerp(this.target, 0.08);
-    this.yaw += (this.yawTarget - this.yaw) * 0.08;
-    this.dist += (this.distTarget - this.dist) * 0.1;
-    const d = this.dist;
-    this.camera.position.set(
-      this.camTarget.x + Math.sin(this.yaw) * d,
-      d * 0.85,
-      this.camTarget.y + Math.cos(this.yaw) * d,
-    );
-    this.camera.lookAt(this.camTarget.x, 0, this.camTarget.y);
+    this.camTarget.lerp(this.target, 0.1);
+    this.yaw += (this.yawTarget - this.yaw) * 0.1;
+    const z0 = this.zoom;
+    this.zoom += (this.zoomTarget - this.zoom) * 0.14;
+    if (Math.abs(this.zoom - z0) > 1e-4) {
+      this.camera.zoom = this.zoom;
+      this.camera.updateProjectionMatrix();
+      this.opts.onZoomChange?.(this.zoom);
+    }
+    this.placeCamera(this.camTarget.x, this.camTarget.y, this.yaw);
+  }
+
+  // Punto del piso bajo el cursor (para zoom hacia el cursor)
+  private groundAt(cx: number, cy: number): THREE.Vector3 | null {
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+    this.ray.setFromCamera(ndc, this.camera);
+    const p = new THREE.Vector3();
+    return this.ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), p) ? p : null;
+  }
+
+  private clampTarget() {
+    this.target.x = THREE.MathUtils.clamp(this.target.x, -H / 2 - 5, H / 2 + 5);
+    this.target.y = THREE.MathUtils.clamp(this.target.y, -W / 2 - 4, W / 2 + 16);
   }
 
   private bindInput() {
@@ -534,14 +668,17 @@ export class TallerWorld {
       if (Math.abs(dx) + Math.abs(dy) > 4) this.pointer.dragging = true;
       if (this.pointer.dragging) {
         if (this.pointer.rotate) {
-          this.yawTarget = Math.max(Math.PI * 0.45, Math.min(Math.PI * 1.05, this.yawTarget - dx * 0.004));
+          this.rotateBy(-dx * 0.004);
         } else {
-          const k = this.dist / 340;
-          const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
-          this.target.x -= dx * k * rx - dy * k * rz * 0.6;
-          this.target.y -= dx * k * -rz + dy * k * rx * 0.6;
-          this.target.x = Math.max(-55, Math.min(55, this.target.x));
-          this.target.y = Math.max(-30, Math.min(40, this.target.y));
+          // metros por píxel en pantalla al zoom actual
+          const k = (2 * this.viewHalf) / (this.zoom * (this.container.clientHeight || 1));
+          const rX = Math.cos(this.yaw), rZ = -Math.sin(this.yaw);      // derecha de pantalla en el piso
+          const fX = -Math.sin(this.yaw), fZ = -Math.cos(this.yaw);     // "arriba" de pantalla en el piso
+          const kf = k / Math.sin(PITCH);
+          this.target.x += -dx * k * rX + dy * kf * fX;
+          this.target.y += -dx * k * rZ + dy * kf * fZ;
+          this.clampTarget();
+          this.camTarget.copy(this.target);
         }
       }
       this.pointer.x = e.clientX; this.pointer.y = e.clientY;
@@ -552,8 +689,47 @@ export class TallerWorld {
     });
     el.addEventListener('wheel', (e) => {
       e.preventDefault();
-      this.distTarget = Math.max(18, Math.min(110, this.distTarget * (e.deltaY > 0 ? 1.12 : 0.9)));
+      // zoom hacia el punto bajo el cursor (rueda o pinch de trackpad)
+      const before = this.groundAt(e.clientX, e.clientY);
+      const f = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0018));
+      const z1 = THREE.MathUtils.clamp(this.zoomTarget * f, ZOOM_MIN, ZOOM_MAX);
+      if (before && z1 !== this.zoomTarget) {
+        const ratio = this.zoomTarget / z1;
+        this.target.x = before.x + (this.target.x - before.x) * ratio;
+        this.target.y = before.z + (this.target.y - before.z) * ratio;
+        this.clampTarget();
+      }
+      this.zoomTarget = z1;
     }, { passive: false });
+    el.addEventListener('dblclick', (e) => {
+      const p = this.groundAt(e.clientX, e.clientY);
+      if (p) { this.target.set(p.x, p.z); this.clampTarget(); }
+      this.zoomBy(1.8);
+    });
+    // Pinch táctil
+    const touches = new Map<number, { x: number; y: number }>();
+    let pinch0 = 0, zoom0 = 1;
+    el.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch') return;
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size === 2) {
+        const [a, b] = [...touches.values()];
+        pinch0 = Math.hypot(a.x - b.x, a.y - b.y); zoom0 = this.zoomTarget;
+      }
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!touches.has(e.pointerId)) return;
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size === 2 && pinch0 > 0) {
+        const [a, b] = [...touches.values()];
+        this.zoomTarget = THREE.MathUtils.clamp(zoom0 * Math.hypot(a.x - b.x, a.y - b.y) / pinch0, ZOOM_MIN, ZOOM_MAX);
+        this.pointer.dragging = true;
+        this.pointer.down = false;
+      }
+    });
+    const endTouch = (e: PointerEvent) => { touches.delete(e.pointerId); if (touches.size < 2) pinch0 = 0; };
+    el.addEventListener('pointerup', endTouch);
+    el.addEventListener('pointercancel', endTouch);
     el.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
@@ -584,8 +760,10 @@ export class TallerWorld {
     const s = 0.35 + Math.sin(this.pulse * 3.2) * 0.3;
     for (const [k, m] of this.bayMeshes) {
       const st = this.bayStates.get(k)?.estado;
-      (m.strip.material as THREE.MeshStandardMaterial).emissiveIntensity =
-        st === 'bloqueado' || st === 'espera_repuestos' ? 0.3 + s : 0.25;
+      const alert = st === 'bloqueado' || st === 'espera_repuestos';
+      (m.strip.material as THREE.MeshStandardMaterial).emissiveIntensity = alert ? 0.3 + s : 0.25;
+      (m.lamp.material as THREE.MeshStandardMaterial).emissiveIntensity = alert ? 0.6 + s * 3 : st === 'ejecucion' ? 1.6 : 1.1;
+      (m.frame.material as THREE.MeshStandardMaterial).emissiveIntensity = alert ? 0.5 + s : 0.7;
     }
     this.applyCamera();
     this.renderer.render(this.scene, this.camera);
@@ -597,6 +775,7 @@ export class TallerWorld {
     this.ro.disconnect();
     for (const e of this.entries.values()) { e.vehicle.dispose(); e.tag.removeFromParent(); }
     this.entries.clear();
+    this.envTex?.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
     this.labels.domElement.remove();

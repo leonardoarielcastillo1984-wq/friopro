@@ -34,7 +34,7 @@ function corrugated(maxAniso: number) {
 
 // Material de chapa con escala física: `rx`,`ry` = repeticiones sobre la cara.
 // `rot` gira las ondas (techo: ondas en el sentido de la pendiente).
-function sheetMat(color: number, rx: number, ry: number, maxAniso: number, opts: { rot?: boolean; metal?: number } = {}) {
+export function sheetMat(color: number, rx: number, ry: number, maxAniso: number, opts: { rot?: boolean; metal?: number } = {}) {
   const m = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: opts.metal ?? 0.35, envMapIntensity: 1 });
   corrugated(maxAniso).then((c) => {
     const set = (t: THREE.Texture) => {

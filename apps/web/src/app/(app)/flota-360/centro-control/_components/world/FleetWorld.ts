@@ -10,6 +10,7 @@ import type { CCUnit } from '../types';
 import { instance, instanceSkinned, placeOnGround, preload, MODEL_LIST, PEOPLE } from './assets';
 import { buildGround, buildFence } from './ground';
 import { buildWorkshop } from './workshop';
+import { buildWash, buildGuard } from './facilities';
 import { buildTrees, type TreeItem, type TreeKind } from './trees';
 import { Vehicle } from './vehicles';
 import {
@@ -158,6 +159,8 @@ export class FleetWorld {
   private treesUpdate: ((t: number) => void) | null = null;
   private lightMix = 0;              // 0 = día, 1 = noche (interpolado)
   private lightTarget = 0;
+  private duskMix = 0;               // 0 = sin atardecer, 1 = atardecer pleno
+  private duskTarget = 0;
   private lampGlows: THREE.Object3D[] = [];
   // ── Clima ──
   private wxKind: 'clear' | 'cloudy' | 'rain' | 'storm' = 'clear';
@@ -292,8 +295,9 @@ export class FleetWorld {
   }
 
   // ───────────────────────── Día / noche ─────────────────────────
-  setDayNight(mode: 'day' | 'night') {
+  setDayNight(mode: 'day' | 'night' | 'dusk') {
     this.lightTarget = mode === 'night' ? 1 : 0;
+    this.duskTarget = mode === 'dusk' ? 1 : 0;
   }
 
   setAmbient(on: boolean) { this.ambientOn = on; }
@@ -331,6 +335,7 @@ export class FleetWorld {
   private applyLightMix() {
     const m = this.lightMix;
     const wx = this.weatherMix;
+    const dk = this.duskMix * (1 - m);
     const DAY = { hemi: 0.7, sun: 2.9, env: 0.75, exp: 1.0, fog: 0xa9b4b0, bg: 0x0b1220 };
     const NIGHT = { hemi: 0.3, sun: 0.45, env: 0.07, exp: 0.9, fog: 0x18202e, bg: 0x04070e };
     const flash = this.flashT > 0 ? this.flashT / 0.3 : 0;
@@ -350,15 +355,30 @@ export class FleetWorld {
     this.hemi.color.copy(new THREE.Color(0xe8f1ff).lerp(new THREE.Color(0x33415e), m).lerp(new THREE.Color(0x8b98ab), wx * 0.5));
     this.hemi.groundColor.copy(new THREE.Color(0x6b5b45).lerp(new THREE.Color(0x14161f), m));
     this.sun.color.copy(new THREE.Color(0xfff1dc).lerp(new THREE.Color(0x9fc0ff), m).lerp(new THREE.Color(0xb9c6d8), wx * 0.6));
-    const night = m > 0.45 || wx > 0.6;   // lluvia pesada también prende farolas
+    // Atardecer: sol bajo del oeste, luz dorada, sombras largas, cielo cálido
+    if (dk > 0.001) {
+      this.sun.color.lerp(new THREE.Color(0xffa45c), dk * (1 - wx * 0.5));
+      this.sun.intensity *= 1 - 0.25 * dk;
+      this.hemi.color.lerp(new THREE.Color(0xffc9a0), dk * 0.45);
+      this.hemi.groundColor.lerp(new THREE.Color(0x3b2a20), dk * 0.5);
+      this.hemi.intensity *= 1 - 0.2 * dk;
+      this.scene.environmentIntensity *= 1 - 0.35 * dk;
+      this.renderer.toneMappingExposure *= 1 - 0.06 * dk;
+      (this.scene.fog as THREE.Fog).color.lerp(new THREE.Color(0xc99272), dk * 0.7);
+      (this.scene.background as THREE.Color).lerp(new THREE.Color(0x2a1a14), dk * 0.6);
+    }
+    this.sun.position.set(-110 - 140 * dk, 210 - 130 * dk, 150 - 40 * dk);
+    const night = m > 0.45 || wx > 0.6 || dk > 0.5;   // lluvia pesada y atardecer también prenden farolas
     for (const g of this.lampGlows) g.visible = night;
   }
 
   private async buildFacility() {
     for (const b of this.S.buildings) {
       let top = b.labelY;
-      if (b.workshop) {
-        const { root, nightGlows } = buildWorkshop(b.workshop, this.renderer.capabilities.getMaxAnisotropy());
+      const aniso = this.renderer.capabilities.getMaxAnisotropy();
+      const custom = b.workshop ? buildWorkshop(b.workshop, aniso) : b.wash ? buildWash(b.wash, aniso) : b.guard ? buildGuard(b.guard, aniso) : null;
+      if (custom) {
+        const { root, nightGlows } = custom;
         root.userData.buildingKey = b.key;
         this.scene.add(root);
         this.buildingRoots.push(root);
@@ -1127,8 +1147,13 @@ export class FleetWorld {
       if (this.flashCd <= 0) { this.flashT = 0.3; this.flashCd = 3.5 + Math.random() * 6; lightDirty = true; }
     }
     if (this.flashT > 0) { this.flashT -= dt; lightDirty = true; }
+    if (this.duskMix !== this.duskTarget) {
+      this.duskMix += (this.duskTarget - this.duskMix) * Math.min(1, dt * 1.6);
+      if (Math.abs(this.duskMix - this.duskTarget) < 0.005) this.duskMix = this.duskTarget;
+      lightDirty = true;
+    }
     if (lightDirty) this.applyLightMix();
-    const night = this.lightMix > 0.45 || this.weatherMix > 0.6;
+    const night = this.lightMix > 0.45 || this.weatherMix > 0.6 || this.duskMix * (1 - this.lightMix) > 0.5;
 
     // Lluvia: caída con deriva de viento, sigue el objetivo de la cámara
     if (this.rain && this.weatherMix > 0.35) {

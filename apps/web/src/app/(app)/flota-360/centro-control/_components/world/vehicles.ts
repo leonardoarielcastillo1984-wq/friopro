@@ -4,7 +4,7 @@
 // ============================================================
 import * as THREE from 'three';
 import { instance } from './assets';
-import { tractorKit, trailerKit } from './vehicle-kit';
+import { tractorKit, trailerKit, genericKit } from './vehicle-kit';
 import type { VehicleKind, V2 } from './layout';
 
 const MODEL_FOR: Record<VehicleKind, string> = {
@@ -86,6 +86,9 @@ export class Vehicle {
     if (this.modelName === 'semi-truck' && this.trailer?.parent) {
       this.trailer.parent.add(tractorKit());
       this.trailer.add(trailerKit());
+    } else if (['delivery-truck', 'pickup-truck', 'tow-truck'].includes(this.modelName)) {
+      const bb = new THREE.Box3().setFromObject(obj);
+      obj.add(genericKit(this.modelName, bb, this.modelName !== 'pickup-truck'));
     }
 
     if (this.kind === 'trailer') {

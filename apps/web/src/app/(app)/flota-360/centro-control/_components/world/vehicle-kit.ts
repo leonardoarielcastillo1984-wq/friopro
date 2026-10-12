@@ -149,6 +149,43 @@ function trailerParts(): Part[] {
 
 const cloneTpl = (tpl: THREE.Mesh[]) => tpl.map((m) => { const c = new THREE.Mesh(m.geometry, m.material); c.castShadow = m.castShadow; c.receiveShadow = m.receiveShadow; c.name = m.name; return c; });
 
+// Kit genérico para modelos de una sola pieza (rígido, pickup, grúa): se
+// dimensiona con el bounding box del modelo (frente +Z) y se cachea por modelo.
+const genericTpl = new Map<string, THREE.Mesh[]>();
+export function genericKit(model: string, bb: THREE.Box3, heavy: boolean): THREE.Group {
+  let tpl = genericTpl.get(model);
+  if (!tpl) {
+    const hw = (bb.max.x - bb.min.x) / 2, hgt = bb.max.y - bb.min.y, L = bb.max.z - bb.min.z;
+    const zf = bb.max.z, zr = bb.min.z, y0 = bb.min.y;
+    const P: Part[] = [];
+    for (const s of [1, -1]) {
+      // espejos a la altura de la cabina
+      const my = y0 + hgt * (heavy ? 0.62 : 0.6), mz = zf - L * (heavy ? 0.2 : 0.42);
+      P.push({ geo: B(0.28, 0.04, 0.04), mat: 'steel', p: [s * (hw + 0.1), my, mz] });
+      P.push({ geo: B(0.08, heavy ? 0.5 : 0.18, heavy ? 0.2 : 0.24), mat: 'dark', p: [s * (hw + 0.26), my, mz] });
+      // ópticas delanteras y traseras
+      P.push({ geo: B(heavy ? 0.42 : 0.34, 0.18, 0.05), mat: 'lens', p: [s * hw * 0.68, y0 + hgt * (heavy ? 0.28 : 0.42), zf + 0.02] });
+      P.push({ geo: B(0.3, 0.16, 0.05), mat: 'red', p: [s * hw * 0.75, y0 + hgt * (heavy ? 0.22 : 0.45), zr - 0.02] });
+      if (heavy) {
+        P.push({ geo: B(0.55, 0.55, 0.03), mat: 'rubber', p: [s * hw * 0.7, y0 + 0.36, zr + 0.25] });
+        P.push({ geo: B(0.02, 0.09, L * 0.55), mat: 'tape', p: [s * (hw + 0.02), y0 + hgt * 0.3, zr + L * 0.3] });
+        for (let z = zr + 0.6; z < zr + L * 0.6; z += 2.4) P.push({ geo: B(0.04, 0.07, 0.1), mat: 'amber', p: [s * (hw + 0.03), y0 + hgt * 0.22, z] });
+      }
+    }
+    P.push({ geo: B(hw * 2 + 0.06, heavy ? 0.3 : 0.2, 0.22), mat: heavy ? 'chrome' : 'dark', p: [0, y0 + (heavy ? 0.5 : 0.45), zf + 0.06] });
+    P.push({ geo: B(hw * 1.8, heavy ? 0.16 : 0.14, 0.18), mat: 'dark', p: [0, y0 + (heavy ? 0.5 : 0.42), zr - 0.06] });
+    if (heavy) {
+      P.push({ geo: B(hw * 1.7, 0.08, 0.02), mat: 'tape', p: [0, y0 + 0.5, zr - 0.16] });
+      for (const x of [-0.45, 0, 0.45]) P.push({ geo: B(0.14, 0.08, 0.1), mat: 'amber', p: [x * hw, y0 + hgt * 0.995, zf - L * 0.25] });
+    }
+    tpl = bake(P);
+    genericTpl.set(model, tpl);
+  }
+  const g = new THREE.Group(); g.name = 'kit_generic';
+  g.add(...cloneTpl(tpl));
+  return g;
+}
+
 export function tractorKit(): THREE.Group {
   if (!tractorTpl) tractorTpl = bake(tractorParts());
   const g = new THREE.Group(); g.name = 'kit_tractor';

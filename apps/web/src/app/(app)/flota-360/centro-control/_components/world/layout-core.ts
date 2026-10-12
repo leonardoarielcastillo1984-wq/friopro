@@ -7,6 +7,7 @@
 import type { VisualStatus } from '../types';
 
 import type { WorkshopSpec } from './workshop';
+import type { WashSpec, GuardSpec } from './facilities';
 
 export type V2 = [number, number];
 export interface Rect { x0: number; z0: number; x1: number; z1: number }
@@ -21,6 +22,8 @@ export interface BuildingDef {
   scale: number;
   labelY: number;
   workshop?: WorkshopSpec;
+  wash?: WashSpec;
+  guard?: GuardSpec;
 }
 
 export interface Slot {

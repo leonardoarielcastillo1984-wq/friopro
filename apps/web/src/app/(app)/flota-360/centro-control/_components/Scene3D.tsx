@@ -4,13 +4,13 @@
 // Escena 3D isométrica del predio (wrapper React de FleetWorld)
 // ============================================================
 import { useEffect, useRef, useState } from 'react';
-import { Minus, Plus, Maximize2, Sun, Moon, Clock3, Sparkles, Cloudy, CloudRain, CloudLightning, CloudSun } from 'lucide-react';
+import { Minus, Plus, Maximize2, Sun, Sunset, Moon, Clock3, Sparkles, Cloudy, CloudRain, CloudLightning, CloudSun } from 'lucide-react';
 import type { CCUnit, Mode, VisualStatus } from './types';
 import type { FleetWorld } from './world/FleetWorld';
 import type { Scenario } from './world/layout-core';
 import { genericScenario } from './world/layout';
 
-type DayNight = 'day' | 'night' | 'auto';
+type DayNight = 'day' | 'dusk' | 'night' | 'auto';
 type WeatherKind = 'clear' | 'cloudy' | 'rain' | 'storm';
 type WeatherSel = WeatherKind | 'auto';
 
@@ -163,8 +163,10 @@ export default function Scene3D({ units, selectedId, onSelect, flashId, mode, se
   // si no, la hora local del navegador del operador.
   useEffect(() => {
     const apply = () => {
-      const night = dayNight === 'night' || (dayNight === 'auto' && (wxIsDay != null ? !wxIsDay : (() => { const h = new Date().getHours(); return h < 7 || h >= 20; })()));
-      worldRef.current?.setDayNight(night ? 'night' : 'day');
+      const h = new Date().getHours();
+      const night = dayNight === 'night' || (dayNight === 'auto' && (wxIsDay != null ? !wxIsDay : (h < 7 || h >= 20)));
+      const dusk = dayNight === 'dusk' || (dayNight === 'auto' && !night && (h === 18 || h === 19 || h === 6));
+      worldRef.current?.setDayNight(night ? 'night' : dusk ? 'dusk' : 'day');
     };
     apply();
     if (dayNight !== 'auto') return;
@@ -210,6 +212,7 @@ export default function Scene3D({ units, selectedId, onSelect, flashId, mode, se
         <div className="cc3-dn" role="group" aria-label="Iluminación">
           {([
             { k: 'day' as DayNight, icon: Sun, label: 'Día' },
+            { k: 'dusk' as DayNight, icon: Sunset, label: 'Atardecer' },
             { k: 'night' as DayNight, icon: Moon, label: 'Noche' },
             { k: 'auto' as DayNight, icon: Clock3, label: 'Auto' },
           ]).map(({ k, icon: Icon, label }) => (
