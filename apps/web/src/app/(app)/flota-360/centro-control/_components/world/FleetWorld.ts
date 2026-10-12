@@ -107,6 +107,7 @@ function glowTexture() {
 
 export interface WorldOptions {
   onSelect: (id: string) => void;
+  onBuildingClick?: (key: string) => void;
   onProgress?: (p: number) => void;
   scenario?: Scenario;
 }
@@ -132,6 +133,7 @@ export class FleetWorld {
   private glowTex = glowTexture();
   private radialTex = radialTexture();
   private selectedId: string | null = null;
+  private buildingRoots: THREE.Object3D[] = [];
   private hoveredId: string | null = null;
   private flashId: string | null = null;
   private tween: { t: number; dur: number; from: THREE.Vector3; to: THREE.Vector3; z0: number; z1: number } | null = null;
@@ -316,7 +318,9 @@ export class FleetWorld {
         placeOnGround(obj, b.x, b.z, b.rot, b.scale);
         obj.traverse((o) => { o.matrixAutoUpdate = false; o.updateMatrix(); });
         obj.updateMatrixWorld(true);
+        obj.userData.buildingKey = b.key;
         this.scene.add(obj);
+        this.buildingRoots.push(obj);
         top = new THREE.Box3().setFromObject(obj).max.y;
       }
       if (!b.label) continue;
@@ -925,6 +929,22 @@ export class FleetWorld {
     return null;
   }
 
+  // Click sobre un edificio del predio (garita, taller, lavadero):
+  // devuelve su key para que la UI decida qué hacer (p.ej. entrar al taller).
+  private pickBuilding(cx: number, cy: number): string | null {
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const hits = this.raycaster.intersectObjects(this.buildingRoots, true);
+    for (const h of hits) {
+      if (!(h.object as THREE.Mesh).isMesh || !h.object.visible) continue;
+      let o: THREE.Object3D | null = h.object;
+      while (o && !o.userData.buildingKey) o = o.parent;
+      if (o?.userData.buildingKey) return o.userData.buildingKey as string;
+    }
+    return null;
+  }
+
   private clampTarget() {
     this.target.x = THREE.MathUtils.clamp(this.target.x, this.S.fence.x0 - 20, this.S.fence.x1 + 20);
     this.target.z = THREE.MathUtils.clamp(this.target.z, this.S.fence.z0 - 10, this.S.bounds.z1 - 15);
@@ -983,6 +1003,10 @@ export class FleetWorld {
     if (!this.pointer.dragging && ev.target === this.renderer.domElement) {
       const id = this.pick(ev.clientX, ev.clientY);
       if (id) this.opts.onSelect(id);
+      else {
+        const bKey = this.pickBuilding(ev.clientX, ev.clientY);
+        if (bKey) this.opts.onBuildingClick?.(bKey);
+      }
     }
     this.pointer.dragging = false;
   };

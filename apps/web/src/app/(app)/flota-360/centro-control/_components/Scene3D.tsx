@@ -56,6 +56,7 @@ export default function Scene3D({ units, selectedId, onSelect, flashId, mode, se
   const worldRef = useRef<FleetWorld | null>(null);
   const unitsRef = useRef(units);
   const onSelectRef = useRef(onSelect);
+  const onSectorChangeRef = useRef(onSectorChange);
   const lastMode = useRef<Mode>(mode);
   const firstLoad = useRef(true);
   const [progress, setProgress] = useState(0);
@@ -71,6 +72,7 @@ export default function Scene3D({ units, selectedId, onSelect, flashId, mode, se
 
   unitsRef.current = units;
   onSelectRef.current = onSelect;
+  onSectorChangeRef.current = onSectorChange;
 
   useEffect(() => {
     let alive = true;
@@ -84,6 +86,13 @@ export default function Scene3D({ units, selectedId, onSelect, flashId, mode, se
           onSelect: (id) => {
             const u = unitsRef.current.find((x) => x.id === id);
             if (u) onSelectRef.current(u);
+          },
+          // Click sobre la nave del taller = botón de sector TALLER
+          onBuildingClick: (key) => {
+            if (key !== 'taller') return;
+            setSectorLocal('taller');
+            onSectorChangeRef.current?.('taller');
+            worldRef.current?.focusSector('taller');
           },
           onProgress: (p) => alive && setProgress(p),
         });
