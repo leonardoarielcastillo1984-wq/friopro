@@ -200,6 +200,18 @@
   background: radial-gradient(120% 90% at 50% 45%, transparent 62%, rgba(5,10,20,.42) 100%);
 }
 
+/* Pantalla completa: la escena ocupa el viewport sin marco */
+.cc3-wrap:fullscreen {
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+}
+.ccw-wrap:fullscreen {
+  position: fixed;
+  inset: 0;
+  background: #0b1220;
+}
+
 .cc3-glass {
   background: rgba(8, 17, 32, .78);
   backdrop-filter: blur(8px);

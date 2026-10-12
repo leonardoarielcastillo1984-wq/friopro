@@ -4,7 +4,7 @@
 // Escena 3D isométrica del predio (wrapper React de FleetWorld)
 // ============================================================
 import { useEffect, useRef, useState } from 'react';
-import { Minus, Plus, Maximize2, Sun, Sunset, Moon, Clock3, Sparkles, Cloudy, CloudRain, CloudLightning, CloudSun } from 'lucide-react';
+import { Minus, Plus, Maximize2, Minimize2, Fullscreen, Sun, Sunset, Moon, Clock3, Sparkles, Cloudy, CloudRain, CloudLightning, CloudSun } from 'lucide-react';
 import type { CCUnit, Mode, VisualStatus } from './types';
 import type { FleetWorld } from './world/FleetWorld';
 import type { Scenario } from './world/layout-core';
@@ -53,6 +53,7 @@ const LEGEND: { s: VisualStatus; label: string; color: string }[] = [
 export default function Scene3D({ units, selectedId, onSelect, flashId, mode, sector: sectorProp, onSectorChange, scenario }: Props) {
   const S = scenario ?? genericScenario;
   const hostRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<FleetWorld | null>(null);
   const unitsRef = useRef(units);
   const onSelectRef = useRef(onSelect);
@@ -66,6 +67,7 @@ export default function Scene3D({ units, selectedId, onSelect, flashId, mode, se
   const [dayNight, setDayNight] = useState<DayNight>('auto');
   const [ambientOn, setAmbientOn] = useState(true);
   const [weather, setWeather] = useState<WeatherSel>('auto');
+  const [fullscreen, setFullscreen] = useState(false);
   const [autoWx, setAutoWx] = useState<WeatherKind | null>(null);
   const [wxIsDay, setWxIsDay] = useState<boolean | null>(null);
   const sector = sectorProp ?? sectorLocal;
@@ -176,6 +178,20 @@ export default function Scene3D({ units, selectedId, onSelect, flashId, mode, se
 
   useEffect(() => { worldRef.current?.setAmbient(ambientOn); }, [ambientOn, ready]);
 
+  // Pantalla completa: solo el predio 3D (con sus overlays), para operar
+  // a lo ancho o proyectarlo en una pantalla. El ResizeObserver del mundo
+  // re-encuadra la cámara automáticamente al cambiar el tamaño.
+  useEffect(() => {
+    const onFs = () => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+    wrapRef.current?.requestFullscreen?.().catch(() => {});
+  };
+
   const go = (key: string) => {
     setSectorLocal(key);
     onSectorChange?.(key);
@@ -183,7 +199,7 @@ export default function Scene3D({ units, selectedId, onSelect, flashId, mode, se
   };
 
   return (
-    <div className="cc3-wrap">
+    <div className="cc3-wrap" ref={wrapRef}>
       <div ref={hostRef} className="cc3-host" />
 
       {!ready && !error && (
@@ -205,6 +221,10 @@ export default function Scene3D({ units, selectedId, onSelect, flashId, mode, se
         <button onClick={() => worldRef.current?.zoomBy(1.4)} aria-label="Acercar"><Plus size={14} /></button>
         <button onClick={() => worldRef.current?.zoomBy(1 / 1.4)} aria-label="Alejar"><Minus size={14} /></button>
         <button onClick={() => go('general')} aria-label="Vista general"><Maximize2 size={13} /></button>
+        <button onClick={toggleFullscreen} aria-label={fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+          title={fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'} aria-pressed={fullscreen}>
+          {fullscreen ? <Minimize2 size={13} /> : <Fullscreen size={13} />}
+        </button>
       </div>
 
       {/* Iluminación y ambientación */}

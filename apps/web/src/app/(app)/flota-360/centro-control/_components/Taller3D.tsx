@@ -5,7 +5,7 @@
 // Monta TallerWorld, traduce el snapshot a bahías y unidades.
 // ============================================================
 import { useEffect, useRef, useState } from 'react';
-import { Minus, Plus, RotateCcw, RotateCw, Maximize2 } from 'lucide-react';
+import { Minus, Plus, RotateCcw, RotateCw, Maximize2, Minimize2, Fullscreen } from 'lucide-react';
 import type { TallerWorld, TallerBayState } from './world/TallerWorld';
 import { TALLER_BAYS } from './world/TallerWorld';
 import { estadoBahia, BAY_COLOR, BAY_LABEL, type BayEstado, type TallerSnapshot } from './taller-types';
@@ -20,11 +20,27 @@ interface Props {
 
 export default function Taller3D({ snapshot, selectedUnitId, attentionIds, onSelectUnit, onSelectBay }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<TallerWorld | null>(null);
   const cbRef = useRef({ onSelectUnit, onSelectBay });
   cbRef.current = { onSelectUnit, onSelectBay };
   const [zoom, setZoom] = useState(1);
+  const [fullscreen, setFullscreen] = useState(false);
   const [counts, setCounts] = useState<Partial<Record<BayEstado, number>>>({});
+
+  useEffect(() => {
+    const onFs = () => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  }, []);
+
+  // Pantalla completa: el interior del taller ocupa todo el monitor
+  // (útil para operar o proyectar). TallerWorld escucha resize y
+  // re-encuadra la cámara ortográfica solo.
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+    wrapRef.current?.requestFullscreen?.().catch(() => {});
+  };
 
   useEffect(() => {
     let alive = true;
@@ -100,7 +116,7 @@ export default function Taller3D({ snapshot, selectedUnitId, attentionIds, onSel
 
   const w = () => worldRef.current;
   return (
-    <div className="ccw-wrap">
+    <div className="ccw-wrap" ref={wrapRef}>
       <div ref={hostRef} className="ccw-host" />
       <div className="ccw-ctrls" role="toolbar" aria-label="Cámara del taller">
         <button onClick={() => w()?.zoomBy(1.35)} title="Acercar" aria-label="Acercar"><Plus size={15} /></button>
@@ -110,6 +126,11 @@ export default function Taller3D({ snapshot, selectedUnitId, attentionIds, onSel
         <button onClick={() => w()?.rotateBy(0.35)} title="Girar a la izquierda" aria-label="Girar a la izquierda"><RotateCcw size={14} /></button>
         <button onClick={() => w()?.rotateBy(-0.35)} title="Girar a la derecha" aria-label="Girar a la derecha"><RotateCw size={14} /></button>
         <button onClick={() => w()?.resetView()} title="Ver todo el taller" aria-label="Ver todo el taller"><Maximize2 size={14} /></button>
+        <i />
+        <button onClick={toggleFullscreen} title={fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+          aria-label={fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'} aria-pressed={fullscreen}>
+          {fullscreen ? <Minimize2 size={14} /> : <Fullscreen size={14} />}
+        </button>
       </div>
       <div className="ccw-legend" aria-label="Estados de bahía">
         {(Object.keys(BAY_LABEL) as BayEstado[]).map((k) => (
