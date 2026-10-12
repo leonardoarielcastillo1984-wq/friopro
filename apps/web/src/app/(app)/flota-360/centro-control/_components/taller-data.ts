@@ -9,7 +9,11 @@ import type { TallerSnapshot, TallerUnidad, TallerOT, TallerEpisodio, TallerMeca
 
 export async function fetchTallerResumen(): Promise<TallerSnapshot | null> {
   try {
-    return await apiFetch<TallerSnapshot>('/fleet-ops/taller-resumen');
+    const s = await apiFetch<TallerSnapshot>('/fleet-ops/taller-resumen');
+    // apiFetch devuelve {} ante cualquier error HTTP — validar el shape
+    // real del snapshot antes de exponerlo a la UI.
+    if (!s || typeof s !== 'object' || !s.kpis || !Array.isArray(s.ots)) return null;
+    return s;
   } catch {
     return null;
   }

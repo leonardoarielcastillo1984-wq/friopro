@@ -230,16 +230,19 @@ export default function CentroControlPage() {
               flashId={flashId}
               mode={mode}
               sector={sector}
-              onSectorChange={setSector}
+              onSectorChange={(s) => {
+                setSector(s);
+                setTallerInside(s === 'taller');
+              }}
               scenario={scenario}
             />
           )}
           {!tallerInside && <SectorPanel sector={sector} units={units} kpis={kpis} scenario={scenario} />}
-          {inTaller && tallerSnap && (
+          {inTaller && (
             <div className="cc-taller-overlay">
               <div className="cc-taller-head">
                 <b>TALLER</b>
-                <small>{tallerSnap.kpis.unidadesEnTaller} unidades · {tallerSnap.kpis.otsAbiertas} OTs</small>
+                <small>{tallerSnap ? `${tallerSnap.kpis.unidadesEnTaller} unidades · ${tallerSnap.kpis.otsAbiertas} OTs` : 'sin datos'}</small>
                 <button
                   className="cc-taller-toggle"
                   onClick={() => setTallerInside((v) => !v)}
@@ -247,14 +250,20 @@ export default function CentroControlPage() {
                   {tallerInside ? '← Volver al predio' : 'Ingresar al taller 3D'}
                 </button>
               </div>
-              <TallerPanel
-                snapshot={tallerSnap}
-                mode={mode}
-                attention={tallerAttention}
-                onToggleAttention={() => setTallerAttention((v) => !v)}
-                onSelectUnit={onSelectById}
-                onChanged={loadReal}
-              />
+              {tallerSnap ? (
+                <TallerPanel
+                  snapshot={tallerSnap}
+                  mode={mode}
+                  attention={tallerAttention}
+                  onToggleAttention={() => setTallerAttention((v) => !v)}
+                  onSelectUnit={onSelectById}
+                  onChanged={loadReal}
+                />
+              ) : (
+                <div className="cct-empty" style={{ padding: '24px 14px' }}>
+                  No se pudo cargar el resumen del taller.
+                </div>
+              )}
             </div>
           )}
         </div>

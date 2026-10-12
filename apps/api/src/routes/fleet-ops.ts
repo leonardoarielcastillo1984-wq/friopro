@@ -5178,7 +5178,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
 
     // Assets de flota: maintenanceAssetId de cada Vehiculo (misma regla que maintenance.ts scope=fleet)
     const vehiculos = await p.vehiculo.findMany({
-      where: { tenantId, deletedAt: null },
+      where: { tenantId },
       select: {
         id: true, dominio: true, tipo: true, marca: true, modelo: true,
         estadoOperativo: true, status: true, currentOdometer: true,
