@@ -45,7 +45,10 @@ const H_W = -Math.PI / 2;   // mirando al oeste (-X): culata contra la nave
 export const BUILDINGS: BuildingDef[] = [
   { key: 'garita', model: 'site-office', label: 'GARITA', sub: 'Control de acceso', x: -99, z: -87, rot: 0.5, scale: 1, labelY: 6 },
   // Taller: nave industrial dominante del predio (multi-caballete)
-  { key: 'taller', model: 'factory', label: 'TALLER', sub: 'Mantenimiento y reparación', x: 64, z: -20, rot: 0, scale: 1.8, labelY: 30 },
+  {
+    key: 'taller', model: 'factory', label: 'TALLER', sub: 'Mantenimiento y reparación', x: 64, z: -20, rot: 0, scale: 1.8, labelY: 30,
+    workshop: { x0: 30, x1: 100, z0: -54, z1: 11, doors: [50, 66, 82], spans: 3 },
+  },
   // Lavadero de camiones (franja norte, junto a la garita)
   { key: 'lavadero', model: 'car-wash', label: 'LAVADERO', sub: 'Lavado de unidades', x: 20, z: -87, rot: 0, scale: 1.2, labelY: 10 },
 ];

@@ -1,0 +1,2 @@
+Texturas: Poly Haven (https://polyhaven.com) - licencia CC0.
+aerial_asphalt_01, concrete_floor_02, aerial_ground_rock, sparse_grass, corrugated_iron

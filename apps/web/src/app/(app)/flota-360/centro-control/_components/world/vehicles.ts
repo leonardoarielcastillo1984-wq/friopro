@@ -4,6 +4,7 @@
 // ============================================================
 import * as THREE from 'three';
 import { instance } from './assets';
+import { tractorKit, trailerKit } from './vehicle-kit';
 import type { VehicleKind, V2 } from './layout';
 
 const MODEL_FOR: Record<VehicleKind, string> = {
@@ -81,6 +82,11 @@ export class Vehicle {
     const mid = (Math.min(...zs) + Math.max(...zs)) / 2;
     const rear = zs.filter((z) => z < mid);
     const rearAxle = rear.length ? rear.reduce((a, b) => a + b, 0) / rear.length : 0;
+
+    if (this.modelName === 'semi-truck' && this.trailer?.parent) {
+      this.trailer.parent.add(tractorKit());
+      this.trailer.add(trailerKit());
+    }
 
     if (this.kind === 'trailer') {
       // Solo semirremolque: ocultar tractor, pivote en el perno rey

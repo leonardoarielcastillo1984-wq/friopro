@@ -6,6 +6,8 @@
 // ============================================================
 import type { VisualStatus } from '../types';
 
+import type { WorkshopSpec } from './workshop';
+
 export type V2 = [number, number];
 export interface Rect { x0: number; z0: number; x1: number; z1: number }
 
@@ -18,6 +20,7 @@ export interface BuildingDef {
   rot: number;
   scale: number;
   labelY: number;
+  workshop?: WorkshopSpec;
 }
 
 export interface Slot {

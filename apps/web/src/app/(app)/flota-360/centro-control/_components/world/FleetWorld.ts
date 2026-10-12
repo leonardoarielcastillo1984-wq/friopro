@@ -9,6 +9,8 @@ import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRe
 import type { CCUnit } from '../types';
 import { instance, instanceSkinned, placeOnGround, preload, MODEL_LIST, PEOPLE } from './assets';
 import { buildGround, buildFence } from './ground';
+import { buildWorkshop } from './workshop';
+import { buildTrees, type TreeItem, type TreeKind } from './trees';
 import { Vehicle } from './vehicles';
 import {
   kindFor, STATUS_COLOR, type Slot, type SlotGroup, type V2, type Scenario,
@@ -153,6 +155,7 @@ export class FleetWorld {
   private sun!: THREE.DirectionalLight;
   private envTex: THREE.Texture | null = null;
   private groundMats: THREE.MeshStandardMaterial[] = [];
+  private treesUpdate: ((t: number) => void) | null = null;
   private lightMix = 0;              // 0 = día, 1 = noche (interpolado)
   private lightTarget = 0;
   private lampGlows: THREE.Object3D[] = [];
@@ -354,7 +357,14 @@ export class FleetWorld {
   private async buildFacility() {
     for (const b of this.S.buildings) {
       let top = b.labelY;
-      if (b.model) {
+      if (b.workshop) {
+        const { root, nightGlows } = buildWorkshop(b.workshop, this.renderer.capabilities.getMaxAnisotropy());
+        root.userData.buildingKey = b.key;
+        this.scene.add(root);
+        this.buildingRoots.push(root);
+        this.lampGlows.push(...nightGlows);
+        top = new THREE.Box3().setFromObject(root).max.y;
+      } else if (b.model) {
         const obj = await instance(b.model);
         placeOnGround(obj, b.x, b.z, b.rot, b.scale);
         obj.traverse((o) => { o.matrixAutoUpdate = false; o.updateMatrix(); });
@@ -419,12 +429,21 @@ export class FleetWorld {
   private async buildVegetation() {
     const jobs: Promise<unknown>[] = [];
     const trees = ['oak-tree', 'pine-tree', 'cypress-tree', 'oak-tree'];
+    const KIND: Record<string, [TreeKind, number]> = {
+      'oak-tree': ['broad', 0.65], 'pine-tree': ['conifer', 0.5], 'cypress-tree': ['conifer', 0.42], bush: ['shrub', 0.55],
+    };
+    const procedural: TreeItem[] = [];
     let i = 0;
     for (const v of this.S.vegetation) {
       const n = v.model ?? trees[(i++ * 2654435761 % 97) % trees.length];
       const jx = v.jitter ?? 0;
       const x = v.x + (jx ? ((i * 7919) % 100 / 100 - 0.5) * jx : 0);
       const z = v.z + (jx ? ((i * 104729) % 100 / 100 - 0.5) * jx : 0);
+      const k = KIND[n];
+      if (k) {
+        procedural.push({ x, z, rot: v.rot ?? (i * 0.7) % 6.28, scale: (v.scale ?? 1) * k[1], kind: k[0] });
+        continue;
+      }
       jobs.push(this.put(n, x, z, v.rot ?? (i * 0.7) % 6.28, v.scale ?? 1).then((o) => {
         // balanceo sutil al viento: solo una fracción para no recalcular matrices de todo
         if (v.sway && this.swayTrees.length < 46) {
@@ -432,6 +451,11 @@ export class FleetWorld {
           this.swayTrees.push({ o, phase: i * 0.61, amp: 0.018 + (i % 20) * 0.001 });
         }
       }));
+    }
+    if (procedural.length) {
+      const t = buildTrees(procedural);
+      this.scene.add(t.group);
+      this.treesUpdate = t.update;
     }
     await Promise.all(jobs);
   }
@@ -1190,6 +1214,7 @@ export class FleetWorld {
       for (const s of this.swayTrees) {
         s.o.rotation.z = Math.sin(t * 1.4 + s.phase) * s.amp;
       }
+      this.treesUpdate?.(t);
     }
     if (this.gateArm) {
       const targetRot = gateBusy ? Math.PI / 2.3 : 0;

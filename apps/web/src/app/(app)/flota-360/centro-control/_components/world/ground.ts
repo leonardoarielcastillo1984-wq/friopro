@@ -77,6 +77,83 @@ function withDetail(mat: THREE.MeshStandardMaterial, d: { normal: THREE.Texture;
   return mat;
 }
 
+// ── Detalle fotográfico (Poly Haven, CC0) ──
+// El canvas pintado define layout, demarcación y manchas; las fotos aportan
+// el grano real del material. Se modula el color por la razón foto/promedio
+// (el promedio sale del último nivel de mipmap), mezclando dos escalas para
+// romper la repetición. Máscara: R=asfalto, G=hormigón, B=tierra, resto=pasto.
+const TEX_BASE = '/cc-assets/tex';
+const SURF_TILE = { asph: 30, conc: 4, dirt: 20, grass: 5 };   // metros por repetición
+let photoSet: Promise<Record<'asph' | 'conc' | 'dirt' | 'grass', THREE.Texture>> | null = null;
+function loadPhotoSet(maxAniso: number) {
+  if (!photoSet) {
+    const loader = new THREE.TextureLoader();
+    const one = (f: string) => loader.loadAsync(`${TEX_BASE}/${f}`).then((t) => {
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = maxAniso;
+      return t;
+    });
+    photoSet = Promise.all([one('asphalt_diff.jpg'), one('concrete_diff.jpg'), one('dirt_diff.jpg'), one('grass_diff.jpg')])
+      .then(([asph, conc, dirt, grass]) => ({ asph, conc, dirt, grass }));
+  }
+  return photoSet;
+}
+
+const BLACK_1PX = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
+BLACK_1PX.needsUpdate = true;
+
+// metersPerUv: metros que abarca 1 unidad de vMapUv (incluye el repeat del map).
+// weights: si no hay máscara, mezcla fija (asfalto, hormigón, tierra, pasto).
+function withPhotoDetail(
+  mat: THREE.MeshStandardMaterial, maxAniso: number, metersPerUv: [number, number],
+  opts: { mask?: THREE.Texture; weights?: [number, number, number, number]; strength?: number },
+) {
+  const u = {
+    tAsph: { value: BLACK_1PX as THREE.Texture }, tConc: { value: BLACK_1PX as THREE.Texture },
+    tDirt: { value: BLACK_1PX as THREE.Texture }, tGrass: { value: BLACK_1PX as THREE.Texture },
+    tMask: { value: opts.mask ?? BLACK_1PX },
+    uUseMask: { value: opts.mask ? 1 : 0 },
+    uWeights: { value: new THREE.Vector4(...(opts.weights ?? [0, 0, 0, 1])) },
+    uMpu: { value: new THREE.Vector2(...metersPerUv) },
+    uTile: { value: new THREE.Vector4(SURF_TILE.asph, SURF_TILE.conc, SURF_TILE.dirt, SURF_TILE.grass) },
+    uDetail: { value: 0 },
+  };
+  mat.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, u);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+uniform sampler2D tAsph; uniform sampler2D tConc; uniform sampler2D tDirt; uniform sampler2D tGrass; uniform sampler2D tMask;
+uniform float uUseMask; uniform vec4 uWeights; uniform vec2 uMpu; uniform vec4 uTile; uniform float uDetail;
+vec3 phDetail(sampler2D t, vec2 m, float tile) {
+  vec2 p = m / tile;
+  vec3 a = texture2D(t, p).rgb;
+  vec3 b = texture2D(t, vec2(p.y, -p.x) * 0.29 + vec2(0.37, 0.11)).rgb;
+  vec3 avg = textureLod(t, vec2(0.5), 14.0).rgb;
+  return clamp(mix(a, b, 0.38) / max(avg, vec3(0.015)), 0.25, 2.4);
+}`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+if (uDetail > 0.0) {
+  vec2 m = vMapUv * uMpu;
+  vec4 w = uWeights;
+  if (uUseMask > 0.5) { vec3 k = texture2D(tMask, vMapUv).rgb; w = vec4(k, clamp(1.0 - k.r - k.g - k.b, 0.0, 1.0)); }
+  vec3 r = vec3(0.0);
+  if (w.x > 0.002) r += phDetail(tAsph, m, uTile.x) * w.x;
+  if (w.y > 0.002) r += phDetail(tConc, m, uTile.y) * w.y;
+  if (w.z > 0.002) r += phDetail(tDirt, m, uTile.z) * w.z;
+  if (w.w > 0.002) r += phDetail(tGrass, m, uTile.w) * w.w;
+  float ws = w.x + w.y + w.z + w.w;
+  if (ws > 0.001) diffuseColor.rgb *= mix(vec3(1.0), r / ws, uDetail);
+}`);
+  };
+  mat.customProgramCacheKey = () => 'cc-photo-detail';
+  loadPhotoSet(maxAniso).then((p) => {
+    u.tAsph.value = p.asph; u.tConc.value = p.conc; u.tDirt.value = p.dirt; u.tGrass.value = p.grass;
+    u.uDetail.value = opts.strength ?? 0.85;
+  }).catch((e) => console.warn('[CentroControl] texturas de superficie no disponibles', e));
+  return mat;
+}
+
 export interface GroundSpec {
   bounds: Rect;
   highwayZ: number;
@@ -95,6 +172,17 @@ export function buildGround(scene: THREE.Scene, maxAniso: number, spec: GroundSp
   const Z = (z: number) => (z - BOUNDS.z0) * S;
   const rect = (x0: number, z0: number, x1: number, z1: number) => g.fillRect(X(x0), Z(z0), (x1 - x0) * S, (z1 - z0) * S);
   const rand = rng(7);
+
+  // Máscara de superficies (2 px/m): negro = pasto
+  const MS = 2;
+  const mcv = document.createElement('canvas');
+  mcv.width = Math.ceil((BOUNDS.x1 - BOUNDS.x0) * MS); mcv.height = Math.ceil((BOUNDS.z1 - BOUNDS.z0) * MS);
+  const mg = mcv.getContext('2d')!;
+  mg.fillStyle = '#000'; mg.fillRect(0, 0, mcv.width, mcv.height);
+  const mask = (color: string, x0: number, z0: number, x1: number, z1: number) => {
+    mg.fillStyle = color;
+    mg.fillRect((x0 - BOUNDS.x0) * MS, (z0 - BOUNDS.z0) * MS, (x1 - x0) * MS, (z1 - z0) * MS);
+  };
 
   const noise = (x0: number, z0: number, x1: number, z1: number, colors: string[], n: number, size: [number, number]) => {
     for (let i = 0; i < n; i++) {
@@ -172,6 +260,7 @@ export function buildGround(scene: THREE.Scene, maxAniso: number, spec: GroundSp
 
   const concrete = (x0: number, z0: number, x1: number, z1: number) => {
     const A = (x1 - x0) * (z1 - z0);
+    mask('#00ff00', x0, z0, x1, z1);
     g.fillStyle = '#b0aca2';
     rect(x0, z0, x1, z1);
     clipped(x0, z0, x1, z1, () => {
@@ -205,6 +294,8 @@ export function buildGround(scene: THREE.Scene, maxAniso: number, spec: GroundSp
 
   const lawn = (x0: number, z0: number, x1: number, z1: number) => {
     const A = (x1 - x0) * (z1 - z0);
+    mask('#00ff00', x0 - 0.6, z0 - 0.6, x1 + 0.6, z1 + 0.6);
+    mask('#000000', x0, z0, x1, z1);
     g.fillStyle = '#cfcabd'; rect(x0 - 0.6, z0 - 0.6, x1 + 0.6, z1 + 0.6); // cordón
     g.fillStyle = 'rgba(90,84,74,.35)'; rect(x0 - 0.6, z1 + 0.3, x1 + 0.6, z1 + 0.6);
     g.fillStyle = '#6c8e4c'; rect(x0, z0, x1, z1);
@@ -216,6 +307,7 @@ export function buildGround(scene: THREE.Scene, maxAniso: number, spec: GroundSp
 
   const asphalt = (x0: number, z0: number, x1: number, z1: number) => {
     const A = (x1 - x0) * (z1 - z0);
+    mask('#ff0000', x0, z0, x1, z1);
     g.fillStyle = '#3b3f44';
     rect(x0, z0, x1, z1);
     clipped(x0, z0, x1, z1, () => {
@@ -238,12 +330,14 @@ export function buildGround(scene: THREE.Scene, maxAniso: number, spec: GroundSp
   };
 
   const vereda = (x0: number, z0: number, x1: number, z1: number) => {
+    mask('#00ff00', x0, z0, x1, z1);
     g.fillStyle = '#d6d2c8';
     rect(x0, z0, x1, z1);
   };
 
   const dirt = (x0: number, z0: number, x1: number, z1: number) => {
     const A = (x1 - x0) * (z1 - z0);
+    mask('#0000ff', x0, z0, x1, z1);
     g.fillStyle = '#9c876a';
     rect(x0, z0, x1, z1);
     clipped(x0, z0, x1, z1, () => {
@@ -346,10 +440,13 @@ export function buildGround(scene: THREE.Scene, maxAniso: number, spec: GroundSp
 
   const w = BOUNDS.x1 - BOUNDS.x0, h = BOUNDS.z1 - BOUNDS.z0;
   const detail = detailMaps(maxAniso);
-  const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(w, h),
-    withDetail(new THREE.MeshStandardMaterial({ map: tex, metalness: 0 }), detail, w / 5, h / 5),
-  );
+  const maskTex = new THREE.CanvasTexture(mcv);
+  maskTex.colorSpace = THREE.NoColorSpace;
+  maskTex.generateMipmaps = false;
+  maskTex.minFilter = THREE.LinearFilter;
+  const groundMat = withDetail(new THREE.MeshStandardMaterial({ map: tex, metalness: 0 }), detail, w / 5, h / 5);
+  withPhotoDetail(groundMat, maxAniso, [w, h], { mask: maskTex });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), groundMat);
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.set((BOUNDS.x0 + BOUNDS.x1) / 2, 0, (BOUNDS.z0 + BOUNDS.z1) / 2);
   mesh.receiveShadow = true;
@@ -363,12 +460,14 @@ export function buildGround(scene: THREE.Scene, maxAniso: number, spec: GroundSp
     withDetail(new THREE.MeshStandardMaterial({ map: grassTile(maxAniso), metalness: 0 }), detail, 600, 600, 0.4),
   );
   (outer.material as THREE.MeshStandardMaterial).map!.repeat.set(3000 / 90, 3000 / 90);
+  withPhotoDetail(outer.material as THREE.MeshStandardMaterial, maxAniso, [90, 90], { weights: [0, 0, 0, 1] });
   outer.rotation.x = -Math.PI / 2;
   outer.position.y = -0.05;
   outer.receiveShadow = true;
   scene.add(outer);
   const hw = buildHighway(maxAniso, HIGHWAY_Z, HIGHWAY_W);
   withDetail(hw.material as THREE.MeshStandardMaterial, detail, 2400 / 5, (HIGHWAY_W + 4) / 5);
+  withPhotoDetail(hw.material as THREE.MeshStandardMaterial, maxAniso, [24, HIGHWAY_W + 4], { weights: [1, 0, 0, 0] });
   hw.userData.groundSurface = true;
   scene.add(hw);
   return mesh;
