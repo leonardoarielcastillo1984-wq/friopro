@@ -54,6 +54,8 @@ export function kindFor(tipo: string | undefined | null): VehicleKind {
   if (t.includes('SEMI') || t.includes('ACOPLADO') || t.includes('REMOLQUE')) return 'trailer';
   if (t.includes('GRUA') || t.includes('GRÚA')) return 'tow';
   if (t.includes('CAMIONETA') || t.includes('PICK') || t.includes('UTIL')) return 'pickup';
+  // CAMION = cabezal tractor que acopla semis (en esta flota "CAMIÓN" no es rígido)
+  if (t.includes('CAMION')) return 'tractor';
   return 'rigid';
 }
 
