@@ -2130,12 +2130,13 @@ export default async function finanzasRoutes(app: FastifyInstance) {
 
   // ═══════════════════════════════════════════════════════════════
   // SINCRONIZACIÓN AUTOMÁTICA SII (Chile)
-  // Baja el RCV vía BaseAPI (api.baseapi.cl) con las credenciales del
-  // contribuyente guardadas CIFRADAS en resultadosConfig.sii (AES-256-CBC,
-  // misma clave que las API keys de LLM). Los documentos pasan por el
-  // mismo ingest del CSV → dedup automático por folio + RUT.
-  // La API key de la plataforma va en env BASEAPI_API_KEY (cuenta nuestra,
-  // no del tenant). Cuando el provider cambie, solo cambia fetchRcvDatos.
+  // Baja el RCV vía APIGateway.cl con las credenciales del contribuyente
+  // guardadas CIFRADAS en resultadosConfig.sii (AES-256-CBC, misma clave
+  // que las API keys de LLM). Los documentos pasan por el mismo ingest
+  // del CSV → dedup automático por folio + RUT.
+  // El token de la plataforma va en env APIGATEWAY_API_TOKEN (cuenta
+  // nuestra, no del tenant). Provider aislado en fetchRcvDatos: si hay
+  // que migrar a la API oficial del SII, solo cambia esa función.
   // ═══════════════════════════════════════════════════════════════
   const normKey = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
   // RUT SII: '778873427' → '77887342-7' (el provider espera el guión)
@@ -2165,20 +2166,24 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     };
     const filas: any[] = [];
     for (const row of datos || []) {
-      const folioRaw = String(buscar(row, ['folio']) ?? '').trim();
+      const folioRaw = String(buscar(row, ['folio', 'nrodoc', 'nro doc']) ?? '').trim();
       const folio = folioRaw.replace(/^0+/, '') || folioRaw;
-      const fecha = parseFecha(buscar(row, ['fecha docto', 'fecha']));
-      const total = toNum(buscar(row, ['monto total']));
+      const fecha = parseFecha(buscar(row, ['fecha docto', 'fchdoc', 'fecha']));
+      const total = toNum(buscar(row, ['monto total', 'mnttotal']));
       if (!folio || !fecha || !total) continue;
+      // RUT del documento: algunos providers separan DV (detRutDoc + detDvDoc)
+      const rutBase = String(buscar(row, ['rut']) ?? '').trim();
+      const dv = String(buscar(row, ['dvdoc', 'dv doc', 'digito']) ?? '').trim();
+      const rut = rutBase && dv && !rutBase.includes('-') ? `${rutBase}-${dv}` : (rutBase || null);
       filas.push({
-        tipoDoc: String(buscar(row, ['tipo doc']) ?? '33').trim() || '33',
+        tipoDoc: String(buscar(row, ['tipo doc', 'tipodoc']) ?? '33').trim() || '33',
         folio,
-        rut: String(buscar(row, ['rut']) ?? '').trim() || null,
-        razonSocial: String(buscar(row, ['razon social']) ?? '').trim() || null,
+        rut,
+        razonSocial: String(buscar(row, ['razon social', 'rznso']) ?? '').trim() || null,
         fecha,
-        exento: toNum(buscar(row, ['monto exento'])),
-        neto: toNum(buscar(row, ['monto neto'])),
-        iva: toNum(buscar(row, ['monto iva recuperable', 'monto iva'])),
+        exento: toNum(buscar(row, ['monto exento', 'mntexe'])),
+        neto: toNum(buscar(row, ['monto neto', 'mntneto'])),
+        iva: toNum(buscar(row, ['monto iva recuperable', 'monto iva', 'mntiva'])),
         ivaNoRecuperable: toNum(buscar(row, ['monto iva no recuperable'])),
         total,
       });
@@ -2186,19 +2191,28 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     return filas;
   }
 
+  // APIGateway.cl — RCV detalle. dte=0 = todos los tipos de documento en
+  // una sola consulta; compras usa estado REGISTRO (los que cuentan como
+  // gasto). Auth: token de plataforma en header + RUT/clave del
+  // contribuyente en body.auth.pass.
   async function fetchRcvDatos(rut: string, clave: string, rutEmpresa: string | null | undefined, periodo: string, tipo: 'compra' | 'venta') {
-    const apiKey = process.env.BASEAPI_API_KEY;
-    if (!apiKey) throw new Error('Falta configurar BASEAPI_API_KEY en el servidor');
-    const resp = await fetch(`https://api.baseapi.cl/api/v1/sii/rcv/${periodo}/${tipo}`, {
+    const token = process.env.APIGATEWAY_API_TOKEN;
+    if (!token) throw new Error('Falta configurar APIGATEWAY_API_TOKEN en el servidor');
+    const yyyymm = periodo.replace('-', '');
+    const contribuyente = rutEmpresa || rut; // el RUT cuyo RCV se consulta (path)
+    const url = tipo === 'compra'
+      ? `https://app.apigateway.cl/api/v2/sii/rcv/compras/detalle/${contribuyente}/${yyyymm}/0/REGISTRO`
+      : `https://app.apigateway.cl/api/v2/sii/rcv/ventas/detalle/${contribuyente}/${yyyymm}/0`;
+    const resp = await fetch(url, {
       method: 'POST',
-      headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rut, password: clave, ...(rutEmpresa ? { rut_empresa: rutEmpresa } : {}) }),
+      headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auth: { pass: { rut, clave } } }),
     });
     const json: any = await resp.json().catch(() => null);
     if (!resp.ok || json?.success === false) {
       throw new Error(`SII/${tipo}: ${json?.message || json?.error || `HTTP ${resp.status}`}`);
     }
-    return json?.data?.datos || [];
+    return Array.isArray(json?.data) ? json.data : (json?.data?.datos || []);
   }
 
   app.post('/sii-sync', async (req: FastifyRequest, reply: FastifyReply) => {
