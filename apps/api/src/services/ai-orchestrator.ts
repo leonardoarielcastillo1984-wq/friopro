@@ -196,14 +196,21 @@ Responde SIEMPRE en español, de forma clara y ejecutiva.
 Basa TODA tu respuesta exclusivamente en los datos provistos.
 Si detectas riesgos o alertas en los datos reales, destácalos.
 
-CONTEXTO SGI360:
-- Project360: gestión de proyectos completa
-- Flota360: gestión de vehículos y activos
-- RRHH: gestión de personas y capacitaciones
-- Auditorías: compliance ISO y auditorías
-- Riesgos: gestión de riesgos empresariales
-- NCR/CAPA: no conformidades y acciones correctivas
-- Documentos: sistema documental ISO`,
+CONTEXTO SGI360 — MAPA DE FUENTES (dónde vive cada dato):
+- RRHH: empleados, cargos, MATRIZ DE COMPETENCIAS (requisito por cargo vs nivel actual evaluado) y capacitaciones.
+- Calidad: NCRs, CAPAs, auditorías y sus hallazgos por severidad, reclamos de clientes.
+- Flota360/Mantenimiento: vehículos y sus estados, órdenes de trabajo (OT) por prioridad, activos en taller.
+- Compras: proveedores por estado (habilitados/pendientes/suspendidos), evaluaciones vencidas, proveedores críticos.
+- Comercial: clientes registrados y reclamos abiertos.
+- Documental: documentos ISO, obsoletos y pendientes de aprobación.
+- Dirección/Estrategia: objetivos SGI, indicadores, plan de acción y sus vencimientos.
+- Project360: proyectos y avance. Procesos: mapa de procesos. Riesgos: matriz por nivel.
+
+CÓMO RESPONDER:
+- Los "Datos del sistema" ya son el resultado de haber consultado esas fuentes: interpretalos directamente.
+- Si la sección de un módulo no aparece o dice "sin datos", sé preciso: "Verifiqué RRHH → matriz de competencias: no hay evaluaciones cargadas" y sugerí dónde cargar el dato en SGI360.
+- Cruzá módulos cuando la pregunta lo pida (ej: brechas de competencia + capacitaciones programadas que las cubran).
+- NUNCA inventes números, nombres ni fechas: solo lo que está en los datos.`,
 
   openai: `Eres SGI360 Executive Intelligence, el asesor estratégico premium de SGI360.
 
@@ -823,7 +830,7 @@ export class AIOrchestrator {
     
     try {
       // Cargar todos los módulos en paralelo siempre
-      const allModules = ['project360', 'risks', 'hr', 'flota360', 'quality', 'ncr', 'inspections', 'audits', 'documents', 'trainings', 'objectives', 'changes', 'processes', 'indicators'];
+      const allModules = ['project360', 'risks', 'hr', 'flota360', 'quality', 'ncr', 'inspections', 'audits', 'documents', 'trainings', 'competencies', 'objectives', 'changes', 'processes', 'indicators', 'suppliers', 'maintenance', 'actions', 'customers'];
       for (const module of allModules) {
         switch (module) {
           case 'project360':
@@ -1054,25 +1061,91 @@ export class AIOrchestrator {
 
           case 'trainings': {
             try {
-              const trainings = await this.prisma.$queryRaw<any[]>`
-                SELECT t.title, t.status, t."startDate", t."endDate",
-                       t."trainingType", t.mode
-                FROM "SgiTraining" t
-                WHERE t."tenantId" = ${tenantId}::uuid
-                ORDER BY t."startDate" DESC NULLS LAST
-                LIMIT 20
-              `;
+              // Prisma accessor (el raw SQL anterior consultaba columnas
+              // inexistentes: startDate/endDate/trainingType/mode).
+              const trainings = await this.db.sgiTraining?.findMany({
+                where: { tenantId, deletedAt: null },
+                select: {
+                  title: true, status: true, category: true, modality: true,
+                  scheduledDate: true, completedDate: true, expectedParticipants: true,
+                  _count: { select: { attendees: true } },
+                },
+                orderBy: { scheduledDate: 'desc' },
+                take: 20,
+              }) || [];
               if (trainings.length > 0) {
                 const byStatus: Record<string, number> = {};
                 trainings.forEach((t: any) => { byStatus[t.status] = (byStatus[t.status] || 0) + 1; });
                 const statusStr = Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ');
                 const examples = trainings.slice(0, 8).map((t: any) =>
-                  `• ${t.title} (${t.status}, ${t.trainingType || 'N/A'})${t.startDate ? ` — Inicio: ${new Date(t.startDate).toLocaleDateString('es-AR')}` : ''}`
+                  `• ${t.title} (${t.status}${t.category ? `, ${t.category}` : ''})${t.scheduledDate ? ` — Fecha: ${new Date(t.scheduledDate).toLocaleDateString('es-AR')}` : ''}${t._count?.attendees ? ` — ${t._count.attendees} asistentes` : ''}`
                 ).join('\n');
-                dataSections.push(`Capacitaciones — Total: ${trainings.length} (${statusStr})\n${examples}`);
+                dataSections.push(`Capacitaciones (RRHH) — Total: ${trainings.length} (${statusStr})\n${examples}`);
+              } else {
+                dataSections.push('Capacitaciones (RRHH) — módulo verificado: no hay capacitaciones registradas.');
               }
             } catch (e) {
               console.error('[AI Orchestrator] Error fetching trainings context:', e);
+            }
+            break;
+          }
+
+          case 'competencies': {
+            try {
+              // Matriz de competencias: DEBE (position_competencies por cargo)
+              // vs ES (employee_competencies evaluado). Brecha = sin evaluar o
+              // currentLevel < requiredLevel.
+              const db = this.db;
+              const [posReqs, employees, empComps] = await Promise.all([
+                db.positionCompetency?.findMany({
+                  where: { position: { tenantId, deletedAt: null } },
+                  select: {
+                    positionId: true, competencyId: true, requiredLevel: true,
+                    position: { select: { name: true } },
+                    competency: { select: { name: true, category: true } },
+                  },
+                }) || [],
+                db.employee?.findMany({
+                  where: { tenantId, deletedAt: null, status: 'ACTIVE' },
+                  select: { id: true, firstName: true, lastName: true, positionId: true },
+                  take: 300,
+                }) || [],
+                db.employeeCompetency?.findMany({
+                  where: { employee: { tenantId } },
+                  select: { employeeId: true, competencyId: true, currentLevel: true },
+                }) || [],
+              ]);
+              const reqByPos = new Map<string, any[]>();
+              (posReqs as any[]).forEach((r: any) => {
+                const arr = reqByPos.get(r.positionId) || [];
+                arr.push(r);
+                reqByPos.set(r.positionId, arr);
+              });
+              const curMap = new Map<string, number>();
+              (empComps as any[]).forEach((e: any) => curMap.set(`${e.employeeId}:${e.competencyId}`, e.currentLevel));
+              const gaps: string[] = [];
+              for (const e of employees as any[]) {
+                const reqs = (e.positionId && reqByPos.get(e.positionId)) || [];
+                for (const r of reqs) {
+                  const cur = curMap.get(`${e.id}:${r.competencyId}`);
+                  if (cur === undefined) {
+                    gaps.push(`• ${e.firstName} ${e.lastName} — ${r.competency.name} (cargo ${r.position.name}): requiere ${r.requiredLevel}/5, SIN EVALUAR`);
+                  } else if (cur < r.requiredLevel) {
+                    gaps.push(`• ${e.firstName} ${e.lastName} — ${r.competency.name} (cargo ${r.position.name}): tiene ${cur}/5, requiere ${r.requiredLevel}/5`);
+                  }
+                }
+              }
+              const totalReq = Array.from(reqByPos.values()).reduce((s, a) => s + a.length, 0);
+              if (totalReq > 0 || (empComps as any[]).length > 0) {
+                dataSections.push(
+                  `Matriz de Competencias (RRHH) — requisitos de cargo: ${totalReq}, evaluaciones registradas: ${(empComps as any[]).length}, BRECHAS: ${gaps.length}` +
+                  (gaps.length ? `\n${gaps.slice(0, 20).join('\n')}` : ' — sin brechas detectadas')
+                );
+              } else {
+                dataSections.push('Matriz de Competencias (RRHH) — módulo verificado: no hay requisitos de competencia por cargo ni evaluaciones cargadas.');
+              }
+            } catch (e) {
+              console.error('[AI Orchestrator] Error fetching competencies context:', e);
             }
             break;
           }
@@ -1156,6 +1229,89 @@ export class AIOrchestrator {
               }
             } catch (e) {
               console.error('[AI Orchestrator] Error fetching processes context:', e);
+            }
+            break;
+          }
+
+          case 'suppliers': {
+            try {
+              const sups = await this.db.supplier?.findMany({
+                where: { tenantId, deletedAt: null },
+                select: { name: true, status: true, isCritical: true, nextEvaluationDate: true, evaluationScore: true },
+                take: 300,
+              }) || [];
+              if (sups.length > 0) {
+                const bySt: Record<string, number> = {};
+                sups.forEach((s: any) => { bySt[s.status] = (bySt[s.status] || 0) + 1; });
+                const stStr = Object.entries(bySt).map(([s, c]) => `${s}: ${c}`).join(', ');
+                const vencidas = sups.filter((s: any) =>
+                  s.nextEvaluationDate && new Date(s.nextEvaluationDate).getTime() < Date.now() &&
+                  ['APPROVED', 'CONDITIONAL'].includes(s.status));
+                const criticos = sups.filter((s: any) => s.isCritical).length;
+                dataSections.push(
+                  `Proveedores (Compras) — Total: ${sups.length} (${stStr}), críticos: ${criticos}` +
+                  (vencidas.length ? `, EVALUACIONES VENCIDAS: ${vencidas.length} (${vencidas.slice(0, 8).map((s: any) => s.name).join(', ')})` : '')
+                );
+              } else {
+                dataSections.push('Proveedores (Compras) — módulo verificado: sin proveedores cargados.');
+              }
+            } catch (e) {
+              console.error('[AI Orchestrator] Error fetching suppliers context:', e);
+            }
+            break;
+          }
+
+          case 'maintenance': {
+            try {
+              const ots = await this.db.workOrder?.findMany({
+                where: { tenantId, status: { in: ['PENDING', 'IN_PROGRESS', 'ON_HOLD'] } },
+                select: { code: true, title: true, status: true, priority: true, type: true },
+                take: 50,
+              }) || [];
+              const enTaller = (await this.db.maintenanceAsset?.count({ where: { tenantId, status: 'MAINTENANCE' } })) ?? 0;
+              if (ots.length > 0 || enTaller > 0) {
+                const crit = ots.filter((o: any) => o.priority === 'CRITICAL');
+                dataSections.push(
+                  `Mantenimiento — OTs abiertas: ${ots.length} (${crit.length} críticas${crit.length ? `: ${crit.slice(0, 6).map((o: any) => o.title || o.code).join(', ')}` : ''}), activos en taller: ${enTaller}`
+                );
+              }
+            } catch (e) {
+              console.error('[AI Orchestrator] Error fetching maintenance context:', e);
+            }
+            break;
+          }
+
+          case 'actions': {
+            try {
+              const acts = await this.db.actionItem?.findMany({
+                where: { tenantId, status: { notIn: ['CLOSED', 'CANCELLED'] } },
+                select: { title: true, status: true, priority: true, dueDate: true },
+                take: 100,
+              }) || [];
+              if (acts.length > 0) {
+                const venc = acts.filter((a: any) => a.dueDate && new Date(a.dueDate).getTime() < Date.now());
+                dataSections.push(
+                  `Plan de Acción — acciones abiertas: ${acts.length}, VENCIDAS: ${venc.length}` +
+                  (venc.length ? ` (${venc.slice(0, 8).map((a: any) => a.title).join(', ')})` : '')
+                );
+              }
+            } catch (e) {
+              console.error('[AI Orchestrator] Error fetching actions context:', e);
+            }
+            break;
+          }
+
+          case 'customers': {
+            try {
+              const [cust, recl] = await Promise.all([
+                this.db.customer?.count({ where: { tenantId } }) ?? null,
+                this.db.customerComplaint?.count({ where: { tenantId, status: { not: 'CLOSED' } } }) ?? null,
+              ]);
+              if (cust !== null || recl !== null) {
+                dataSections.push(`Comercial — clientes registrados: ${cust ?? 'N/A'}, reclamos abiertos: ${recl ?? 'N/A'}`);
+              }
+            } catch (e) {
+              console.error('[AI Orchestrator] Error fetching customers context:', e);
             }
             break;
           }
