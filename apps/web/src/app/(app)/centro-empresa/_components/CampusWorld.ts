@@ -227,8 +227,10 @@ export class CampusWorld {
   private buildScene() {
     // Suelo fotorealista (mismo pipeline que flota-360)
     buildCampusGround(this.scene, this.renderer.capabilities.getMaxAnisotropy());
-    // Fuente central de la plaza
-    this.scene.add(buildFountain());
+    // Fuente de la plaza — frente al edificio de Dirección (que ocupa el centro)
+    const fountain = buildFountain();
+    fountain.position.set(0, 0, 9.5);
+    this.scene.add(fountain);
     // Decoración del mapa de procesos: bandas glow + flechas inter-banda
     const bands = buildBandFrames();
     const arrows = buildInterBandArrows();

@@ -33,12 +33,12 @@ export interface CampusLayout {
 // Escala/orientación por modelo para que los edificios se lean bien.
 export const MODEL_TUNE: Record<string, { scale: number; labelY: number }> = {
   'office-building': { scale: 0.62, labelY: 26 },
-  'site-office':     { scale: 0.85, labelY: 9 },
+  'site-office':     { scale: 1.15, labelY: 10 },
   'factory':         { scale: 0.55, labelY: 18 },
   'warehouse':       { scale: 0.55, labelY: 13 },
-  'car-wash':        { scale: 0.9,  labelY: 10 },
-  'gas-station':     { scale: 0.9,  labelY: 9 },
-  'water-tower':     { scale: 0.8,  labelY: 16 },
+  'car-wash':        { scale: 1.2,  labelY: 11 },
+  'gas-station':     { scale: 1.15, labelY: 10 },
+  'water-tower':     { scale: 1.0,  labelY: 16 },
 };
 
 const tune = (model: string) => MODEL_TUNE[model] ?? { scale: 0.7, labelY: 14 };
@@ -49,12 +49,24 @@ const tune = (model: string) => MODEL_TUNE[model] ?? { scale: 0.7, labelY: 14 };
 const RING_R: Record<DeptLayer, number> = { STRATEGIC: 34, OPERATIONAL: 48, SUPPORT: 62 };
 const RING_PHASE: Record<DeptLayer, number> = { STRATEGIC: Math.PI / 2, OPERATIONAL: 0, SUPPORT: Math.PI / 6 };
 
+// Dirección manda desde el centro de la plaza (donde estaba la fuente).
+const isDireccion = (d: EmpresaDept) => d.key === 'direccion' || /direcci/i.test(d.name);
+
 function campusLayout(depts: EmpresaDept[]): CampusLayout {
   const enabled = depts.filter((d) => d.enabled);
+  const direccion = enabled.find(isDireccion);
   const byLayer = new Map<DeptLayer, EmpresaDept[]>([['STRATEGIC', []], ['OPERATIONAL', []], ['SUPPORT', []]]);
-  enabled.filter((d) => !d.campusPos).forEach((d) => byLayer.get(d.layer)?.push(d));
+  enabled.filter((d) => !d.campusPos && d !== direccion).forEach((d) => byLayer.get(d.layer)?.push(d));
 
   const placements: BuildingPlacement[] = [];
+  if (direccion) {
+    const t = tune(direccion.model);
+    placements.push({
+      key: direccion.key, x: 0, z: -3,
+      rot: Math.PI,                    // frente hacia la calle (sur)
+      scale: t.scale * 1.15, labelY: t.labelY,
+    });
+  }
   (Object.keys(RING_R) as DeptLayer[]).forEach((layer) => {
     const group = byLayer.get(layer)!;
     const n = group.length;
@@ -73,7 +85,7 @@ function campusLayout(depts: EmpresaDept[]): CampusLayout {
     });
   });
 
-  enabled.filter((d) => d.campusPos).forEach((d) => {
+  enabled.filter((d) => d.campusPos && d !== direccion).forEach((d) => {
     const t = tune(d.model);
     const p = d.campusPos!;
     placements.push({ key: d.key, x: p.x, z: p.z, rot: 0, scale: t.scale, labelY: t.labelY });
