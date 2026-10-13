@@ -5,6 +5,7 @@ import { existsSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { randomBytes } from 'crypto';
+import { encryptApiKey, decryptApiKey } from '../services/llm/tenantCrypto.js';
 
 // ════════════════════════════════════════════════════════════════════════════
 // RESULTADOS DEL NEGOCIO — /api/finanzas
@@ -51,10 +52,31 @@ async function syncFacturaEstado(prisma: any, facturaId: string) {
 }
 
 // Estado efectivo para lectura: VENCIDA es dinámico por fecha de vencimiento.
+// Una nota de crédito no tiene obligación de cobro → nunca VENCIDA.
 function estadoEfectivo(f: any): string {
   if (f.estado === 'ANULADA' || f.estado === 'COBRADA') return f.estado;
+  if (f.tipoComprobante === 'NOTA_CREDITO') return f.estado;
   if (f.fechaVencimiento && new Date(f.fechaVencimiento) < new Date()) return 'VENCIDA';
   return f.estado;
+}
+
+// Verifica que los IDs referenciados existan y pertenezcan al tenant.
+// Sin esto, un centroCostoId/vehiculoId/servicioId de otro tenant o inexistente
+// dejaba el documento "invisible" al filtrar por centro de costo.
+async function validarRefs(p: any, tenantId: string, refs: { centroCostoId?: string | null; vehiculoId?: string | null; servicioId?: string | null }) {
+  if (refs.centroCostoId) {
+    const c = await p.finanzaCentroCosto.findFirst({ where: { id: refs.centroCostoId, tenantId, deletedAt: null }, select: { id: true } }).catch(() => null);
+    if (!c) return 'centroCostoId';
+  }
+  if (refs.vehiculoId) {
+    const v = await p.vehiculo.findFirst({ where: { id: refs.vehiculoId, tenantId }, select: { id: true } }).catch(() => null);
+    if (!v) return 'vehiculoId';
+  }
+  if (refs.servicioId) {
+    const s = await p.flotaServicio.findFirst({ where: { id: refs.servicioId, tenantId, deletedAt: null }, select: { id: true } }).catch(() => null);
+    if (!s) return 'servicioId';
+  }
+  return null;
 }
 
 export default async function finanzasRoutes(app: FastifyInstance) {
@@ -123,13 +145,22 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     try {
       const data = await (req as any).file();
       if (!data) return reply.code(400).send({ error: 'No se recibió archivo' });
-      const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
-      if (!allowed.includes(data.mimetype)) return reply.code(400).send({ error: 'Solo PDF o imágenes' });
+      const EXT: Record<string, string> = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+      if (!EXT[data.mimetype]) return reply.code(400).send({ error: 'Solo PDF o imágenes' });
+      const buf = await data.toBuffer();
+      if (buf.length > 10 * 1024 * 1024) return reply.code(400).send({ error: 'El archivo supera 10 MB' });
+      // Magic bytes: el mimetype declarado puede mentir (exe renombrado).
+      const okMagic =
+        (data.mimetype === 'application/pdf' && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46) ||
+        (data.mimetype === 'image/jpeg' && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) ||
+        (data.mimetype === 'image/png' && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) ||
+        (data.mimetype === 'image/webp' && buf.length > 12 && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50);
+      if (!okMagic) return reply.code(400).send({ error: 'El contenido no coincide con el tipo de archivo declarado' });
       const uploadDir = join(process.env.STORAGE_LOCAL_PATH || '/app/uploads', subdir, tenantId);
       if (!existsSync(uploadDir)) await mkdir(uploadDir, { recursive: true });
-      const ext = (data.filename.split('.').pop() || 'pdf').toLowerCase();
-      const filename = `${Date.now()}_${randomBytes(6).toString('hex')}.${ext}`;
-      await writeFile(join(uploadDir, filename), await data.toBuffer());
+      // Extensión derivada del mimetype verificado, nunca del filename del cliente.
+      const filename = `${Date.now()}_${randomBytes(6).toString('hex')}.${EXT[data.mimetype]}`;
+      await writeFile(join(uploadDir, filename), buf);
       const baseUrl = process.env.API_BASE_URL || `http://${req.headers.host || 'localhost:3000'}`;
       return reply.send({ url: `${baseUrl}/uploads/${subdir}/${tenantId}/${filename}`, name: data.filename, mimeType: data.mimetype });
     } catch (e: any) {
@@ -145,7 +176,12 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   // FACTURAS EMITIDAS
   // ═══════════════════════════════════════════════════════════════
 
-  const facturaSchema = z.object({
+  // Coherencia contable básica: el neto no puede superar el total.
+  const checkNetoTotal = (d: any, ctx: z.RefinementCtx) => {
+    if (d.neto !== undefined && d.neto !== null && d.total !== undefined && d.total !== null && d.neto > d.total + 0.5)
+      ctx.addIssue({ code: 'custom', path: ['neto'], message: 'El neto no puede ser mayor que el total' });
+  };
+  const facturaSchemaBase = z.object({
     numero: z.string().max(50).optional().nullable(),
     puntoVenta: z.string().max(20).optional().nullable(),
     tipoComprobante: z.enum(['FACTURA', 'NOTA_CREDITO', 'NOTA_DEBITO', 'BOLETA', 'OTRO']).default('FACTURA'),
@@ -173,6 +209,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       centroCostoId: z.string().uuid().optional().nullable(),
     })).optional(),
   });
+  const facturaSchema = facturaSchemaBase.superRefine(checkNetoTotal);
 
   app.get('/facturas', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
@@ -211,8 +248,18 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const body = facturaSchema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
-    const user = await resolveUser(app.prisma, (req as any).auth?.userId);
     const { items, ...data } = body.data;
+    const refError = await validarRefs(prisma(), tenantId, data);
+    if (refError) return reply.code(400).send({ error: `${refError} no existe en esta empresa` });
+    // Dedupe manual: mismo número + tipo + cliente (como hace el import RCV).
+    if (data.numero) {
+      const dup = await prisma().finanzaFactura.findFirst({
+        where: { tenantId, deletedAt: null, numero: data.numero, tipoComprobante: data.tipoComprobante, ...(data.clienteRut ? { clienteRut: data.clienteRut } : { clienteNombre: data.clienteNombre }) },
+        select: { id: true },
+      });
+      if (dup) return reply.code(409).send({ error: `Ya existe un comprobante ${data.tipoComprobante} N° ${data.numero} para ese cliente` });
+    }
+    const user = await resolveUser(app.prisma, (req as any).auth?.userId);
     const factura = await prisma().finanzaFactura.create({
       data: {
         ...data, tenantId,
@@ -230,9 +277,11 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
-    const body = facturaSchema.partial().safeParse(req.body);
+    const body = facturaSchemaBase.partial().superRefine(checkNetoTotal).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
     const { items, ...data } = body.data;
+    const refError = await validarRefs(prisma(), tenantId, data);
+    if (refError) return reply.code(400).send({ error: `${refError} no existe en esta empresa` });
     const update: any = { ...data };
     if (data.fechaEmision) update.fechaEmision = new Date(data.fechaEmision);
     if (data.fechaVencimiento !== undefined) update.fechaVencimiento = data.fechaVencimiento ? new Date(data.fechaVencimiento) : null;
@@ -242,6 +291,9 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       await prisma().finanzaFacturaItem.deleteMany({ where: { facturaId: id } });
       if (items.length) await prisma().finanzaFacturaItem.createMany({ data: items.map((i: any) => ({ ...i, facturaId: id })) });
     }
+    // Si cambió el total o la fecha de vencimiento, el estado de cobro puede
+    // haber quedado viejo (ej. bajó el total y ya estaba cubierto).
+    if (data.total !== undefined || data.fechaVencimiento !== undefined) await syncFacturaEstado(app.prisma, id);
     const factura = await prisma().finanzaFactura.findFirst({ where: { id }, include: { items: true, cobros: true } });
     return reply.send({ factura });
   });
@@ -285,12 +337,23 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     });
     const body = schema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    // Moneda: forzada a la del documento — nunca se suman monedas distintas.
+    if (body.data.moneda && body.data.moneda !== factura.moneda)
+      return reply.code(400).send({ error: `El cobro debe ser en ${factura.moneda} (la factura es en esa moneda)` });
+    // Sobrecobro: el cobro no puede superar el saldo pendiente (no aplica a NC,
+    // que no se cobran — el frontend ya las excluye pero el API no asumía nada).
+    if (factura.tipoComprobante !== 'NOTA_CREDITO') {
+      const cobrosPrev = await prisma().finanzaCobro.findMany({ where: { facturaId: id }, select: { importe: true } });
+      const saldo = num(factura.total) - cobrosPrev.reduce((s: number, c: any) => s + num(c.importe), 0);
+      if (body.data.importe > saldo + 0.5)
+        return reply.code(400).send({ error: `El cobro supera el saldo pendiente (${factura.moneda} ${Math.max(0, saldo).toFixed(2)})` });
+    }
     const user = await resolveUser(app.prisma, (req as any).auth?.userId);
     const cobro = await prisma().finanzaCobro.create({
       data: {
         ...body.data, tenantId, facturaId: id,
         fecha: body.data.fecha ? new Date(body.data.fecha) : new Date(),
-        moneda: body.data.moneda || factura.moneda,
+        moneda: factura.moneda,
         createdById: user.id, createdByNombre: user.nombre,
       },
     });
@@ -313,10 +376,15 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     });
     const body = schema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
-    const cobro = await prisma().finanzaCobro.findFirst({ where: { id, tenantId } });
+    const cobro = await prisma().finanzaCobro.findFirst({ where: { id, tenantId }, include: { factura: { include: { cobros: true } } } });
     if (!cobro) return reply.code(404).send({ error: 'Cobro no encontrado' });
     const data: any = { ...body.data };
     if (data.fecha) data.fecha = new Date(data.fecha);
+    if (data.importe !== undefined && cobro.factura?.tipoComprobante !== 'NOTA_CREDITO') {
+      const saldo = num(cobro.factura?.total) - cobro.factura.cobros.filter((c: any) => c.id !== id).reduce((s: number, c: any) => s + num(c.importe), 0);
+      if (data.importe > saldo + 0.5)
+        return reply.code(400).send({ error: `El cobro supera el saldo pendiente (${cobro.factura?.moneda} ${Math.max(0, saldo).toFixed(2)})` });
+    }
     await prisma().finanzaCobro.update({ where: { id }, data });
     await syncFacturaEstado(app.prisma, cobro.facturaId);
     return reply.send({ ok: true });
@@ -352,16 +420,24 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
-    const gasto = await prisma().finanzaGasto.findFirst({ where: { id, tenantId, deletedAt: null } });
+    const gasto = await prisma().finanzaGasto.findFirst({ where: { id, tenantId, deletedAt: null }, include: { pagos: true } });
     if (!gasto) return reply.code(404).send({ error: 'Gasto no encontrado' });
     const body = pagoSchema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    if (body.data.moneda && body.data.moneda !== gasto.moneda)
+      return reply.code(400).send({ error: `El pago debe ser en ${gasto.moneda} (el gasto es en esa moneda)` });
+    // Sobrepago: no puede superar el saldo. Las NC no reciben pagos (restan).
+    if (gasto.tipoComprobante === 'NOTA_CREDITO')
+      return reply.code(400).send({ error: 'Una nota de crédito no recibe pagos' });
+    const saldo = num(gasto.total) - gasto.pagos.reduce((s: number, x: any) => s + num(x.importe), 0);
+    if (body.data.importe > saldo + 0.5)
+      return reply.code(400).send({ error: `El pago supera el saldo pendiente (${gasto.moneda} ${Math.max(0, saldo).toFixed(2)})` });
     const user = await resolveUser(app.prisma, (req as any).auth?.userId);
     const pago = await prisma().finanzaPago.create({
       data: {
         ...body.data, tenantId, gastoId: id,
         fecha: body.data.fecha ? new Date(body.data.fecha) : new Date(),
-        moneda: body.data.moneda || gasto.moneda,
+        moneda: gasto.moneda,
         createdById: user.id, createdByNombre: user.nombre,
       },
     });
@@ -376,10 +452,15 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const { id } = req.params as any;
     const body = pagoSchema.partial().safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
-    const pago = await prisma().finanzaPago.findFirst({ where: { id, tenantId } });
+    const pago = await prisma().finanzaPago.findFirst({ where: { id, tenantId }, include: { gasto: { include: { pagos: true } } } });
     if (!pago) return reply.code(404).send({ error: 'Pago no encontrado' });
     const data: any = { ...body.data };
     if (data.fecha) data.fecha = new Date(data.fecha);
+    if (data.importe !== undefined && pago.gasto?.tipoComprobante !== 'NOTA_CREDITO') {
+      const saldo = num(pago.gasto?.total) - pago.gasto.pagos.filter((x: any) => x.id !== id).reduce((s: number, x: any) => s + num(x.importe), 0);
+      if (data.importe > saldo + 0.5)
+        return reply.code(400).send({ error: `El pago supera el saldo pendiente (${pago.gasto?.moneda} ${Math.max(0, saldo).toFixed(2)})` });
+    }
     await prisma().finanzaPago.update({ where: { id }, data });
     return reply.send({ ok: true });
   });
@@ -435,7 +516,16 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   // GASTOS MANUALES / ESTRUCTURA
   // ═══════════════════════════════════════════════════════════════
 
-  const gastoSchema = z.object({
+  const checkGasto = (d: any, ctx: z.RefinementCtx) => {
+    // Coherencia de la ventana de amortización/recurrencia
+    if (d.fechaDesde && d.fechaHasta && new Date(d.fechaHasta) < new Date(d.fechaDesde))
+      ctx.addIssue({ code: 'custom', path: ['fechaHasta'], message: 'fechaHasta no puede ser anterior a fechaDesde' });
+    // variacionCuota solo tiene efecto con esRecurrente (el consolidado la ignora si no)
+    if (d.esRecurrente === false && d.variacionCuota !== undefined && d.variacionCuota !== null && d.variacionCuota !== 0)
+      ctx.addIssue({ code: 'custom', path: ['variacionCuota'], message: 'La cuota variable solo aplica a gastos recurrentes' });
+    checkNetoTotal(d, ctx);
+  };
+  const gastoSchemaBase = z.object({
     fecha: z.string().optional(),
     proveedor: z.string().max(200).optional().nullable(),
     concepto: z.string().min(1).max(300),
@@ -463,6 +553,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     mimeType: z.string().optional().nullable(),
     notas: z.string().max(1000).optional().nullable(),
   });
+  const gastoSchema = gastoSchemaBase.superRefine(checkGasto);
 
   app.get('/gastos', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
@@ -478,8 +569,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       if (q.desde) where.fecha.gte = new Date(q.desde);
       if (q.hasta) where.fecha.lt = new Date(q.hasta);
     }
-    const gastos = await prisma().finanzaGasto.findMany({ where, orderBy: { fecha: 'desc' }, take: 1000 });
-    return reply.send({ gastos });
+    const take = Math.min(Math.max(Number(q.take) || 1000, 1), 5000);
+    const skip = Math.max(Number(q.skip) || 0, 0);
+    const gastos = await prisma().finanzaGasto.findMany({ where, orderBy: { fecha: 'desc' }, take, skip });
+    return reply.send({ gastos, truncado: gastos.length === take });
   });
 
   app.post('/gastos', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -487,6 +580,16 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const body = gastoSchema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const refError = await validarRefs(prisma(), tenantId, body.data);
+    if (refError) return reply.code(400).send({ error: `${refError} no existe en esta empresa` });
+    // Dedupe manual: mismo número + tipo + proveedor (como hace el import RCV).
+    if (body.data.numeroComprobante) {
+      const dup = await prisma().finanzaGasto.findFirst({
+        where: { tenantId, deletedAt: null, numeroComprobante: body.data.numeroComprobante, tipoComprobante: body.data.tipoComprobante ?? null, ...(body.data.proveedorRut ? { proveedorRut: body.data.proveedorRut } : { proveedor: body.data.proveedor ?? null }) },
+        select: { id: true },
+      });
+      if (dup) return reply.code(409).send({ error: `Ya existe un comprobante ${body.data.tipoComprobante || ''} N° ${body.data.numeroComprobante} para ese proveedor` });
+    }
     const user = await resolveUser(app.prisma, (req as any).auth?.userId);
     const gasto = await prisma().finanzaGasto.create({
       data: {
@@ -505,8 +608,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
-    const body = gastoSchema.partial().safeParse(req.body);
+    const body = gastoSchemaBase.partial().superRefine(checkGasto).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const refError = await validarRefs(prisma(), tenantId, body.data);
+    if (refError) return reply.code(400).send({ error: `${refError} no existe en esta empresa` });
     const data: any = { ...body.data };
     if (data.fecha) data.fecha = new Date(data.fecha);
     if (data.fechaVencimiento !== undefined) data.fechaVencimiento = data.fechaVencimiento ? new Date(data.fechaVencimiento) : null;
@@ -573,7 +678,11 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const monedaLocal = (t?.country && MONEDA_PAIS[t.country]) || null;
     const ivaTasa = ((t?.resultadosConfig as any)?.ivaTasa as Record<string, number> | undefined) || {};
     const presupuesto = ((t?.resultadosConfig as any)?.presupuesto as Record<string, number> | undefined) || {};
-    return { country: t?.country || null, monedaLocal, monedaDefault: t?.monedaResultados || monedaLocal, ivaTasa, presupuesto };
+    const saldoInicial = ((t?.resultadosConfig as any)?.saldoInicial as Record<string, number> | undefined) || {};
+    // Credenciales SII: solo expone RUT + flag configurado (la clave nunca sale)
+    const siiCfg = (t?.resultadosConfig as any)?.sii;
+    const sii = siiCfg?.rut ? { rut: siiCfg.rut, rutEmpresa: siiCfg.rutEmpresa || null, configurado: !!siiCfg.claveEnc } : null;
+    return { country: t?.country || null, monedaLocal, monedaDefault: t?.monedaResultados || monedaLocal, ivaTasa, presupuesto, saldoInicial, sii };
   };
 
   app.get('/config', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -594,6 +703,13 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       ivaTasa: z.record(z.string().regex(/^[A-Z]{3}$/), z.number().min(0).max(0.5).nullable()).optional(),
       // Presupuesto mensual por categoría de gasto (null = sin tope)
       presupuesto: z.record(z.string().max(50), z.number().min(0).nullable()).optional(),
+      // Credenciales SII (Chile): rut + clave (se guarda cifrada). eliminar=true borra todo.
+      sii: z.object({
+        rut: z.string().max(20).optional(),
+        clave: z.string().max(100).optional(),
+        rutEmpresa: z.string().max(20).optional().nullable(),
+        eliminar: z.boolean().optional(),
+      }).nullable().optional(),
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
     const data: any = {};
@@ -611,6 +727,21 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       if (body.data.presupuesto) {
         conf.presupuesto = { ...(conf.presupuesto || {}), ...Object.fromEntries(Object.entries(body.data.presupuesto).filter(([, v]) => v !== null)) };
         for (const [k, v] of Object.entries(body.data.presupuesto)) if (v === null) delete conf.presupuesto[k];
+      }
+      data.resultadosConfig = conf;
+    }
+    if (body.data.sii !== undefined && body.data.sii !== null) {
+      const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } });
+      const conf = (((data.resultadosConfig ?? t?.resultadosConfig) as any) || {}) as any;
+      if (body.data.sii.eliminar) {
+        delete conf.sii;
+      } else if (body.data.sii.rut || body.data.sii.clave || body.data.sii.rutEmpresa !== undefined) {
+        const prev = conf.sii || {};
+        conf.sii = {
+          rut: body.data.sii.rut !== undefined ? body.data.sii.rut : prev.rut,
+          claveEnc: body.data.sii.clave ? encryptApiKey(body.data.sii.clave) : prev.claveEnc,
+          rutEmpresa: body.data.sii.rutEmpresa !== undefined ? body.data.sii.rutEmpresa : prev.rutEmpresa,
+        };
       }
       data.resultadosConfig = conf;
     }
@@ -655,6 +786,15 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const ccOk = (cc: string | null | undefined) => !centroCostoId || cc === centroCostoId;
     const monOk = (m: string | null | undefined) => !moneda || !m || m === moneda;
     const p = prisma();
+    // Fuentes periódicas (sueldos, cuotas, recurrentes, amortizables) emiten
+    // UNA línea por cada mes calendario del rango — si el rango es anual esto
+    // devuelve los 12 meses, no solo el primero.
+    const monthStarts = (d: Date, h: Date) => {
+      const arr: Date[] = [];
+      let cur = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+      while (cur < h) { arr.push(cur); cur = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth() + 1, 1)); }
+      return arr;
+    };
 
     // Mapa vehiculoId → {centroCostoId, dominio} para imputar costos de flota
     const vehiculos = await p.vehiculo.findMany({
@@ -811,9 +951,12 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       const cuota = num(v.cuotaMensual);
       if (!cuota || !v.primerCuotaAt || !v.cuotasTotales) continue;
       if (!ccOk(v.centroCostoId)) continue;
-      const idx = Math.floor((desde.getTime() - new Date(v.primerCuotaAt).getTime()) / (30.44 * 86400000)) + 1;
-      if (idx >= 1 && idx <= v.cuotasTotales) {
-        add({ fecha: desde, concepto: `Cuota financiación ${v.dominio} (${idx}/${v.cuotasTotales})`, importe: cuota, grupo: 'COSTO_OP', fuente: 'FINANCIACION', modulo: 'Flota 360', origenId: v.id, origenUrl: `/flota-360/vehiculos/${v.id}`, centroCostoId: v.centroCostoId });
+      const t0 = new Date(v.primerCuotaAt).getTime();
+      for (const ms of monthStarts(desde, hasta)) {
+        const idx = Math.floor((ms.getTime() - t0) / (30.44 * 86400000)) + 1;
+        if (idx >= 1 && idx <= v.cuotasTotales) {
+          add({ fecha: ms, concepto: `Cuota financiación ${v.dominio} (${idx}/${v.cuotasTotales})`, importe: cuota, grupo: 'COSTO_OP', fuente: 'FINANCIACION', modulo: 'Flota 360', origenId: v.id, origenUrl: `/flota-360/vehiculos/${v.id}`, centroCostoId: v.centroCostoId });
+        }
       }
     }
 
@@ -844,7 +987,9 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     for (const e of empleados) {
       const costo = num(e.costoMensual);
       if (costo <= 0 || !ccOk(e.centroCostoId)) continue;
-      add({ fecha: desde, concepto: `Sueldo ${`${e.firstName || ''} ${e.lastName || ''}`.trim()}`, importe: costo, grupo: 'COSTO_OP', fuente: 'PERSONAL', modulo: 'RRHH', origenId: e.id, origenUrl: '/rrhh', centroCostoId: e.centroCostoId });
+      const concepto = `Sueldo ${`${e.firstName || ''} ${e.lastName || ''}`.trim()}`;
+      for (const ms of monthStarts(desde, hasta))
+        add({ fecha: ms, concepto, importe: costo, grupo: 'COSTO_OP', fuente: 'PERSONAL', modulo: 'RRHH', origenId: e.id, origenUrl: '/rrhh', centroCostoId: e.centroCostoId });
     }
     const conductores = await p.conductor.findMany({
       where: { tenantId, status: 'ACTIVO', costoMensual: { gt: 0 } },
@@ -855,7 +1000,9 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       const veh = vehiculos.find((v: any) => v.conductorId === c.id);
       const cc = veh?.centroCostoId ?? null;
       if (!ccOk(cc)) continue;
-      add({ fecha: desde, concepto: `Sueldo chofer ${c.nombre}${veh ? ` (${veh.dominio})` : ''}`, importe: num(c.costoMensual), grupo: 'COSTO_OP', fuente: 'PERSONAL_FLOTA', modulo: 'Flota 360', origenId: c.id, origenUrl: '/flota-360/conductores', centroCostoId: cc });
+      const concepto = `Sueldo chofer ${c.nombre}${veh ? ` (${veh.dominio})` : ''}`;
+      for (const ms of monthStarts(desde, hasta))
+        add({ fecha: ms, concepto, importe: num(c.costoMensual), grupo: 'COSTO_OP', fuente: 'PERSONAL_FLOTA', modulo: 'Flota 360', origenId: c.id, origenUrl: '/flota-360/conductores', centroCostoId: cc });
     }
 
     // ── GASTOS MANUALES / ESTRUCTURA ────────────────────────────
@@ -885,34 +1032,41 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       // ivaRecuperable=false → el impuesto es costo → se usa total. NC resta.
       const sign = g.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
       const base = g.ivaRecuperable !== false && g.neto !== null && g.neto !== undefined ? num(g.neto) : num(g.total);
-      let fecha = new Date(g.fecha);
-      let importe = sign * base;
-      let tag = '';
+      const conceptoBase = `${g.concepto}${g.proveedor ? ' — ' + g.proveedor : ''}${veh ? ` (${veh.dominio})` : ''}`;
+      const url = veh ? `/flota-360/vehiculos/${veh.id}` : '/resultados?tab=gastos';
+      const emisor = { grupo, fuente: `GASTO_${g.categoria}`, modulo: 'Resultados', origenId: g.id, origenUrl: url, centroCostoId: cc, ivaRecuperable: g.ivaRecuperable !== false };
       if (g.esAmortizable && g.fechaDesde && g.fechaHasta) {
-        // Gasto anual prorrateado: el total se divide en partes iguales
-        // por cada mes de la ventana (seguro, alquiler anual, etc.)
+        // Gasto anual prorrateado: el total se divide en partes iguales por
+        // cada mes de la ventana; una línea por mes del rango que intersecte
+        // [fechaDesde, fechaHasta]. El IVA se prorratea igual.
         const ini = new Date(g.fechaDesde), fin = new Date(g.fechaHasta);
         const meses = (fin.getUTCFullYear() - ini.getUTCFullYear()) * 12 + fin.getUTCMonth() - ini.getUTCMonth() + 1;
         if (meses > 0) {
-          const k = (desde.getUTCFullYear() - ini.getUTCFullYear()) * 12 + desde.getUTCMonth() - ini.getUTCMonth() + 1;
-          importe = sign * (base / meses);
-          fecha = ini > desde ? ini : desde;
-          tag = ` (amort. ${k}/${meses})`;
+          for (const ms of monthStarts(desde, hasta)) {
+            const msEnd = new Date(Date.UTC(ms.getUTCFullYear(), ms.getUTCMonth() + 1, 1));
+            if (msEnd <= ini || ms > fin) continue;
+            const k = (ms.getUTCFullYear() - ini.getUTCFullYear()) * 12 + ms.getUTCMonth() - ini.getUTCMonth() + 1;
+            add({ ...emisor, fecha: ini > ms ? ini : ms, concepto: `${conceptoBase} (amort. ${k}/${meses})`, importe: sign * (base / meses), iva: num(g.iva) / meses });
+          }
         }
       } else if (g.esRecurrente) {
+        // Recurrente: una línea por cada mes del rango que intersecte la
+        // ventana [fechaDesde ?? fecha, fechaHasta ?? ∞]. Con variacionCuota,
+        // el importe del mes k = base + (k-1)·variación (cuota decreciente).
         const ini = g.fechaDesde ? new Date(g.fechaDesde) : new Date(g.fecha);
-        fecha = ini > desde ? ini : desde;
+        const fin = g.fechaHasta ? new Date(g.fechaHasta) : null;
         const dv = num(g.variacionCuota);
-        if (dv !== 0) {
-          // Cuota variable (préstamo/leasing): mes k = base + (k-1)·variación
-          const k = (desde.getUTCFullYear() - ini.getUTCFullYear()) * 12 + desde.getUTCMonth() - ini.getUTCMonth() + 1;
-          importe = sign * Math.max(0, base + (k - 1) * dv);
-          tag = ` (cuota ${k})`;
-        } else {
-          tag = ' (recurrente)';
+        for (const ms of monthStarts(desde, hasta)) {
+          const msEnd = new Date(Date.UTC(ms.getUTCFullYear(), ms.getUTCMonth() + 1, 1));
+          if (msEnd <= ini || (fin && ms > fin)) continue;
+          const k = (ms.getUTCFullYear() - ini.getUTCFullYear()) * 12 + ms.getUTCMonth() - ini.getUTCMonth() + 1;
+          const importe = dv !== 0 ? sign * Math.max(0, base + (k - 1) * dv) : sign * base;
+          const tag = dv !== 0 ? ` (cuota ${k})` : ' (recurrente)';
+          add({ ...emisor, fecha: ini > ms ? ini : ms, concepto: `${conceptoBase}${tag}`, importe, iva: num(g.iva) });
         }
+      } else {
+        add({ ...emisor, fecha: new Date(g.fecha), concepto: conceptoBase, importe: sign * base, iva: num(g.iva) });
       }
-      add({ fecha, concepto: `${g.concepto}${g.proveedor ? ' — ' + g.proveedor : ''}${veh ? ` (${veh.dominio})` : ''}${tag}`, importe, grupo, fuente: `GASTO_${g.categoria}`, modulo: 'Resultados', origenId: g.id, origenUrl: veh ? `/flota-360/vehiculos/${veh.id}` : '/resultados?tab=gastos', centroCostoId: cc, iva: num(g.iva), ivaRecuperable: g.ivaRecuperable !== false });
     }
 
     return lineas;
@@ -955,11 +1109,18 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const anioActual = new Date().getUTCFullYear();
     const mesesACalcular = anio === anioActual ? mesActual : 12;
 
+    // Una sola recolectada para todo el período; las líneas periódicas
+    // (sueldos, cuotas, recurrentes, amortizables) vienen fechadas en su mes.
+    const desdeAnio = new Date(Date.UTC(anio, 0, 1));
+    const hastaAnio = new Date(Date.UTC(anio, mesesACalcular, 1));
+    const lineasAnio = await recolectarLineas(tenantId, desdeAnio, hastaAnio, moneda, centroCostoId);
+
     const meses: any[] = [];
     for (let m = 1; m <= mesesACalcular; m++) {
-      const desde = new Date(Date.UTC(anio, m - 1, 1));
-      const hasta = new Date(Date.UTC(anio, m, 1));
-      const lineas = await recolectarLineas(tenantId, desde, hasta, moneda, centroCostoId);
+      const lineas = lineasAnio.filter(l => {
+        const f = new Date(l.fecha);
+        return f.getUTCFullYear() === anio && f.getUTCMonth() + 1 === m;
+      });
 
       const suma = (grupo: string) => lineas.filter(l => l.grupo === grupo).reduce((s, l) => s + l.importe, 0);
       const facturado = suma('FACTURADO');
@@ -1220,17 +1381,21 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const horizonte = new Date(hoy.getTime() + 90 * 86400000);
 
     const [cobros, ingresosCobrados, ingresosPend, facturasPend, pagos, gastosLegacy, flotaFacts, recurrentes, tenant] = await Promise.all([
-      p.finanzaCobro.findMany({ where: { tenantId, fecha: { gte: desde, lte: horizonte }, ...(moneda ? { moneda } : {}) }, select: { fecha: true, importe: true } }).catch(() => []),
+      // Cobros/pagos de docs eliminados (soft-delete) quedaban en el histórico
+      // porque FinanzaCobro/FinanzaPago no tienen deletedAt propio.
+      p.finanzaCobro.findMany({ where: { tenantId, fecha: { gte: desde, lte: horizonte }, ...(moneda ? { moneda } : {}), factura: { deletedAt: null } }, select: { fecha: true, importe: true } }).catch(() => []),
       p.flotaIngreso.findMany({ where: { tenantId, cobradoAt: { gte: desde, lte: horizonte } }, select: { cobradoAt: true, monto: true } }).catch(() => []),
       p.flotaIngreso.findMany({ where: { tenantId, cobradoAt: null, fechaCobroEstimada: { gte: hoy, lte: horizonte } }, select: { fechaCobroEstimada: true, monto: true, concepto: true, cliente: true } }).catch(() => []),
       p.finanzaFactura.findMany({ where: { tenantId, deletedAt: null, estado: { in: ['EMITIDA', 'PARCIALMENTE_COBRADA'] }, ...(moneda ? { moneda } : {}) }, include: { cobros: true } }).catch(() => []),
-      p.finanzaPago.findMany({ where: { tenantId, fecha: { gte: desde, lte: horizonte }, ...(moneda ? { moneda } : {}) }, select: { fecha: true, importe: true } }).catch(() => []),
-      p.finanzaGasto.findMany({ where: { tenantId, deletedAt: null, fecha: { gte: desde, lte: hoy }, ...(moneda ? { moneda } : {}), pagos: { none: {} } }, select: { fecha: true, total: true, tipoComprobante: true } }).catch(() => []),
+      p.finanzaPago.findMany({ where: { tenantId, fecha: { gte: desde, lte: horizonte }, ...(moneda ? { moneda } : {}), gasto: { deletedAt: null } }, select: { fecha: true, importe: true } }).catch(() => []),
+      // "Legacy" = solo puntuales sin pagos trackeados. Los recurrentes/
+      // amortizables se agregan abajo como eventos mensuales sintéticos.
+      p.finanzaGasto.findMany({ where: { tenantId, deletedAt: null, esRecurrente: false, esAmortizable: false, fecha: { gte: desde, lte: hoy }, ...(moneda ? { moneda } : {}), pagos: { none: {} } }, select: { fecha: true, total: true, tipoComprobante: true } }).catch(() => []),
       p.flotaFactura.findMany({ where: { tenantId, tipoComprobante: { notIn: ['PRESUPUESTO', 'NOTA_CREDITO'] }, ...(moneda ? { moneda } : {}), OR: [{ pagadaAt: { not: null } }, { fechaVencimiento: null, fecha: { gte: desde, lte: hoy } }] }, select: { fecha: true, pagadaAt: true, total: true } }).catch(() => []),
       p.finanzaGasto.findMany({ where: { tenantId, deletedAt: null, ...(moneda ? { moneda } : {}), OR: [
         { esRecurrente: true, OR: [{ fechaHasta: null }, { fechaHasta: { gte: hoy } }] },
         { esAmortizable: true, fechaDesde: { not: null, lte: horizonte }, fechaHasta: { not: null, gte: hoy } },
-      ] }, select: { total: true, neto: true, ivaRecuperable: true, esAmortizable: true, fechaDesde: true, fechaHasta: true } }).catch(() => []),
+      ] }, select: { total: true, neto: true, ivaRecuperable: true, esAmortizable: true, fechaDesde: true, fechaHasta: true, fecha: true, variacionCuota: true, pagos: { select: { id: true }, take: 1 } } }).catch(() => []),
       p.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } }).catch(() => null),
     ]);
 
@@ -1243,12 +1408,35 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       ...gastosLegacy.map((g: any) => ({ fecha: new Date(g.fecha), importe: num(g.total) * (g.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1) })),
       ...flotaFacts.map((f: any) => ({ fecha: new Date(f.pagadaAt || f.fecha), importe: num(f.total) })),
     ];
+    // Recurrentes y amortizables sin pagos trackeados entran al histórico como
+    // egreso mensual sintético (fecha = inicio de mes) — antes solo figuraban
+    // en `recurrentesMensual` y el pasado quedaba inflado.
+    for (const r of recurrentes) {
+      if (r.pagos?.length) continue; // ya entran vía FinanzaPago
+      const base = r.ivaRecuperable !== false && r.neto !== null ? num(r.neto) : num(r.total);
+      const ini = r.fechaDesde ? new Date(r.fechaDesde) : new Date(r.fecha || desde);
+      const fin = r.fechaHasta ? new Date(r.fechaHasta) : null;
+      let importe = base;
+      if (r.esAmortizable && r.fechaDesde && r.fechaHasta) {
+        const meses = (fin!.getUTCFullYear() - ini.getUTCFullYear()) * 12 + fin!.getUTCMonth() - ini.getUTCMonth() + 1;
+        if (meses <= 0) continue;
+        importe = base / meses;
+      }
+      const dv = num(r.variacionCuota);
+      for (let ms = new Date(Date.UTC(Math.max(ini.getUTCFullYear(), anio), Math.max(ini.getUTCFullYear(), anio) === ini.getUTCFullYear() ? ini.getUTCMonth() : 0, 1)); ms <= horizonte; ms = new Date(Date.UTC(ms.getUTCFullYear(), ms.getUTCMonth() + 1, 1))) {
+        if (fin && ms > fin) break;
+        const k = (ms.getUTCFullYear() - ini.getUTCFullYear()) * 12 + ms.getUTCMonth() - ini.getUTCMonth() + 1;
+        salidas.push({ fecha: ms, importe: dv !== 0 && !r.esAmortizable ? Math.max(0, importe + (k - 1) * dv) : importe });
+      }
+    }
 
     const conf = (tenant?.resultadosConfig as any) || {};
     const saldoInicial = num(conf?.saldoInicial?.[moneda || ''] ?? conf?.saldoInicial?.['*'] ?? 0);
 
+    // Ventana [desde, hoy]: saldoInicial representa el saldo al 1/1 del año,
+    // así que movimientos anteriores no se vuelven a sumar.
     const movs = [...entradas.map(e => ({ fecha: e.fecha, delta: e.importe })), ...salidas.map(s => ({ fecha: s.fecha, delta: -s.importe }))]
-      .filter(m => m.fecha <= hoy).sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
+      .filter(m => m.fecha >= desde && m.fecha <= hoy).sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
 
     const meses: any[] = [];
     let saldoCorrida = saldoInicial;
@@ -1262,7 +1450,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     }
 
     const proximosCobros = [
-      ...facturasPend.map((f: any) => {
+      ...facturasPend.filter((f: any) => f.tipoComprobante !== 'NOTA_CREDITO').map((f: any) => {
         const cobrado = f.cobros.reduce((s: number, c: any) => s + num(c.importe), 0);
         const saldo = Math.max(0, num(f.total) - cobrado);
         return { fecha: new Date(f.fechaVencimiento || f.fechaEmision), importe: saldo, concepto: `Cobro ${[f.puntoVenta, f.numero].filter(Boolean).join('-')} — ${f.clienteNombre}`, tipo: 'FACTURA' };
@@ -1283,8 +1471,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
 
     return reply.send({
       saldoInicial, saldoActual,
-      cobrosPeriodo: entradas.filter(e => e.fecha <= hoy).reduce((s, e) => s + e.importe, 0),
-      pagosPeriodo: salidas.filter(s => s.fecha <= hoy).reduce((s, x) => s + x.importe, 0),
+      cobrosPeriodo: movs.filter(m => m.delta > 0).reduce((s, m) => s + m.delta, 0),
+      pagosPeriodo: movs.filter(m => m.delta < 0).reduce((s, m) => s - m.delta, 0),
       flujoNeto: meses.reduce((s, m) => s + m.flujoNeto, 0),
       meses,
       proximosCobros: proximosCobros.sort((a, b) => a.fecha.getTime() - b.fecha.getTime()),
@@ -1363,9 +1551,14 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       c.metodo = 'PROPORCIONAL_VENTAS';
     }
 
-    // Por servicio (ventas con servicioId; costos requieren imputación que aún no existe)
+    // Por servicio: ventas con servicioId (NC resta). Los costos NO se
+    // imputan por servicio — fin(..., false) devuelve costos/resultado/margen
+    // en null en vez de un margen 100% falso.
     const porServicio = new Map<string, any>();
-    for (const f of facturas) if (f.servicioId) acum(porServicio, f.servicioId, servicioNombre.get(f.servicioId) || 'Servicio').ventas += num(f.neto) > 0 ? num(f.neto) : num(f.total);
+    for (const f of facturas) if (f.servicioId) {
+      const sign = f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
+      acum(porServicio, f.servicioId, servicioNombre.get(f.servicioId) || 'Servicio').ventas += sign * (num(f.neto) > 0 ? num(f.neto) : num(f.total));
+    }
     for (const i of ingresos) if (i.servicioId) acum(porServicio, i.servicioId, servicioNombre.get(i.servicioId) || 'Servicio').ventas += num(i.monto);
 
     const fin = (map: Map<string, any>, conCostos: boolean) => [...map.values()].map(x => ({
@@ -1379,8 +1572,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       anio, mes: mesQ, moneda,
       porCentroCosto: fin(porCentro, true),
       porCliente: fin(porCliente, true),
-      porServicio: fin(porServicio, true),
-      notaCostos: 'Costos por cliente imputados proporcional a su participación en ventas. Por centro de costo y servicio: atribución directa.',
+      porServicio: fin(porServicio, false),
+      notaCostos: 'Costos por cliente: proporcional a participación en ventas. Por centro de costo: atribución directa. Por servicio: solo ventas (los costos no se imputan por servicio).',
       actualizadoEn: await ultimaAct(tenantId, moneda),
     });
   });
@@ -1424,7 +1617,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const [lineas, tenant, gastosClase] = await Promise.all([
       recolectarLineas(tenantId, desde, hasta, moneda, q.centroCostoId || null),
       p.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } }).catch(() => null),
-      p.finanzaGasto.findMany({ where: { tenantId, deletedAt: null, fecha: { gte: desde, lt: hasta }, claseCosto: { not: null } }, select: { id: true, claseCosto: true } }).catch(() => []),
+      p.finanzaGasto.findMany({ where: { tenantId, deletedAt: null, claseCosto: { not: null } }, select: { id: true, claseCosto: true } }).catch(() => []),
     ]);
     const conf = (tenant?.resultadosConfig as any) || {};
     const mapConf: Record<string, string> = conf?.claseCosto || {};
@@ -1443,7 +1636,9 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       else sinClasificar += l.importe;
     }
     const ventas = lineas.filter(l => ['FACTURADO', 'INGRESO_OPERATIVO'].includes(l.grupo)).reduce((s, l) => s + l.importe, 0);
-    const mesesConDatos = Math.max(1, ultimoMes);
+    // Meses con al menos una línea económica — si el año arrancó en junio no
+    // se divide por 12 a los promedios mensuales.
+    const mesesConDatos = Math.max(1, Math.min(ultimoMes, new Set(lineas.map(l => { const f = new Date(l.fecha); return f.getUTCFullYear() * 12 + f.getUTCMonth(); })).size));
     const margenContribucion = ventas - variables;
     const ratioContribucion = ventas > 0 ? margenContribucion / ventas : 0;
     const puntoEquilibrio = ratioContribucion > 0 ? fijos / ratioContribucion : null;
@@ -1777,7 +1972,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const q = req.query as any;
     const where: any = { tenantId, deletedAt: null };
     if (q.mesKey) where.mesKey = q.mesKey;
-    if (q.centroCostoId) where.centroCostoId = q.centroCostoId;
+    // Con filtro de centro se muestran sus comentarios + los globales (null).
+    if (q.centroCostoId) where.centroCostoId = { in: [q.centroCostoId, null] };
     const comentarios = await prisma().finanzaComentarioPeriodo.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 }).catch(() => []);
     return reply.send({ comentarios });
   });
@@ -1854,21 +2050,21 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     return 'OTRO';
   };
 
-  app.post('/importar-rcv', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
-    const body = importRcvSchema.safeParse(req.body);
-    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
-    const { tipo, moneda, centroCostoId, diasVencimiento, categoriaDefault, tipoGastoDefault, filas } = body.data;
-    const user = await resolveUser(app.prisma, (req as any).auth?.userId);
-    const p = prisma();
+  // Ingest compartido: lo usan /importar-rcv (CSV manual) y /sii-sync
+  // (descarga automática). Dedup por tipo + folio + RUT en ambos caminos.
+  async function ingestarFilasRcv(
+    p: any, tenantId: string, user: { id: string | null; nombre: string | null },
+    opts: { tipo: 'VENTAS' | 'COMPRAS'; moneda: string; centroCostoId?: string | null; diasVencimiento: number; categoriaDefault: string; tipoGastoDefault: string; filas: any[]; origen?: string },
+  ) {
+    const { tipo, moneda, centroCostoId, diasVencimiento, categoriaDefault, tipoGastoDefault, filas } = opts;
+    const origen = opts.origen || 'IMPORT_RCV';
     let creados = 0, duplicados = 0;
     const errores: string[] = [];
 
     // Clasificación previa por proveedor: si ya existe un gasto de ese RUT, se reutiliza
     const clasif = new Map<string, any>();
     if (tipo === 'COMPRAS') {
-      const ruts = [...new Set(filas.map(f => f.rut).filter(Boolean))] as string[];
+      const ruts = [...new Set(filas.map((f: any) => f.rut).filter(Boolean))] as string[];
       const prev = ruts.length ? await p.finanzaGasto.findMany({
         where: { tenantId, deletedAt: null, proveedorRut: { in: ruts } },
         orderBy: { updatedAt: 'desc' }, select: { proveedorRut: true, categoria: true, tipoGasto: true, centroCostoId: true },
@@ -1890,7 +2086,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
               fechaVencimiento: tipoComprobante === 'NOTA_CREDITO' ? null : new Date(fecha.getTime() + diasVencimiento * 86400000),
               clienteNombre: f.razonSocial || f.rut || 'Sin nombre', clienteRut: f.rut || null,
               neto: f.neto + f.exento, iva: f.iva, total: f.total, moneda, centroCostoId: centroCostoId || null,
-              origen: 'IMPORT_RCV', uploadedById: user.id, uploadedByNombre: user.nombre,
+              origen, uploadedById: user.id, uploadedByNombre: user.nombre,
             },
           });
         } else {
@@ -1905,7 +2101,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
               centroCostoId: prev?.centroCostoId ?? centroCostoId ?? null,
               // IVA no recuperable es costo; el recuperable no
               neto: f.neto + f.exento + f.ivaNoRecuperable, iva: f.iva, total: f.total, moneda,
-              tipoComprobante, numeroComprobante: f.folio, origen: 'IMPORT_RCV',
+              tipoComprobante, numeroComprobante: f.folio, origen,
               uploadedById: user.id, uploadedByNombre: user.nombre,
             },
           });
@@ -1915,14 +2111,141 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         errores.push(`Folio ${f.folio}: ${e?.message?.slice(0, 120) || 'error'}`);
       }
     }
+    return { creados, duplicados, errores };
+  }
+
+  app.post('/importar-rcv', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const body = importRcvSchema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const { tipo, moneda, centroCostoId, diasVencimiento, categoriaDefault, tipoGastoDefault, filas } = body.data;
+    const user = await resolveUser(app.prisma, (req as any).auth?.userId);
+    const { creados, duplicados, errores } = await ingestarFilasRcv(
+      prisma(), tenantId, user,
+      { tipo, moneda, centroCostoId, diasVencimiento, categoriaDefault, tipoGastoDefault, filas },
+    );
     return reply.send({ ok: true, creados, duplicados, errores: errores.slice(0, 50), totalErrores: errores.length });
   });
 
   // ═══════════════════════════════════════════════════════════════
-  // INFORME EJECUTIVO — §30. HTML imprimible que consolida todos los
-  // endpoints existentes del módulo (app.inject → cero duplicación de
-  // lógica). ?anio=&mes=&moneda=&centroCostoId=  (mes vacío = anual)
+  // SINCRONIZACIÓN AUTOMÁTICA SII (Chile)
+  // Baja el RCV vía BaseAPI (api.baseapi.cl) con las credenciales del
+  // contribuyente guardadas CIFRADAS en resultadosConfig.sii (AES-256-CBC,
+  // misma clave que las API keys de LLM). Los documentos pasan por el
+  // mismo ingest del CSV → dedup automático por folio + RUT.
+  // La API key de la plataforma va en env BASEAPI_API_KEY (cuenta nuestra,
+  // no del tenant). Cuando el provider cambie, solo cambia fetchRcvDatos.
   // ═══════════════════════════════════════════════════════════════
+  const normKey = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  // RUT SII: '778873427' → '77887342-7' (el provider espera el guión)
+  const normalizarRut = (rut: string) => {
+    const limpio = String(rut || '').replace(/[^0-9kK]/g, '');
+    return limpio.length > 1 ? `${limpio.slice(0, -1)}-${limpio.slice(-1).toUpperCase()}` : limpio;
+  };
+
+  // Filas del RCV → shape filaRcvSchema. Misma lógica de match de columnas
+  // que el parser CSV del front (parseRcv en ImportarSII.tsx).
+  function rcvDatosToFilas(datos: any[]): any[] {
+    const buscar = (row: any, preds: string[]) => {
+      for (const k of Object.keys(row)) {
+        const n = normKey(k);
+        if (preds.some(px => n === px || n.startsWith(px) || n.includes(px))) return row[k];
+      }
+      return undefined;
+    };
+    const toNum = (v: any) => { const n = Number(String(v ?? '').replace(/[.\s]/g, '').replace(',', '.')); return isFinite(n) ? n : 0; };
+    const parseFecha = (v: any) => {
+      const s = String(v || '').trim().split(' ')[0];
+      let m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+      if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+      m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+      return '';
+    };
+    const filas: any[] = [];
+    for (const row of datos || []) {
+      const folioRaw = String(buscar(row, ['folio']) ?? '').trim();
+      const folio = folioRaw.replace(/^0+/, '') || folioRaw;
+      const fecha = parseFecha(buscar(row, ['fecha docto', 'fecha']));
+      const total = toNum(buscar(row, ['monto total']));
+      if (!folio || !fecha || !total) continue;
+      filas.push({
+        tipoDoc: String(buscar(row, ['tipo doc']) ?? '33').trim() || '33',
+        folio,
+        rut: String(buscar(row, ['rut']) ?? '').trim() || null,
+        razonSocial: String(buscar(row, ['razon social']) ?? '').trim() || null,
+        fecha,
+        exento: toNum(buscar(row, ['monto exento'])),
+        neto: toNum(buscar(row, ['monto neto'])),
+        iva: toNum(buscar(row, ['monto iva recuperable', 'monto iva'])),
+        ivaNoRecuperable: toNum(buscar(row, ['monto iva no recuperable'])),
+        total,
+      });
+    }
+    return filas;
+  }
+
+  async function fetchRcvDatos(rut: string, clave: string, rutEmpresa: string | null | undefined, periodo: string, tipo: 'compra' | 'venta') {
+    const apiKey = process.env.BASEAPI_API_KEY;
+    if (!apiKey) throw new Error('Falta configurar BASEAPI_API_KEY en el servidor');
+    const resp = await fetch(`https://api.baseapi.cl/api/v1/sii/rcv/${periodo}/${tipo}`, {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rut, password: clave, ...(rutEmpresa ? { rut_empresa: rutEmpresa } : {}) }),
+    });
+    const json: any = await resp.json().catch(() => null);
+    if (!resp.ok || json?.success === false) {
+      throw new Error(`SII/${tipo}: ${json?.message || json?.error || `HTTP ${resp.status}`}`);
+    }
+    return json?.data?.datos || [];
+  }
+
+  app.post('/sii-sync', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const body = z.object({
+      periodo: z.string().regex(/^\d{4}-\d{2}$/, 'período YYYY-MM'),
+      tipo: z.enum(['COMPRAS', 'VENTAS', 'AMBOS']).default('AMBOS'),
+      moneda: z.string().max(5).default('CLP'),
+      centroCostoId: z.string().uuid().optional().nullable(),
+      diasVencimiento: z.number().int().min(0).max(365).default(30),
+      categoriaDefault: z.string().max(50).default('OTRO'),
+      tipoGastoDefault: z.enum(['OPERATIVO', 'ESTRUCTURA', 'OTRO']).default('OPERATIVO'),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const { periodo, tipo, moneda, centroCostoId, diasVencimiento, categoriaDefault, tipoGastoDefault } = body.data;
+
+    // Credenciales SII del tenant (cifradas en resultadosConfig.sii)
+    const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } });
+    const sii = (t?.resultadosConfig as any)?.sii;
+    if (!sii?.rut || !sii?.claveEnc) {
+      return reply.code(400).send({ error: 'Credenciales SII no configuradas. Cargá RUT y clave en la pestaña Importar.' });
+    }
+    let clave: string;
+    try { clave = decryptApiKey(sii.claveEnc); }
+    catch { return reply.code(500).send({ error: 'No se pudo descifrar la clave SII guardada. Volvé a guardarla.' }); }
+
+    const user = await resolveUser(app.prisma, (req as any).auth?.userId);
+    const p = prisma();
+    const tipos: Array<'compra' | 'venta'> = tipo === 'AMBOS' ? ['venta', 'compra'] : [tipo === 'VENTAS' ? 'venta' : 'compra'];
+    const resultado: Record<string, any> = {};
+
+    for (const tipoRcv of tipos) {
+      try {
+        const datos = await fetchRcvDatos(normalizarRut(sii.rut), clave, sii.rutEmpresa ? normalizarRut(sii.rutEmpresa) : null, periodo, tipoRcv);
+        const filas = rcvDatosToFilas(datos);
+        const r = await ingestarFilasRcv(p, tenantId, user, {
+          tipo: tipoRcv === 'venta' ? 'VENTAS' : 'COMPRAS', moneda, centroCostoId,
+          diasVencimiento, categoriaDefault, tipoGastoDefault, filas, origen: 'IMPORT_SII_AUTO',
+        });
+        resultado[tipoRcv] = { documentos: datos.length, filasValidas: filas.length, ...r };
+      } catch (e: any) {
+        resultado[tipoRcv] = { error: e?.message?.slice(0, 200) || 'error' };
+      }
+    }
+    return reply.send({ ok: true, periodo, resultado });
+  });
   app.get('/informe-ejecutivo', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });

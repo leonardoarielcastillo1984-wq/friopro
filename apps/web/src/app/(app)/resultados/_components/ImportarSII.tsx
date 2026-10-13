@@ -1,8 +1,8 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Upload, Loader2, CheckCircle2, AlertTriangle, FileSpreadsheet, Info } from 'lucide-react';
+import { Upload, Loader2, CheckCircle2, AlertTriangle, FileSpreadsheet, Info, RefreshCw, KeyRound, ShieldCheck } from 'lucide-react';
 import { fmtMoney, fmtFecha, CATEGORIA_GASTO, MONEDAS } from './fmt';
 
 type Fila = {
@@ -107,6 +107,53 @@ export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChan
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // ── Sync automático SII (BaseAPI) ──
+  const [sii, setSii] = useState<{ rut: string; rutEmpresa: string | null; configurado: boolean } | null>(null);
+  const [editarCreds, setEditarCreds] = useState(false);
+  const [siiRut, setSiiRut] = useState('');
+  const [siiClave, setSiiClave] = useState('');
+  const [guardandoCreds, setGuardandoCreds] = useState(false);
+  const [periodoSync, setPeriodoSync] = useState(() => {
+    const d = new Date(); d.setMonth(d.getMonth() - 1); // mes anterior cerrado
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [tipoSync, setTipoSync] = useState<'AMBOS' | 'VENTAS' | 'COMPRAS'>('AMBOS');
+  const [syncing, setSyncing] = useState(false);
+  const [resultadoSync, setResultadoSync] = useState<any>(null);
+
+  useEffect(() => {
+    apiFetch<any>('/finanzas/config').then(c => {
+      setSii(c?.sii || null);
+      if (c?.sii?.rut) setSiiRut(c.sii.rut);
+    }).catch(() => {});
+  }, []);
+
+  const guardarCreds = async () => {
+    if (!siiRut.trim() || !siiClave.trim()) { setError('Completá RUT y clave del SII.'); return; }
+    setGuardandoCreds(true); setError(null);
+    try {
+      const c = await apiFetch<any>('/finanzas/config', { method: 'PUT', json: { sii: { rut: siiRut.trim(), clave: siiClave } } });
+      setSii(c?.sii || null); setSiiClave(''); setEditarCreds(false);
+    } catch (e: any) { setError(e?.message || 'Error al guardar credenciales'); }
+    finally { setGuardandoCreds(false); }
+  };
+
+  const sincronizarSii = async () => {
+    setSyncing(true); setError(null); setResultadoSync(null);
+    try {
+      const r = await apiFetch<any>('/finanzas/sii-sync', {
+        method: 'POST',
+        json: {
+          periodo: periodoSync, tipo: tipoSync, moneda: mon, centroCostoId: centroCostoId || null,
+          diasVencimiento: Number(dias) || 0, categoriaDefault: categoria, tipoGastoDefault: tipoGasto,
+        },
+      });
+      setResultadoSync(r.resultado);
+      onChanged();
+    } catch (e: any) { setError(e?.message || 'Error al sincronizar con el SII'); }
+    finally { setSyncing(false); }
+  };
+
   const cargar = async (file: File) => {
     setResultado(null); setError(null);
     setArchivo(file.name);
@@ -158,6 +205,70 @@ export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChan
           <li>Hacé clic en <b>Descargar detalles</b>: baja un archivo CSV. Subilo acá, un mes por vez o varios.</li>
         </ol>
         <div className="mt-1.5 text-[12px] text-sky-700">Podés volver a subir el mismo mes: las facturas que ya están (mismo folio y RUT) no se duplican.</div>
+      </div>
+
+      {/* ── Sincronización automática con el SII ── */}
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <RefreshCw size={15} className="text-emerald-700" />
+          <span className="text-sm font-semibold text-emerald-900">Actualizar desde el SII</span>
+          {sii?.configurado ? (
+            <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+              <ShieldCheck size={11} /> Conectado — RUT {sii.rut}
+            </span>
+          ) : (
+            <span className="text-[12px] text-emerald-800">Sin credenciales — cargá RUT y clave una vez y baja todo con un clic.</span>
+          )}
+          {!sii?.configurado || editarCreds ? null : (
+            <button onClick={() => setEditarCreds(true)} className="ml-auto text-[11px] text-emerald-700 underline">cambiar credenciales</button>
+          )}
+        </div>
+
+        {(!sii?.configurado || editarCreds) && (
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <div className="w-44"><label className={labelCls}>RUT SII (sin puntos)</label>
+              <input value={siiRut} onChange={e => setSiiRut(e.target.value)} placeholder="77887342-7" className={inputCls} /></div>
+            <div className="w-44"><label className={labelCls}>Clave tributaria</label>
+              <input type="password" value={siiClave} onChange={e => setSiiClave(e.target.value)} placeholder="••••••••" className={inputCls} /></div>
+            <button onClick={guardarCreds} disabled={guardandoCreds} className="flex items-center gap-1.5 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50">
+              {guardandoCreds ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />} Guardar
+            </button>
+            {sii?.configurado && <button onClick={() => setEditarCreds(false)} className="text-xs text-neutral-500 underline">cancelar</button>}
+            <p className="w-full text-[11px] text-neutral-500">La clave se guarda cifrada en el servidor y nunca se muestra. Solo sirve para este tenant.</p>
+          </div>
+        )}
+
+        {sii?.configurado && !editarCreds && (
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <div><label className={labelCls}>Período</label>
+              <input type="month" value={periodoSync} onChange={e => setPeriodoSync(e.target.value)} className={inputCls} /></div>
+            <div><label className={labelCls}>Registro</label>
+              <select value={tipoSync} onChange={e => setTipoSync(e.target.value as any)} className={inputCls}>
+                <option value="AMBOS">Ventas + Compras</option><option value="VENTAS">Solo ventas</option><option value="COMPRAS">Solo compras</option>
+              </select></div>
+            <button onClick={sincronizarSii} disabled={syncing || !periodoSync} className="flex items-center gap-1.5 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50">
+              {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              {syncing ? 'Bajando del SII…' : 'Descargar y cargar'}
+            </button>
+            <p className="w-full text-[11px] text-neutral-500">Usa los mismos filtros de arriba (moneda, centro de costo, plazo, categorías). Los documentos ya cargados no se duplican.</p>
+          </div>
+        )}
+
+        {resultadoSync && (
+          <div className="mt-3 space-y-1">
+            {(['venta', 'compra'] as const).map(k => resultadoSync[k] && (
+              <div key={k} className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${resultadoSync[k].error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-white text-emerald-900'}`}>
+                {resultadoSync[k].error ? <AlertTriangle size={14} className="mt-0.5 shrink-0" /> : <CheckCircle2 size={14} className="mt-0.5 shrink-0" />}
+                <span>
+                  <b>{k === 'venta' ? 'Ventas' : 'Compras'}:</b>{' '}
+                  {resultadoSync[k].error
+                    ? resultadoSync[k].error
+                    : `${resultadoSync[k].documentos ?? 0} docs en SII → ${resultadoSync[k].creados} cargados · ${resultadoSync[k].duplicados} ya existían${resultadoSync[k].errores?.length ? ` · ${resultadoSync[k].errores.length} errores` : ''}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border border-neutral-200 bg-white p-4">
