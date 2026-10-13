@@ -32,6 +32,11 @@ const createEmployeeSchema = z.object({
     (v) => (v === '' || v === null || v === undefined ? null : Number(v)),
     z.number().min(1).max(99).nullable(),
   ),
+  // Costo laboral mensual (sueldo + cargas). Alimenta Resultado de Negocio.
+  costoMensual: z.preprocess(
+    (v) => (v === '' || v === null || v === undefined ? null : Number(v)),
+    z.number().nonnegative().nullable(),
+  ),
   notes: z.string().optional(),
   employeeCompetencies: z.any().optional(),
   supervisorType: z.any().optional(),

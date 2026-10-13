@@ -18,6 +18,7 @@ interface Employee {
   hireDate: string;
   contractType: string;
   orgLevel?: number | null;
+  costoMensual?: number | null;
   department?: {
     id: string;
     name: string;
@@ -316,6 +317,9 @@ export default function EmployeesPage() {
       // Org chart manual line/level (optional). Empty string clears it (null).
       const orgLevelRaw = (formData.get('orgLevel') as string | null)?.trim();
       const orgLevelValue = orgLevelRaw ? Number(orgLevelRaw) : null;
+      // Costo laboral mensual (sueldo + cargas) — alimenta Resultado de Negocio
+      const costoMensualRaw = (formData.get('costoMensual') as string | null)?.trim();
+      const costoMensualValue = costoMensualRaw ? Number(costoMensualRaw) : null;
 
       // Remove undefined/null fields to avoid sending them to Prisma
       Object.keys(employeeData).forEach(key => {
@@ -326,6 +330,7 @@ export default function EmployeesPage() {
 
       // orgLevel is sent explicitly (incl. null to clear) so it is not stripped above
       employeeData.orgLevel = orgLevelValue;
+      employeeData.costoMensual = costoMensualValue;
 
       // Use PATCH if editing an existing employee, POST for new employee
       if (selectedEmployee?.id) {
@@ -1398,6 +1403,22 @@ export default function EmployeesPage() {
                       Nivel/fila manual en el modo <strong>Línea manual</strong> del organigrama. Permite intermedios (ej. <strong>2.5</strong> queda entre la 2 y la 3). Vacío = automático.
                     </p>
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Costo mensual (sueldo + cargas)
+                    </label>
+                    <input
+                      type="number"
+                      name="costoMensual"
+                      min={0}
+                      step="any"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Opcional · ej. 1500000"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Costo laboral mensual total. Alimenta <strong>Resultado de Negocio</strong> como sueldo en costo operativo.
+                    </p>
+                  </div>
                   {/* TODO: Location field disabled - backend expects UUID but frontend sends text
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2118,6 +2139,23 @@ export default function EmployeesPage() {
                     />
                     <p className="mt-1 text-xs text-gray-500">
                       Nivel/fila manual en el modo <strong>Línea manual</strong> del organigrama. Permite intermedios (ej. <strong>2.5</strong> queda entre la 2 y la 3). Vacío = automático.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Costo mensual (sueldo + cargas)
+                    </label>
+                    <input
+                      type="number"
+                      name="costoMensual"
+                      min={0}
+                      step="any"
+                      defaultValue={selectedEmployee.costoMensual ?? ''}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Opcional · ej. 1500000"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Costo laboral mensual total. Alimenta <strong>Resultado de Negocio</strong> como sueldo en costo operativo.
                     </p>
                   </div>
                 </div>
