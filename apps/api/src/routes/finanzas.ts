@@ -2311,11 +2311,20 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     return Array.isArray(json?.data) ? json.data : [];
   }
 
+  // Cache F29 por tenant+período (6h): las declaraciones cambian rara vez
+  // y cada consulta abre sesión al SII — llamadas seguidas responden HTTP 400
+  // y gastan créditos APIGateway al pedo.
+  const f29Cache = new Map<string, { payload: any; ts: number }>();
+  const F29_TTL_MS = 6 * 3600 * 1000;
+
   app.get('/f29', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const q = req.query as any;
     if (!/^\d{4}-\d{2}$/.test(q.periodo || '')) return reply.code(400).send({ error: 'periodo YYYY-MM requerido' });
+    const cacheKey = `${tenantId}:${q.periodo}`;
+    const cached = f29Cache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < F29_TTL_MS) return reply.send(cached.payload);
 
     const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } });
     const sii = (t?.resultadosConfig as any)?.sii;
@@ -2334,8 +2343,12 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         fecha: d.fecha ?? d.fecha_hora ?? null,
         estado: d.estado ?? null,
       }));
-      return reply.send({ configurado: true, periodo: q.periodo, declarado: norm.length > 0, declaraciones: norm, vigente: norm[norm.length - 1] || null });
+      const payload = { configurado: true, periodo: q.periodo, declarado: norm.length > 0, declaraciones: norm, vigente: norm[norm.length - 1] || null };
+      f29Cache.set(cacheKey, { payload, ts: Date.now() });
+      return reply.send(payload);
     } catch (e: any) {
+      // Si el SII tira error transitorio pero teníamos dato cacheado, servirlo stale
+      if (cached) return reply.send({ ...cached.payload, stale: true });
       return reply.send({ configurado: true, periodo: q.periodo, declarado: null, error: e?.message?.slice(0, 200) || 'error', declaraciones: [] });
     }
   });
