@@ -47,14 +47,14 @@ export const BUILDING_MODELS = [
 ];
 
 const DEFAULT_DEPARTMENTS: EmpresaDept[] = [
-  { key: 'direccion', name: 'DIRECCIÓN', sub: 'Estrategia y gobierno', model: 'office-building', moduleKey: 'resultados', moduleHref: '/resultados', layer: 'STRATEGIC', enabled: true },
-  { key: 'administracion', name: 'ADMINISTRACIÓN', sub: 'Gestión y finanzas', model: 'office-building', moduleKey: 'resultados', moduleHref: '/resultados', layer: 'SUPPORT', enabled: true },
+  { key: 'direccion', name: 'DIRECCIÓN', sub: 'Estrategia y gobierno', model: 'office-building', moduleKey: 'objetivos', moduleHref: '/revision-direccion', layer: 'STRATEGIC', enabled: true },
+  { key: 'administracion', name: 'ADMINISTRACIÓN', sub: 'Gestión y finanzas', model: 'office-building', moduleKey: 'resultados', moduleHref: '/proyectos', layer: 'SUPPORT', enabled: true },
   { key: 'calidad', name: 'CALIDAD', sub: 'NCs, CAPA y auditorías', model: 'office-building', moduleKey: 'calidad', moduleHref: '/calidad', layer: 'OPERATIONAL', enabled: true },
   { key: 'trafico', name: 'TRÁFICO', sub: 'Logística y transporte', model: 'gas-station', moduleKey: 'flota', moduleHref: '/flota-360', layer: 'OPERATIONAL', enabled: true },
   { key: 'mantenimiento', name: 'MANTENIMIENTO', sub: 'Taller y disponibilidad', model: 'warehouse', moduleKey: 'flota', moduleHref: '/flota-360/ordenes', layer: 'SUPPORT', enabled: true },
   { key: 'produccion', name: 'PRODUCCIÓN', sub: 'Planta y operación', model: 'factory', moduleKey: 'procesos', moduleHref: '/contexto-sgi', layer: 'OPERATIONAL', enabled: true },
   { key: 'rrhh', name: 'RECURSOS HUMANOS', sub: 'Personal y capacitación', model: 'office-building', moduleKey: 'rrhh', moduleHref: '/rrhh', layer: 'SUPPORT', enabled: true },
-  { key: 'sistemas', name: 'SISTEMAS', sub: 'Tecnología e infraestructura', model: 'office-building', layer: 'SUPPORT', enabled: true },
+  { key: 'sistemas', name: 'SISTEMAS', sub: 'Tecnología e infraestructura', model: 'office-building', moduleKey: 'sistemas', moduleHref: '/admin', layer: 'SUPPORT', enabled: true },
   { key: 'comercial', name: 'COMERCIAL', sub: 'Ventas y clientes', model: 'office-building', moduleKey: 'clientes', moduleHref: '/clientes', layer: 'OPERATIONAL', enabled: true },
   { key: 'compras', name: 'COMPRAS', sub: 'Proveedores y abastecimiento', model: 'office-building', moduleKey: 'proveedores', moduleHref: '/proveedores', layer: 'SUPPORT', enabled: true },
   { key: 'documental', name: 'GESTIÓN DOCUMENTAL', sub: 'Documentos y registros', model: 'office-building', moduleKey: 'documents', moduleHref: '/documents', layer: 'SUPPORT', enabled: true },
@@ -79,6 +79,23 @@ const DEFAULT_CONFIG: EmpresaConfig = {
   departments: DEFAULT_DEPARTMENTS,
   connections: DEFAULT_CONNECTIONS,
 };
+
+// Enriquece deptos guardados con campos nuevos de los defaults (por key):
+// si un tenant guardó config antes de que un depto tuviera moduleKey/
+// moduleHref, hereda el enlace actualizado sin perder sus personalizaciones.
+const enrichConfig = (cfg: EmpresaConfig): EmpresaConfig => ({
+  ...cfg,
+  departments: cfg.departments.map((d) => {
+    const def = DEFAULT_DEPARTMENTS.find((x) => x.key === d.key);
+    if (!def) return d;
+    return {
+      ...def,
+      ...d,
+      moduleKey: d.moduleKey ?? def.moduleKey,
+      moduleHref: d.moduleHref ?? def.moduleHref,
+    };
+  }),
+});
 
 const deptSchema = z.object({
   key: z.string().min(1).max(40),
@@ -136,7 +153,7 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
     const saved = (s?.centroEmpresaConfig as EmpresaConfig | null) || null;
     // Merge: los deptos guardados pisan los defaults por key (compat hacia adelante)
     const config: EmpresaConfig = saved?.departments?.length
-      ? { ...DEFAULT_CONFIG, ...saved }
+      ? enrichConfig({ ...DEFAULT_CONFIG, ...saved })
       : DEFAULT_CONFIG;
     return reply.send({ config, models: BUILDING_MODELS });
   });
@@ -216,6 +233,9 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
       auditTotal, auditCompletas,
       procesos, docVencidos, vehiculos,
       riesgosAltos, reclamos,
+      suppliersOk, suppliersWarn, suppliersCrit,
+      assetsOk, assetsMant,
+      usersActivos, usersBloqueados,
     ] = await Promise.all([
       safe(() => prisma().nonConformity.count({ where: { tenantId, status: { not: 'CLOSED' } } })),
       safe(() => prisma().nonConformity.count({ where: { tenantId, status: { not: 'CLOSED' }, dueDate: { lt: now } } })),
@@ -230,6 +250,16 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
       safe(() => prisma().vehiculo.count({ where: { tenantId, deletedAt: null } })),
       safe(() => prisma().risk.count({ where: { tenantId, level: 'HIGH' } })),
       safe(async () => (await prisma().customerComplaint?.count({ where: { tenantId, status: { not: 'CLOSED' } } })) ?? null),
+      // Compras → proveedores habilitados / pendientes / suspendidos
+      safe(() => prisma().supplier.count({ where: { tenantId, deletedAt: null, status: { in: ['APPROVED', 'CONDITIONAL'] } } })),
+      safe(() => prisma().supplier.count({ where: { tenantId, deletedAt: null, status: 'PENDING' } })),
+      safe(() => prisma().supplier.count({ where: { tenantId, deletedAt: null, status: { in: ['SUSPENDED', 'REJECTED'] } } })),
+      // Depósito → activos de infraestructura operativos / en mantenimiento
+      safe(() => prisma().maintenanceAsset.count({ where: { tenantId, status: 'ACTIVE' } })),
+      safe(() => prisma().maintenanceAsset.count({ where: { tenantId, status: 'MAINTENANCE' } })),
+      // Sistemas → usuarios de plataforma (vía employee.tenantId)
+      safe(() => prisma().user.count({ where: { status: 'ACTIVE', employee: { tenantId } } })),
+      safe(() => prisma().user.count({ where: { status: 'LOCKED', employee: { tenantId } } })),
     ]);
 
     const kpisFor = (moduleKey?: string | null): { kpis: { label: string; value: string | number }[]; alertas: { label: string; nivel: 'warn' | 'crit' }[]; salud: DeptSalud } => {
@@ -285,6 +315,33 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
           if (indTotal !== null) { kpis.push({ label: 'Indicadores configurados', value: indTotal }); sawData = true; }
           break;
         }
+        case 'proveedores': {
+          if (suppliersOk !== null) { kpis.push({ label: 'Proveedores habilitados', value: suppliersOk }); sawData = true; }
+          if (suppliersCrit !== null && suppliersCrit > 0) {
+            alertas.push({ label: `${suppliersCrit} suspendidos/rechazados`, nivel: 'crit' }); crit += suppliersCrit;
+          }
+          if (suppliersWarn !== null && suppliersWarn > 0) {
+            alertas.push({ label: `${suppliersWarn} pendientes de evaluación`, nivel: 'warn' }); warn += suppliersWarn;
+          }
+          if (suppliersWarn !== null || suppliersCrit !== null) sawData = true;
+          break;
+        }
+        case 'infraestructura': {
+          if (assetsOk !== null) { kpis.push({ label: 'Activos operativos', value: assetsOk }); sawData = true; }
+          if (assetsMant !== null && assetsMant > 0) {
+            alertas.push({ label: `${assetsMant} en mantenimiento`, nivel: 'warn' }); warn += assetsMant;
+          }
+          if (assetsMant !== null) sawData = true;
+          break;
+        }
+        case 'sistemas': {
+          if (usersActivos !== null) { kpis.push({ label: 'Usuarios activos', value: usersActivos }); sawData = true; }
+          if (usersBloqueados !== null && usersBloqueados > 0) {
+            alertas.push({ label: `${usersBloqueados} usuarios bloqueados`, nivel: 'warn' }); warn += usersBloqueados;
+          }
+          if (usersBloqueados !== null) sawData = true;
+          break;
+        }
         default: break;
       }
       return { kpis, alertas, salud: saludFor(crit, warn, sawData) };
@@ -294,7 +351,7 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
       where: { tenantId }, select: { centroEmpresaConfig: true },
     }).catch(() => null);
     const saved = (s?.centroEmpresaConfig as EmpresaConfig | null) || null;
-    const config: EmpresaConfig = saved?.departments?.length ? { ...DEFAULT_CONFIG, ...saved } : DEFAULT_CONFIG;
+    const config: EmpresaConfig = saved?.departments?.length ? enrichConfig({ ...DEFAULT_CONFIG, ...saved }) : DEFAULT_CONFIG;
 
     // Procesos reales vinculados por processId — KPIs del proceso (solo lectura)
     const processIds = config.departments.map((d) => d.processId).filter(Boolean) as string[];
