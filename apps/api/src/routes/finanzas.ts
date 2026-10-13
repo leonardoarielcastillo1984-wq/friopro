@@ -2286,6 +2286,58 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     }
     return reply.send({ ok: true, periodo, resultado });
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  // F29 — declaración real del mes en el SII (vía APIGateway.cl).
+  // Sirve para cruzar el "a pagar estimado" de la tarjeta IVA contra
+  // lo que el contador efectivamente declaró: vigente, rectificada,
+  // con observaciones o sin presentar.
+  // ═══════════════════════════════════════════════════════════════
+  async function fetchF29Listado(rut: string, clave: string, rutEmpresa: string | null | undefined, periodo: string) {
+    const token = process.env.APIGATEWAY_API_TOKEN;
+    if (!token) throw new Error('Falta configurar APIGATEWAY_API_TOKEN en el servidor');
+    const yyyymm = periodo.replace('-', '');
+    const contribuyente = rutEmpresa || rut;
+    const resp = await fetch(`https://app.apigateway.cl/api/v2/sii/f29/declaraciones/listado/${contribuyente}/${yyyymm}`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auth: { pass: { rut, clave } } }),
+    });
+    const json: any = await resp.json().catch(() => null);
+    if (!resp.ok || json?.success === false) {
+      throw new Error(`SII/F29: ${json?.message || json?.error || `HTTP ${resp.status}`}`);
+    }
+    return Array.isArray(json?.data) ? json.data : [];
+  }
+
+  app.get('/f29', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    if (!/^\d{4}-\d{2}$/.test(q.periodo || '')) return reply.code(400).send({ error: 'periodo YYYY-MM requerido' });
+
+    const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } });
+    const sii = (t?.resultadosConfig as any)?.sii;
+    if (!sii?.rut || !sii?.claveEnc) return reply.send({ configurado: false, declarado: null, declaraciones: [] });
+    let clave: string;
+    try { clave = decryptApiKey(sii.claveEnc); }
+    catch { return reply.code(500).send({ error: 'No se pudo descifrar la clave SII guardada. Volvé a guardarla.' }); }
+
+    try {
+      const declaraciones = await fetchF29Listado(normalizarRut(sii.rut), clave, sii.rutEmpresa ? normalizarRut(sii.rutEmpresa) : null, q.periodo);
+      // La última de la lista es la vigente (las anteriores son rectificadas/historial)
+      const norm = declaraciones.map((d: any) => ({
+        folio: d.folio ?? null,
+        periodo: d.periodo ?? null,
+        rut: d.rut ?? null,
+        fecha: d.fecha ?? d.fecha_hora ?? null,
+        estado: d.estado ?? null,
+      }));
+      return reply.send({ configurado: true, periodo: q.periodo, declarado: norm.length > 0, declaraciones: norm, vigente: norm[norm.length - 1] || null });
+    } catch (e: any) {
+      return reply.send({ configurado: true, periodo: q.periodo, declarado: null, error: e?.message?.slice(0, 200) || 'error', declaraciones: [] });
+    }
+  });
   app.get('/informe-ejecutivo', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });

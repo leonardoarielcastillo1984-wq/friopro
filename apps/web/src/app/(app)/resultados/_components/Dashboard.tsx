@@ -81,6 +81,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const [alertasAct, setAlertasAct] = useState<string | null>(null);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
   const [iva, setIva] = useState<{ recuperado: number; noRecuperado: number; estimado: number; cargasSinDesagregar: number; tasaEstimada: number; debito: number; aPagar: number; remanente: number } | null>(null);
+  const [f29, setF29] = useState<{ configurado: boolean; declarado: boolean | null; vigente: { folio: string | null; fecha: string | null; estado: string | null } | null; declaraciones: any[]; error?: string } | null>(null);
   const [ivaTasaEdit, setIvaTasaEdit] = useState<string | null>(null);
   const [nuevoComentario, setNuevoComentario] = useState('');
   const [enviandoComentario, setEnviandoComentario] = useState(false);
@@ -106,6 +107,9 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
     apiFetch<{ meses: any[]; tasaEstimada?: number }>(`/finanzas/iva-credito?anio=${anio}&moneda=${moneda}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`)
       .then(d => { const m = (d.meses || []).find((x: any) => x.mes === mesSel); setIva(m ? { recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar, debito: m.debito ?? 0, aPagar: m.aPagar ?? 0, remanente: m.remanente ?? 0, tasaEstimada: d.tasaEstimada ?? 0.21 } : null); })
       .catch(() => setIva(null));
+    // F29 real del período (SII vía APIGateway) — para cruzar contra el estimado
+    setF29(null);
+    apiFetch<any>(`/finanzas/f29?periodo=${mesKey}`).then(setF29).catch(() => setF29(null));
   }, [anio, mesSel, moneda, centroCostoId, mesKey]);
 
   const guardarTasaIva = async () => {
@@ -322,6 +326,22 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
               <div className={`mt-1 font-semibold ${iva.aPagar > 0 ? 'text-red-800' : 'text-neutral-500'}`}>{fmtMoney(iva.aPagar, moneda)}</div>
             </div>
           </div>
+          {/* F29 real (SII): lo que el contador efectivamente declaró */}
+          {f29?.configurado && (
+            <div className={`mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-3 py-2 text-xs ${f29.declarado ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+              {f29.declarado && f29.vigente ? (
+                <>
+                  <span className="font-semibold">F29 real:</span>
+                  declarado el {f29.vigente.fecha || '—'}{f29.vigente.folio ? ` · folio ${f29.vigente.folio}` : ''}{f29.vigente.estado ? ` · ${f29.vigente.estado}` : ''}
+                  {f29.declaraciones.length > 1 && <span className="text-blue-600">({f29.declaraciones.length} declaraciones — incluye rectificatorias)</span>}
+                </>
+              ) : f29.error ? (
+                <span className="text-neutral-500">F29 real: no se pudo consultar ({f29.error})</span>
+              ) : (
+                <span><span className="font-semibold">F29 real:</span> sin declaración para este período — vence el día 20 del mes siguiente</span>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
             <div className={`rounded-lg p-3 ${iva.noRecuperado > 0 ? 'bg-amber-50' : 'bg-neutral-50'}`}>
               <div className={`text-[11px] uppercase tracking-wide ${iva.noRecuperado > 0 ? 'text-amber-700' : 'text-neutral-500'}`}>IVA al costo (no recuperado)</div>
