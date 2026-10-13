@@ -107,12 +107,17 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
     apiFetch<{ meses: any[]; tasaEstimada?: number }>(`/finanzas/iva-credito?anio=${anio}&moneda=${moneda}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`)
       .then(d => { const m = (d.meses || []).find((x: any) => x.mes === mesSel); setIva(m ? { recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar, debito: m.debito ?? 0, aPagar: m.aPagar ?? 0, remanente: m.remanente ?? 0, tasaEstimada: d.tasaEstimada ?? 0.21 } : null); })
       .catch(() => setIva(null));
-    // F29 real del período (SII vía APIGateway) — para cruzar contra el estimado
+  }, [anio, mesSel, moneda, centroCostoId, mesKey]);
+
+  // F29 real del período (SII vía APIGateway) — effect propio: solo depende del
+  // mes. Si queda en el effect compartido, moneda/centroCostoId cargando async
+  // lo re-disparan y mandan una 2da consulta idéntica al SII → HTTP 400.
+  useEffect(() => {
     setF29(null);
     apiFetch<any>(`/finanzas/f29?periodo=${mesKey}`)
       .then(d => setF29(prev => (d?.error && prev?.vigente && prev?.periodo === mesKey) ? prev : d))
       .catch(() => setF29(null));
-  }, [anio, mesSel, moneda, centroCostoId, mesKey]);
+  }, [mesKey]);
 
   const guardarTasaIva = async () => {
     const v = Number(ivaTasaEdit);

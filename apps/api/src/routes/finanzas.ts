@@ -2334,14 +2334,17 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       catch { return reply.send(cached ? { ...cached.payload, stale: true } : { configurado: true, periodo: q.periodo, declarado: null, error: 'Consulta en curso falló', declaraciones: [] }); }
     }
 
-    const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } });
-    const sii = (t?.resultadosConfig as any)?.sii;
-    if (!sii?.rut || !sii?.claveEnc) return reply.send({ configurado: false, declarado: null, declaraciones: [] });
-    let clave: string;
-    try { clave = decryptApiKey(sii.claveEnc); }
-    catch { return reply.code(500).send({ error: 'No se pudo descifrar la clave SII guardada. Volvé a guardarla.' }); }
-
+    // La promesa envuelve TODO (tenant lookup + decrypt + fetch SII) y se
+    // registra sincrónicamente — si no, una request que llegue durante el
+    // await de prisma pasaría el check de enVuelo y dispararía otro login.
     const consulta = (async () => {
+      const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } });
+      const sii = (t?.resultadosConfig as any)?.sii;
+      if (!sii?.rut || !sii?.claveEnc) return { configurado: false, declarado: null, declaraciones: [] };
+      let clave: string;
+      try { clave = decryptApiKey(sii.claveEnc); }
+      catch { throw new Error('No se pudo descifrar la clave SII guardada. Volvé a guardarla.'); }
+
       const declaraciones = await fetchF29Listado(normalizarRut(sii.rut), clave, sii.rutEmpresa ? normalizarRut(sii.rutEmpresa) : null, q.periodo);
       // La última de la lista es la vigente (las anteriores son rectificadas/historial)
       const norm = declaraciones.map((d: any) => ({
