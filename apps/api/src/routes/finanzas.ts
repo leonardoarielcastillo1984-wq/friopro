@@ -2299,16 +2299,35 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const yyyymm = periodo.replace('-', '');
     // F29: el contribuyente va en auth.pass (no en el path como el RCV)
     const rutDeclarante = rutEmpresa || rut;
-    const resp = await fetch(`https://app.apigateway.cl/api/v2/sii/f29/declaraciones/listado/${yyyymm}`, {
-      method: 'POST',
-      headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ auth: { pass: { rut: rutDeclarante, clave } } }),
-    });
-    const json: any = await resp.json().catch(() => null);
-    if (!resp.ok || json?.success === false) {
-      throw new Error(`SII/F29: ${json?.message || json?.error || `HTTP ${resp.status}`}`);
+    const url = `https://app.apigateway.cl/api/v2/sii/f29/declaraciones/listado/${yyyymm}`;
+    const llamar = async () => {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth: { pass: { rut: rutDeclarante, clave } } }),
+      });
+      const raw = await resp.text();
+      let json: any = null;
+      try { json = JSON.parse(raw); } catch { /* html/texto */ }
+      if (!resp.ok || json?.success === false) {
+        // Log completo: el "HTTP 400" solo esconde el motivo real (rate limit, sesión activa, etc.)
+        console.error(`[f29] ${yyyymm} → HTTP ${resp.status} body:`, raw.slice(0, 500));
+        const err: any = new Error(`SII/F29: ${json?.message || json?.error || `HTTP ${resp.status}`}`);
+        err.status = resp.status;
+        throw err;
+      }
+      return Array.isArray(json?.data) ? json.data : [];
+    };
+    try {
+      return await llamar();
+    } catch (e: any) {
+      // Un solo retry: el SII puede rechazar un login si la sesión anterior no liberó todavía
+      if (e?.status === 400 || e?.status === 429) {
+        await new Promise(r => setTimeout(r, 4000));
+        return await llamar();
+      }
+      throw e;
     }
-    return Array.isArray(json?.data) ? json.data : [];
   }
 
   // Cache F29 por tenant+período (6h) + dedup en vuelo: cada consulta abre
