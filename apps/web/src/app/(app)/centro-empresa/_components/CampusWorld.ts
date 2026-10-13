@@ -22,6 +22,10 @@ const ZOOM_MAX = 6;
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 
+// Huella mundial objetivo: todos los edificios terminan ~iguales
+// independientemente del tamaño intrínseco del GLB.
+const NORM_FP = 17;
+
 interface BuildingEntry {
   dept: EmpresaDept;
   root: THREE.Group;
@@ -31,6 +35,8 @@ interface BuildingEntry {
   haloMat: THREE.MeshBasicMaterial;
   tag: CSS2DObject;
   tagEl: HTMLDivElement;
+  fp: number;    // huella del modelo (máx de x/z) en unidades locales
+  topY: number;  // tope del modelo en unidades locales
   target: THREE.Vector3;
   moving: number; // 0..1 progreso del re-layout
   from: THREE.Vector3;
@@ -259,10 +265,12 @@ export class CampusWorld {
   private async buildBuildings() {
     await Promise.all(this.depts.map(async (dept) => {
       let root = new THREE.Group();
+      let modelObj: THREE.Object3D;
       try {
         const obj = await instance(dept.model);
         obj.traverse((m) => { const mm = m as THREE.Mesh; if (mm.isMesh) { mm.castShadow = true; mm.receiveShadow = true; } });
         root.add(obj);
+        modelObj = obj;
       } catch {
         // Modelo no disponible → caja corporativa fallback
         const box = new THREE.Mesh(
@@ -271,7 +279,13 @@ export class CampusWorld {
         );
         box.position.y = 11; box.castShadow = true;
         root.add(box);
+        modelObj = box;
       }
+      // Bounding box del modelo real → normalización de tamaño
+      const bb = new THREE.Box3().setFromObject(modelObj);
+      const sz = bb.getSize(new THREE.Vector3());
+      const fp = Math.max(sz.x, sz.z) || 10;
+      const topY = bb.max.y || 10;
       root.userData.deptKey = dept.key;
 
       // Anillo de estado en la base
@@ -296,6 +310,7 @@ export class CampusWorld {
 
       const entry: BuildingEntry = {
         dept, root, ring, ringMat, halo, haloMat, tag, tagEl,
+        fp, topY,
         target: new THREE.Vector3(), from: new THREE.Vector3(), moving: 0,
       };
       this.buildings.set(dept.key, entry);
@@ -344,8 +359,10 @@ export class CampusWorld {
         e.from.copy(to);
       }
       e.root.rotation.y = p.rot;
-      e.root.scale.setScalar(p.scale);
-      e.tag.position.set(0, p.labelY, 0);
+      // Escala normalizada: huella uniforme × ajuste fino del placement
+      const s = (NORM_FP / e.fp) * p.scale;
+      e.root.scale.setScalar(s);
+      e.tag.position.set(0, e.topY + 3 / s, 0);
     });
 
     this.buildZones(layout.zones, animate);

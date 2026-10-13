@@ -30,24 +30,30 @@ export interface CampusLayout {
   fitR: number;                 // radio para el encuadre
 }
 
-// Escala/orientación por modelo para que los edificios se lean bien.
+// Multiplicador fino por modelo — el tamaño final lo normaliza CampusWorld
+// por bounding box (todas las huellas salen ~iguales); estos valores son
+// ajustes relativos por si un modelo se ve desproporcionado.
 export const MODEL_TUNE: Record<string, { scale: number; labelY: number }> = {
-  'office-building': { scale: 0.62, labelY: 26 },
-  'site-office':     { scale: 1.15, labelY: 10 },
-  'factory':         { scale: 0.55, labelY: 18 },
-  'warehouse':       { scale: 0.55, labelY: 13 },
-  'car-wash':        { scale: 1.2,  labelY: 11 },
-  'gas-station':     { scale: 1.15, labelY: 10 },
-  'water-tower':     { scale: 1.0,  labelY: 16 },
+  'office-building': { scale: 1.0, labelY: 26 },
+  'site-office':     { scale: 1.0, labelY: 10 },
+  'factory':         { scale: 1.0, labelY: 18 },
+  'warehouse':       { scale: 1.0, labelY: 13 },
+  'car-wash':        { scale: 1.0, labelY: 11 },
+  'gas-station':     { scale: 1.0, labelY: 10 },
+  'water-tower':     { scale: 1.0, labelY: 16 },
 };
 
-const tune = (model: string) => MODEL_TUNE[model] ?? { scale: 0.7, labelY: 14 };
+const tune = (model: string) => MODEL_TUNE[model] ?? { scale: 1.0, labelY: 14 };
 
 // ── Campus: anillos radiales alrededor de la plaza central ───
 // Estratégicos en el anillo interno, operativos al medio, apoyo
 // en el anillo externo — jerarquía organizativa visible.
-const RING_R: Record<DeptLayer, number> = { STRATEGIC: 34, OPERATIONAL: 48, SUPPORT: 62 };
-const RING_PHASE: Record<DeptLayer, number> = { STRATEGIC: Math.PI / 2, OPERATIONAL: 0, SUPPORT: Math.PI / 6 };
+// Un solo círculo alrededor de Dirección: todos los departamentos
+// equiespaciados en un anillo único (hueco hacia la calle del sur).
+const RING_R = 44;
+const RING_GAP_HALF = Math.PI / 6;          // 30° de hueco hacia el sur
+const RING_A0 = (3 * Math.PI) / 2 + RING_GAP_HALF;  // arranca al SE
+const RING_SPAN = Math.PI * 2 - RING_GAP_HALF * 2;  // 300°
 
 // Dirección manda desde el centro de la plaza (donde estaba la fuente).
 const isDireccion = (d: EmpresaDept) => d.key === 'direccion' || /direcci/i.test(d.name);
@@ -55,8 +61,7 @@ const isDireccion = (d: EmpresaDept) => d.key === 'direccion' || /direcci/i.test
 function campusLayout(depts: EmpresaDept[]): CampusLayout {
   const enabled = depts.filter((d) => d.enabled);
   const direccion = enabled.find(isDireccion);
-  const byLayer = new Map<DeptLayer, EmpresaDept[]>([['STRATEGIC', []], ['OPERATIONAL', []], ['SUPPORT', []]]);
-  enabled.filter((d) => !d.campusPos && d !== direccion).forEach((d) => byLayer.get(d.layer)?.push(d));
+  const ringDepts = enabled.filter((d) => !d.campusPos && d !== direccion);
 
   const placements: BuildingPlacement[] = [];
   if (direccion) {
@@ -67,21 +72,16 @@ function campusLayout(depts: EmpresaDept[]): CampusLayout {
       scale: t.scale * 1.15, labelY: t.labelY,
     });
   }
-  (Object.keys(RING_R) as DeptLayer[]).forEach((layer) => {
-    const group = byLayer.get(layer)!;
-    const n = group.length;
-    group.forEach((d, i) => {
-      // Arco de 240° para no apoyar edificios sobre la calle de acceso (sur)
-      const span = Math.PI * 1.35;
-      const a = n === 1 ? RING_PHASE[layer] : RING_PHASE[layer] - span / 2 + (span * i) / (n - 1);
-      const x = Math.cos(a) * RING_R[layer];
-      const z = -Math.sin(a) * RING_R[layer] - 4;
-      const t = tune(d.model);
-      placements.push({
-        key: d.key, x, z,
-        rot: Math.atan2(-x, -z) + Math.PI,   // mirando a la plaza
-        scale: t.scale, labelY: t.labelY,
-      });
+  const n = ringDepts.length;
+  ringDepts.forEach((d, i) => {
+    const a = n === 1 ? (3 * Math.PI) / 2 - Math.PI : RING_A0 + (RING_SPAN * i) / (n - 1);
+    const x = Math.cos(a) * RING_R;
+    const z = -Math.sin(a) * RING_R - 4;
+    const t = tune(d.model);
+    placements.push({
+      key: d.key, x, z,
+      rot: Math.atan2(-x, -z) + Math.PI,   // mirando a la plaza
+      scale: t.scale, labelY: t.labelY,
     });
   });
 
@@ -91,7 +91,7 @@ function campusLayout(depts: EmpresaDept[]): CampusLayout {
     placements.push({ key: d.key, x: p.x, z: p.z, rot: 0, scale: t.scale, labelY: t.labelY });
   });
 
-  return { placements, zones: [], fitX: 0, fitZ: 2, fitR: 120 };
+  return { placements, zones: [], fitX: 0, fitZ: 2, fitR: 105 };
 }
 
 // ── Procesos: tres bandas ISO 9001 (alineadas a campus-scene) ─
