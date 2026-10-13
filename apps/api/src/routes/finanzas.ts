@@ -2309,6 +2309,11 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       const raw = await resp.text();
       let json: any = null;
       try { json = JSON.parse(raw); } catch { /* html/texto */ }
+      // Período sin tabla en el SII (aún no declarable / sin nada declarado):
+      // el scraper de APIGateway tira timeout 10s → 400. No es un error real.
+      if (resp.status === 400 && (json?.detail || '').includes('tabla de declaraciones')) {
+        return [];
+      }
       if (!resp.ok || json?.success === false) {
         // Log completo: el "HTTP 400" solo esconde el motivo real (rate limit, sesión activa, etc.)
         console.error(`[f29] ${yyyymm} → HTTP ${resp.status} body:`, raw.slice(0, 500));

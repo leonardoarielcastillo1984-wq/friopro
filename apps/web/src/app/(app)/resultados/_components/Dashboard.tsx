@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { TrendingUp, TrendingDown, DollarSign, Wallet, Building2, ChevronRight, Loader2, X, AlertTriangle, MessageSquare, Sparkles, Send, Scale, Receipt } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ReferenceLine, CartesianGrid, Legend } from 'recharts';
@@ -112,10 +112,18 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   // F29 real del período (SII vía APIGateway) — effect propio: solo depende del
   // mes. Si queda en el effect compartido, moneda/centroCostoId cargando async
   // lo re-disparan y mandan una 2da consulta idéntica al SII → HTTP 400.
+  const f29MesRef = useRef(mesKey);
   useEffect(() => {
+    f29MesRef.current = mesKey;
     setF29(null);
     apiFetch<any>(`/finanzas/f29?periodo=${mesKey}`)
-      .then(d => setF29(prev => (d?.error && prev?.vigente && prev?.periodo === mesKey) ? prev : d))
+      // Descartar respuestas viejas: la consulta del mes anterior puede llegar
+      // después (los períodos sin declarar tardan ~10s en el SII) y pisaría el
+      // dato del mes que se está viendo.
+      .then(d => {
+        if (d?.periodo && d.periodo !== f29MesRef.current) return;
+        setF29(prev => (d?.error && prev?.vigente && prev?.periodo === mesKey) ? prev : d);
+      })
       .catch(() => setF29(null));
   }, [mesKey]);
 
