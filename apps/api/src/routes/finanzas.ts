@@ -2311,10 +2311,11 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     return Array.isArray(json?.data) ? json.data : [];
   }
 
-  // Cache F29 por tenant+período (6h): las declaraciones cambian rara vez
-  // y cada consulta abre sesión al SII — llamadas seguidas responden HTTP 400
-  // y gastan créditos APIGateway al pedo.
+  // Cache F29 por tenant+período (6h) + dedup en vuelo: cada consulta abre
+  // sesión al SII y dos logins simultáneos responden HTTP 400 — la segunda
+  // request espera el resultado de la primera en vez de disparar otra sesión.
   const f29Cache = new Map<string, { payload: any; ts: number }>();
+  const f29InFlight = new Map<string, Promise<any>>();
   const F29_TTL_MS = 6 * 3600 * 1000;
 
   app.get('/f29', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -2326,6 +2327,13 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const cached = f29Cache.get(cacheKey);
     if (cached && Date.now() - cached.ts < F29_TTL_MS) return reply.send(cached.payload);
 
+    // Request duplicada mientras otra sigue en vuelo → compartir su resultado
+    const enVuelo = f29InFlight.get(cacheKey);
+    if (enVuelo) {
+      try { return reply.send(await enVuelo); }
+      catch { return reply.send(cached ? { ...cached.payload, stale: true } : { configurado: true, periodo: q.periodo, declarado: null, error: 'Consulta en curso falló', declaraciones: [] }); }
+    }
+
     const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } });
     const sii = (t?.resultadosConfig as any)?.sii;
     if (!sii?.rut || !sii?.claveEnc) return reply.send({ configurado: false, declarado: null, declaraciones: [] });
@@ -2333,7 +2341,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     try { clave = decryptApiKey(sii.claveEnc); }
     catch { return reply.code(500).send({ error: 'No se pudo descifrar la clave SII guardada. Volvé a guardarla.' }); }
 
-    try {
+    const consulta = (async () => {
       const declaraciones = await fetchF29Listado(normalizarRut(sii.rut), clave, sii.rutEmpresa ? normalizarRut(sii.rutEmpresa) : null, q.periodo);
       // La última de la lista es la vigente (las anteriores son rectificadas/historial)
       const norm = declaraciones.map((d: any) => ({
@@ -2345,11 +2353,17 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       }));
       const payload = { configurado: true, periodo: q.periodo, declarado: norm.length > 0, declaraciones: norm, vigente: norm[norm.length - 1] || null };
       f29Cache.set(cacheKey, { payload, ts: Date.now() });
-      return reply.send(payload);
+      return payload;
+    })();
+    f29InFlight.set(cacheKey, consulta);
+    try {
+      return reply.send(await consulta);
     } catch (e: any) {
       // Si el SII tira error transitorio pero teníamos dato cacheado, servirlo stale
       if (cached) return reply.send({ ...cached.payload, stale: true });
       return reply.send({ configurado: true, periodo: q.periodo, declarado: null, error: e?.message?.slice(0, 200) || 'error', declaraciones: [] });
+    } finally {
+      f29InFlight.delete(cacheKey);
     }
   });
   app.get('/informe-ejecutivo', async (req: FastifyRequest, reply: FastifyReply) => {

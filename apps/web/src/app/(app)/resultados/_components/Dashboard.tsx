@@ -81,7 +81,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const [alertasAct, setAlertasAct] = useState<string | null>(null);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
   const [iva, setIva] = useState<{ recuperado: number; noRecuperado: number; estimado: number; cargasSinDesagregar: number; tasaEstimada: number; debito: number; aPagar: number; remanente: number } | null>(null);
-  const [f29, setF29] = useState<{ configurado: boolean; declarado: boolean | null; vigente: { folio: string | null; fecha: string | null; estado: string | null } | null; declaraciones: any[]; error?: string } | null>(null);
+  const [f29, setF29] = useState<{ configurado: boolean; declarado: boolean | null; vigente: { folio: string | null; fecha: string | null; estado: string | null } | null; declaraciones: any[]; periodo?: string; error?: string } | null>(null);
   const [ivaTasaEdit, setIvaTasaEdit] = useState<string | null>(null);
   const [nuevoComentario, setNuevoComentario] = useState('');
   const [enviandoComentario, setEnviandoComentario] = useState(false);
@@ -109,7 +109,9 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
       .catch(() => setIva(null));
     // F29 real del período (SII vía APIGateway) — para cruzar contra el estimado
     setF29(null);
-    apiFetch<any>(`/finanzas/f29?periodo=${mesKey}`).then(setF29).catch(() => setF29(null));
+    apiFetch<any>(`/finanzas/f29?periodo=${mesKey}`)
+      .then(d => setF29(prev => (d?.error && prev?.vigente && prev?.periodo === mesKey) ? prev : d))
+      .catch(() => setF29(null));
   }, [anio, mesSel, moneda, centroCostoId, mesKey]);
 
   const guardarTasaIva = async () => {
