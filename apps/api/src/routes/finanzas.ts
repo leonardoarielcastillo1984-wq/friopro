@@ -2297,11 +2297,12 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const token = process.env.APIGATEWAY_API_TOKEN;
     if (!token) throw new Error('Falta configurar APIGATEWAY_API_TOKEN en el servidor');
     const yyyymm = periodo.replace('-', '');
-    const contribuyente = rutEmpresa || rut;
-    const resp = await fetch(`https://app.apigateway.cl/api/v2/sii/f29/declaraciones/listado/${contribuyente}/${yyyymm}`, {
+    // F29: el contribuyente va en auth.pass (no en el path como el RCV)
+    const rutDeclarante = rutEmpresa || rut;
+    const resp = await fetch(`https://app.apigateway.cl/api/v2/sii/f29/declaraciones/listado/${yyyymm}`, {
       method: 'POST',
       headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ auth: { pass: { rut, clave } } }),
+      body: JSON.stringify({ auth: { pass: { rut: rutDeclarante, clave } } }),
     });
     const json: any = await resp.json().catch(() => null);
     if (!resp.ok || json?.success === false) {
