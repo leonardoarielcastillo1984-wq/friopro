@@ -1743,18 +1743,37 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const tasa = await tasaIva(tenantId, moneda);
     const hoy = new Date();
     const ultimoMes = anio === hoy.getUTCFullYear() ? hoy.getUTCMonth() + 1 : 12;
-    const lineas = await recolectarLineas(tenantId, new Date(Date.UTC(anio, 0, 1)), new Date(Date.UTC(anio, ultimoMes, 1)), moneda, q.centroCostoId || null);
+    const [lineas, facturasIva] = await Promise.all([
+      recolectarLineas(tenantId, new Date(Date.UTC(anio, 0, 1)), new Date(Date.UTC(anio, ultimoMes, 1)), moneda, q.centroCostoId || null),
+      // Débito fiscal: IVA cobrado en ventas emitidas (NC resta, ANULADA no cuenta).
+      // Va por query aparte — las líneas FACTURA_EMITIDA no llevan iva para no
+      // contaminar el cálculo de crédito.
+      app.prisma.finanzaFactura.findMany({
+        where: { tenantId, deletedAt: null, estado: { not: 'ANULADA' }, fechaEmision: { gte: new Date(Date.UTC(anio, 0, 1)), lt: new Date(Date.UTC(anio, ultimoMes, 1)) }, ...(moneda ? { moneda } : {}), ...(q.centroCostoId ? { centroCostoId: q.centroCostoId } : {}) },
+        select: { fechaEmision: true, iva: true, tipoComprobante: true },
+      }).catch(() => [] as any[]),
+    ]);
     const meses = [];
-    const tot = { recuperado: 0, noRecuperado: 0, estimado: 0, cargasSinDesagregar: 0 };
+    const tot = { recuperado: 0, noRecuperado: 0, estimado: 0, cargasSinDesagregar: 0, debito: 0, aPagar: 0, remanente: 0 };
+    // Remanente a favor: cuando el crédito del mes supera al débito, el excedente
+    // se arrastra y descuenta el débito del mes siguiente (lógica F29).
+    let remanente = 0;
     for (let m = 1; m <= ultimoMes; m++) {
       const ls = lineas.filter((l: any) => new Date(l.fecha).getUTCMonth() + 1 === m);
       const recuperado = ls.filter(l => l.ivaRecuperable !== false && num(l.iva) > 0).reduce((s, l) => s + num(l.iva), 0);
       const noRecuperado = ls.filter(l => l.ivaRecuperable === false && num(l.iva) > 0).reduce((s, l) => s + num(l.iva), 0);
       const sinDesag = ls.filter(l => l.fuente === 'COMBUSTIBLE' && l.ivaRecuperable !== false && num(l.iva) === 0 && num(l.ivaBruto) > 0);
       const estimado = sinDesag.reduce((s, l) => s + num(l.ivaBruto) * (tasa / (1 + tasa)), 0);
-      meses.push({ mes: m, mesKey: `${anio}-${String(m).padStart(2, '0')}`, recuperado, noRecuperado, estimado, cargasSinDesagregar: sinDesag.length });
-      tot.recuperado += recuperado; tot.noRecuperado += noRecuperado; tot.estimado += estimado; tot.cargasSinDesagregar += sinDesag.length;
+      const debito = facturasIva
+        .filter((f: any) => new Date(f.fechaEmision).getUTCMonth() + 1 === m)
+        .reduce((s: number, f: any) => s + (f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1) * num(f.iva), 0);
+      const creditoDisponible = recuperado + remanente;
+      const aPagar = Math.max(0, debito - creditoDisponible);
+      remanente = Math.max(0, creditoDisponible - debito);
+      meses.push({ mes: m, mesKey: `${anio}-${String(m).padStart(2, '0')}`, recuperado, noRecuperado, estimado, cargasSinDesagregar: sinDesag.length, debito, aPagar, remanente });
+      tot.recuperado += recuperado; tot.noRecuperado += noRecuperado; tot.estimado += estimado; tot.cargasSinDesagregar += sinDesag.length; tot.debito += debito; tot.aPagar += aPagar;
     }
+    tot.remanente = remanente;
     const actualizadoEn = await ultimaAct(tenantId, moneda);
     return reply.send({ anio, moneda, tasaEstimada: tasa, meses, totales: tot, actualizadoEn });
   });

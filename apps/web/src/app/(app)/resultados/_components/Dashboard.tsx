@@ -80,7 +80,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [alertasAct, setAlertasAct] = useState<string | null>(null);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
-  const [iva, setIva] = useState<{ recuperado: number; noRecuperado: number; estimado: number; cargasSinDesagregar: number; tasaEstimada: number } | null>(null);
+  const [iva, setIva] = useState<{ recuperado: number; noRecuperado: number; estimado: number; cargasSinDesagregar: number; tasaEstimada: number; debito: number; aPagar: number; remanente: number } | null>(null);
   const [ivaTasaEdit, setIvaTasaEdit] = useState<string | null>(null);
   const [nuevoComentario, setNuevoComentario] = useState('');
   const [enviandoComentario, setEnviandoComentario] = useState(false);
@@ -102,9 +102,9 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
     if (centroCostoId) params.set('centroCostoId', centroCostoId);
     apiFetch<Comparativa>(`/finanzas/comparativa?${params}`).then(setComp).catch(() => setComp(null));
     apiFetch<{ alertas: Alerta[]; actualizadoEn?: string }>(`/finanzas/alertas?${params}`).then(d => { setAlertas(d.alertas || []); setAlertasAct(d.actualizadoEn || null); }).catch(() => { setAlertas([]); setAlertasAct(null); });
-    apiFetch<{ comentarios: Comentario[] }>(`/finanzas/comentarios-periodo?mesKey=${mesKey}`).then(d => setComentarios(d.comentarios || [])).catch(() => setComentarios([]));
+    apiFetch<{ comentarios: Comentario[] }>(`/finanzas/comentarios-periodo?mesKey=${mesKey}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`).then(d => setComentarios(d.comentarios || [])).catch(() => setComentarios([]));
     apiFetch<{ meses: any[]; tasaEstimada?: number }>(`/finanzas/iva-credito?anio=${anio}&moneda=${moneda}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`)
-      .then(d => { const m = (d.meses || []).find((x: any) => x.mes === mesSel); setIva(m ? { recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar, tasaEstimada: d.tasaEstimada ?? 0.21 } : null); })
+      .then(d => { const m = (d.meses || []).find((x: any) => x.mes === mesSel); setIva(m ? { recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar, debito: m.debito ?? 0, aPagar: m.aPagar ?? 0, remanente: m.remanente ?? 0, tasaEstimada: d.tasaEstimada ?? 0.21 } : null); })
       .catch(() => setIva(null));
   }, [anio, mesSel, moneda, centroCostoId, mesKey]);
 
@@ -114,7 +114,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
     setIvaTasaEdit(null);
     await apiFetch('/finanzas/config', { method: 'PUT', json: { ivaTasa: { [moneda]: v / 100 } } }).catch(() => {});
     const d = await apiFetch<{ meses: any[]; tasaEstimada?: number }>(`/finanzas/iva-credito?anio=${anio}&moneda=${moneda}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`).catch(() => null);
-    if (d) { const m = (d.meses || []).find((x: any) => x.mes === mesSel); if (m) setIva({ recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar, tasaEstimada: d.tasaEstimada ?? v / 100 }); }
+    if (d) { const m = (d.meses || []).find((x: any) => x.mes === mesSel); if (m) setIva({ recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar, debito: m.debito ?? 0, aPagar: m.aPagar ?? 0, remanente: m.remanente ?? 0, tasaEstimada: d.tasaEstimada ?? v / 100 }); }
   };
 
   const enviarComentario = async () => {
@@ -123,7 +123,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
     try {
       await apiFetch('/finanzas/comentarios-periodo', { method: 'POST', body: JSON.stringify({ mesKey, texto: nuevoComentario.trim(), centroCostoId: centroCostoId || null }) });
       setNuevoComentario('');
-      const d = await apiFetch<{ comentarios: Comentario[] }>(`/finanzas/comentarios-periodo?mesKey=${mesKey}`).catch(() => ({ comentarios: [] }));
+      const d = await apiFetch<{ comentarios: Comentario[] }>(`/finanzas/comentarios-periodo?mesKey=${mesKey}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`).catch(() => ({ comentarios: [] }));
       setComentarios(d.comentarios || []);
     } finally { setEnviandoComentario(false); }
   };
@@ -287,10 +287,10 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
         </div>
       )}
 
-      {/* IVA crédito fiscal — evidencia del recupero */}
-      {iva && (iva.recuperado > 0 || iva.noRecuperado > 0 || iva.estimado > 0 || iva.cargasSinDesagregar > 0) && (
+      {/* IVA del mes — posición tipo F29: débito (ventas) − crédito (compras) */}
+      {iva && (iva.recuperado > 0 || iva.noRecuperado > 0 || iva.estimado > 0 || iva.cargasSinDesagregar > 0 || iva.debito > 0) && (
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
-          <div className="mb-3 flex flex-wrap items-center gap-1.5 text-sm font-semibold text-neutral-900"><Receipt size={14} className="text-teal-600" />IVA crédito fiscal — {MESES[mesSel - 1]} {anio}
+          <div className="mb-3 flex flex-wrap items-center gap-1.5 text-sm font-semibold text-neutral-900"><Receipt size={14} className="text-teal-600" />IVA del mes — {MESES[mesSel - 1]} {anio}
             {ivaTasaEdit === null ? (
               canEdit ? (
                 <button onClick={() => setIvaTasaEdit(String(Math.round(iva.tasaEstimada * 100)))} title="Editar la tasa de IVA estimada para esta moneda (ej.: ARS 21, CLP 19)" className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-normal text-neutral-500 hover:bg-neutral-200">estimado al {(iva.tasaEstimada * 100).toFixed(0)} % · editar</button>
@@ -303,11 +303,26 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
               </span>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {/* Posición F29: débito − crédito = a pagar (o remanente a favor) */}
+          <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="rounded-lg bg-blue-50 p-3">
+              <div className="text-[11px] uppercase tracking-wide text-blue-700">IVA débito (ventas)</div>
+              <div className="mt-1 font-semibold text-blue-800">{fmtMoney(iva.debito, moneda)}</div>
+            </div>
             <div className="rounded-lg bg-emerald-50 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-emerald-700">IVA recuperado</div>
+              <div className="text-[11px] uppercase tracking-wide text-emerald-700">IVA crédito (compras)</div>
               <div className="mt-1 font-semibold text-emerald-800">{fmtMoney(iva.recuperado, moneda)}</div>
             </div>
+            <div className={`rounded-lg p-3 ${iva.remanente > 0 ? 'bg-teal-50' : 'bg-neutral-50'}`} title="Crédito acumulado de meses anteriores que aún no se usó">
+              <div className={`text-[11px] uppercase tracking-wide ${iva.remanente > 0 ? 'text-teal-700' : 'text-neutral-500'}`}>Remanente a favor</div>
+              <div className={`mt-1 font-semibold ${iva.remanente > 0 ? 'text-teal-800' : 'text-neutral-500'}`}>{fmtMoney(iva.remanente, moneda)}</div>
+            </div>
+            <div className={`rounded-lg p-3 ${iva.aPagar > 0 ? 'bg-red-50' : 'bg-neutral-50'}`} title="Débito − (crédito del mes + remanente). No incluye PPM ni retenciones del F29 real.">
+              <div className={`text-[11px] uppercase tracking-wide ${iva.aPagar > 0 ? 'text-red-700' : 'text-neutral-500'}`}>A pagar estimado (F29)</div>
+              <div className={`mt-1 font-semibold ${iva.aPagar > 0 ? 'text-red-800' : 'text-neutral-500'}`}>{fmtMoney(iva.aPagar, moneda)}</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
             <div className={`rounded-lg p-3 ${iva.noRecuperado > 0 ? 'bg-amber-50' : 'bg-neutral-50'}`}>
               <div className={`text-[11px] uppercase tracking-wide ${iva.noRecuperado > 0 ? 'text-amber-700' : 'text-neutral-500'}`}>IVA al costo (no recuperado)</div>
               <div className={`mt-1 font-semibold ${iva.noRecuperado > 0 ? 'text-amber-800' : 'text-neutral-500'}`}>{fmtMoney(iva.noRecuperado, moneda)}</div>
