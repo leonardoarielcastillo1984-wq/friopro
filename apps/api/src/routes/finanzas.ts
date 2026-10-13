@@ -2138,7 +2138,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   // nuestra, no del tenant). Provider aislado en fetchRcvDatos: si hay
   // que migrar a la API oficial del SII, solo cambia esa función.
   // ═══════════════════════════════════════════════════════════════
-  const normKey = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  // Colapsa '_' y espacios → 'razon_social' == 'razon social' == 'razonsocial'
+  const normKey = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[_\s]+/g, '').trim();
   // RUT SII: '778873427' → '77887342-7' (el provider espera el guión)
   const normalizarRut = (rut: string) => {
     const limpio = String(rut || '').replace(/[^0-9kK]/g, '');
@@ -2148,10 +2149,16 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   // Filas del RCV → shape filaRcvSchema. Misma lógica de match de columnas
   // que el parser CSV del front (parseRcv en ImportarSII.tsx).
   function rcvDatosToFilas(datos: any[]): any[] {
+    // Dos pasadas: exacto primero (así 'total' gana sobre 'iva_retencion_total'
+    // y 'fecha' sobre 'fecha_recepcion'), después contains. APIGateway v2 real
+    // devuelve snake_case plano (folio/fecha/total/dte/rut/razon_social); otros
+    // providers pueden devolver 'det*' o las columnas del CSV.
     const buscar = (row: any, preds: string[]) => {
+      const np = preds.map(normKey);
+      for (const k of Object.keys(row)) if (np.includes(normKey(k))) return row[k];
       for (const k of Object.keys(row)) {
         const n = normKey(k);
-        if (preds.some(px => n === px || n.startsWith(px) || n.includes(px))) return row[k];
+        if (np.some(px => n.startsWith(px) || n.includes(px))) return row[k];
       }
       return undefined;
     };
@@ -2169,22 +2176,22 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       const folioRaw = String(buscar(row, ['folio', 'nrodoc', 'nro doc']) ?? '').trim();
       const folio = folioRaw.replace(/^0+/, '') || folioRaw;
       const fecha = parseFecha(buscar(row, ['fecha docto', 'fchdoc', 'fecha']));
-      const total = toNum(buscar(row, ['monto total', 'mnttotal']));
+      const total = toNum(buscar(row, ['monto total', 'mnttotal', 'total']));
       if (!folio || !fecha || !total) continue;
       // RUT del documento: algunos providers separan DV (detRutDoc + detDvDoc)
       const rutBase = String(buscar(row, ['rut']) ?? '').trim();
       const dv = String(buscar(row, ['dvdoc', 'dv doc', 'digito']) ?? '').trim();
       const rut = rutBase && dv && !rutBase.includes('-') ? `${rutBase}-${dv}` : (rutBase || null);
       filas.push({
-        tipoDoc: String(buscar(row, ['tipo doc', 'tipodoc']) ?? '33').trim() || '33',
+        tipoDoc: String(buscar(row, ['tipo doc', 'tipodoc', 'dte']) ?? '33').trim() || '33',
         folio,
         rut,
         razonSocial: String(buscar(row, ['razon social', 'rznso']) ?? '').trim() || null,
         fecha,
-        exento: toNum(buscar(row, ['monto exento', 'mntexe'])),
-        neto: toNum(buscar(row, ['monto neto', 'mntneto'])),
-        iva: toNum(buscar(row, ['monto iva recuperable', 'monto iva', 'mntiva'])),
-        ivaNoRecuperable: toNum(buscar(row, ['monto iva no recuperable'])),
+        exento: toNum(buscar(row, ['monto exento', 'mntexe', 'exento'])),
+        neto: toNum(buscar(row, ['monto neto', 'mntneto', 'neto'])),
+        iva: toNum(buscar(row, ['monto iva recuperable', 'monto iva', 'mntiva', 'iva'])),
+        ivaNoRecuperable: toNum(buscar(row, ['monto iva no recuperable', 'iva no recuperable'])),
         total,
       });
     }
