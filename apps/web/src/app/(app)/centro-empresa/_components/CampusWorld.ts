@@ -268,7 +268,25 @@ export class CampusWorld {
       let modelObj: THREE.Object3D;
       try {
         const obj = await instance(dept.model);
-        obj.traverse((m) => { const mm = m as THREE.Mesh; if (mm.isMesh) { mm.castShadow = true; mm.receiveShadow = true; } });
+        // Tinte sutil por depto: varios deptos repiten el mismo GLB
+        // (office-building) — un corrimiento leve de hue/brillo los
+        // distingue sin cambiar el modelo. Los materiales del GLB están
+        // compartidos → hay que clonarlos antes de tocarlos.
+        let h = 0; for (const ch of dept.key) h = (h * 31 + ch.charCodeAt(0)) | 0;
+        const hueJ = (((h >> 3) & 7) / 7 - 0.5) * 0.10;   // ±0.05 hue
+        const litJ = ((h & 7) / 7 - 0.5) * 0.16;          // ±0.08 lightness
+        obj.traverse((m) => {
+          const mm = m as THREE.Mesh;
+          if (!mm.isMesh) return;
+          mm.castShadow = mm.receiveShadow = true;
+          const mats = Array.isArray(mm.material) ? mm.material : [mm.material];
+          const cloned = mats.map((mat) => {
+            const c = mat.clone() as THREE.MeshStandardMaterial;
+            if (c.color) c.color.offsetHSL(hueJ, 0.02, litJ);
+            return c;
+          });
+          mm.material = Array.isArray(mm.material) ? cloned : cloned[0];
+        });
         root.add(obj);
         modelObj = obj;
       } catch {

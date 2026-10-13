@@ -49,15 +49,15 @@ export const BUILDING_MODELS = [
 const DEFAULT_DEPARTMENTS: EmpresaDept[] = [
   { key: 'direccion', name: 'DIRECCIÓN', sub: 'Estrategia y gobierno', model: 'office-building', moduleKey: 'resultados', moduleHref: '/resultados', layer: 'STRATEGIC', enabled: true },
   { key: 'administracion', name: 'ADMINISTRACIÓN', sub: 'Gestión y finanzas', model: 'office-building', moduleKey: 'resultados', moduleHref: '/resultados', layer: 'SUPPORT', enabled: true },
-  { key: 'calidad', name: 'CALIDAD', sub: 'NCs, CAPA y auditorías', model: 'site-office', moduleKey: 'calidad', moduleHref: '/calidad', layer: 'OPERATIONAL', enabled: true },
+  { key: 'calidad', name: 'CALIDAD', sub: 'NCs, CAPA y auditorías', model: 'office-building', moduleKey: 'calidad', moduleHref: '/calidad', layer: 'OPERATIONAL', enabled: true },
   { key: 'trafico', name: 'TRÁFICO', sub: 'Logística y transporte', model: 'gas-station', moduleKey: 'flota', moduleHref: '/flota-360', layer: 'OPERATIONAL', enabled: true },
   { key: 'mantenimiento', name: 'MANTENIMIENTO', sub: 'Taller y disponibilidad', model: 'warehouse', moduleKey: 'flota', moduleHref: '/flota-360/ordenes', layer: 'SUPPORT', enabled: true },
   { key: 'produccion', name: 'PRODUCCIÓN', sub: 'Planta y operación', model: 'factory', moduleKey: 'procesos', moduleHref: '/contexto-sgi', layer: 'OPERATIONAL', enabled: true },
   { key: 'rrhh', name: 'RECURSOS HUMANOS', sub: 'Personal y capacitación', model: 'office-building', moduleKey: 'rrhh', moduleHref: '/rrhh', layer: 'SUPPORT', enabled: true },
-  { key: 'sistemas', name: 'SISTEMAS', sub: 'Tecnología e infraestructura', model: 'site-office', layer: 'SUPPORT', enabled: true },
+  { key: 'sistemas', name: 'SISTEMAS', sub: 'Tecnología e infraestructura', model: 'office-building', layer: 'SUPPORT', enabled: true },
   { key: 'comercial', name: 'COMERCIAL', sub: 'Ventas y clientes', model: 'office-building', moduleKey: 'clientes', moduleHref: '/clientes', layer: 'OPERATIONAL', enabled: true },
-  { key: 'compras', name: 'COMPRAS', sub: 'Proveedores y abastecimiento', model: 'site-office', moduleKey: 'proveedores', moduleHref: '/proveedores', layer: 'SUPPORT', enabled: true },
-  { key: 'documental', name: 'GESTIÓN DOCUMENTAL', sub: 'Documentos y registros', model: 'site-office', moduleKey: 'documents', moduleHref: '/documents', layer: 'SUPPORT', enabled: true },
+  { key: 'compras', name: 'COMPRAS', sub: 'Proveedores y abastecimiento', model: 'office-building', moduleKey: 'proveedores', moduleHref: '/proveedores', layer: 'SUPPORT', enabled: true },
+  { key: 'documental', name: 'GESTIÓN DOCUMENTAL', sub: 'Documentos y registros', model: 'office-building', moduleKey: 'documents', moduleHref: '/documents', layer: 'SUPPORT', enabled: true },
   { key: 'deposito', name: 'DEPÓSITO', sub: 'Almacenamiento y despacho', model: 'warehouse', moduleKey: 'infraestructura', moduleHref: '/infraestructura', layer: 'OPERATIONAL', enabled: true },
 ];
 
