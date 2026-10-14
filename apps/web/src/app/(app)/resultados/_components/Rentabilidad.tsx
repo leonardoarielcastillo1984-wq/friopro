@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Loader2, Target, TrendingUp, TrendingDown, AlertTriangle, Users, Building2, Layers } from 'lucide-react';
-import { fmtMoney, fmtPct, fmtActualizado, labelRubro } from './fmt';
+import { Loader2, Target, TrendingUp, TrendingDown, AlertTriangle, Users, Building2, Layers, ChevronDown, Receipt } from 'lucide-react';
+import { fmtMoney, fmtPct, fmtFecha, fmtActualizado, labelRubro, ESTADO_FACTURA, TIPO_COMPROBANTE } from './fmt';
 import { useAsistente } from './useAsistente';
 
 type Fila = { key: string; nombre: string; metodo: string; ventas: number; costos: number | null; resultado: number | null; margen: number | null };
@@ -23,6 +23,20 @@ export default function Rentabilidad({ anio, moneda, centroCostoId }: { anio: nu
   const [pe, setPe] = useState<PE | null>(null);
   const [loading, setLoading] = useState(true);
   const [ordenCliente, setOrdenCliente] = useState<'ventas' | 'resultado' | 'margen' | 'menorMargen' | 'perdida'>('ventas');
+  // Drill-down: cliente expandido → sus facturas del año.
+  const [clienteSel, setClienteSel] = useState<string | null>(null);
+  const [facturasCliente, setFacturasCliente] = useState<any[] | null>(null);
+  const [loadingFacts, setLoadingFacts] = useState(false);
+
+  const toggleCliente = (f: Fila) => {
+    if (vista !== 'cliente') return;
+    if (clienteSel === f.key) { setClienteSel(null); setFacturasCliente(null); return; }
+    setClienteSel(f.key); setFacturasCliente(null); setLoadingFacts(true);
+    apiFetch<{ facturas: any[] }>(`/finanzas/facturas?moneda=${moneda}&desde=${anio}-01-01&hasta=${anio + 1}-01-01&limit=1000`)
+      .then(d => setFacturasCliente((d.facturas || []).filter((x: any) => (x.clienteRut || x.clienteNombre || 'Sin nombre').toUpperCase() === f.key)))
+      .catch(() => setFacturasCliente([]))
+      .finally(() => setLoadingFacts(false));
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -47,7 +61,7 @@ export default function Rentabilidad({ anio, moneda, centroCostoId }: { anio: nu
   return (
     <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
       {A.Estilos}
-      <div className="-mb-1"><A.Boton /></div>
+      <div className="-mb-1 flex flex-wrap items-center gap-2"><A.Boton /><A.PreguntaBar /></div>
       {A.Panel}
       {/* Punto de equilibrio */}
       {pe && pe.peMensual !== null && (
@@ -124,10 +138,15 @@ export default function Rentabilidad({ anio, moneda, centroCostoId }: { anio: nu
           </thead>
           <tbody>
             {lista.map(f => (
-              <tr key={f.key} data-explica="rent-fila" data-explica-titulo={`${vista === 'cliente' ? 'Cliente' : vista === 'servicio' ? 'Servicio' : 'Centro'}: ${f.nombre}`} data-explica-datos={JSON.stringify(f)}
-                className={`border-b border-neutral-100 last:border-0 ${(f.resultado ?? 0) < 0 ? 'bg-red-50/40' : ''}`}>
+              <Fragment key={f.key}>
+              <tr data-explica="rent-fila" data-explica-titulo={`${vista === 'cliente' ? 'Cliente' : vista === 'servicio' ? 'Servicio' : 'Centro'}: ${f.nombre}`} data-explica-datos={JSON.stringify(f)}
+                onClick={vista === 'cliente' ? () => { if (!A.asistente) toggleCliente(f); } : undefined}
+                className={`border-b border-neutral-100 last:border-0 ${(f.resultado ?? 0) < 0 ? 'bg-red-50/40' : ''} ${vista === 'cliente' ? 'cursor-pointer hover:bg-neutral-50' : ''} ${clienteSel === f.key ? 'bg-blue-50/50' : ''}`}>
                 <td className="px-4 py-2.5">
-                  <div className="font-medium text-neutral-900">{f.nombre}</div>
+                  <div className="flex items-center gap-1.5 font-medium text-neutral-900">
+                    {vista === 'cliente' && <ChevronDown size={13} className={`shrink-0 text-neutral-400 transition-transform ${clienteSel === f.key ? 'rotate-180' : ''}`} />}
+                    {f.nombre}
+                  </div>
                   {f.metodo === 'PROPORCIONAL_VENTAS' && <div className="text-[10px] text-neutral-400">costos prorrateados por ventas</div>}
                 </td>
                 <td className="px-4 py-2.5 text-right">{fmtMoney(f.ventas, moneda)}</td>
@@ -137,6 +156,32 @@ export default function Rentabilidad({ anio, moneda, centroCostoId }: { anio: nu
                 </td>
                 <td className={`px-4 py-2.5 text-right ${(f.margen ?? 0) < 0 ? 'font-semibold text-red-600' : 'text-neutral-500'}`}>{f.margen !== null ? fmtPct(f.margen) : '—'}</td>
               </tr>
+              {vista === 'cliente' && clienteSel === f.key && (
+                <tr className="bg-neutral-50/60">
+                  <td colSpan={5} className="px-4 py-3">
+                    <div className="rounded-lg border border-neutral-200 bg-white">
+                      <div className="flex items-center gap-1.5 border-b border-neutral-100 px-3 py-2 text-[11px] font-semibold text-neutral-700"><Receipt size={12} />Facturas de {f.nombre} — {anio}</div>
+                      {loadingFacts ? <div className="px-3 py-4 text-center text-xs text-neutral-400"><Loader2 size={13} className="mr-1 inline animate-spin" />Cargando…</div>
+                        : !facturasCliente || facturasCliente.length === 0 ? <div className="px-3 py-4 text-center text-xs text-neutral-400">Sin facturas emitidas en el año.</div>
+                        : (
+                          <table className="w-full text-xs">
+                            <tbody>
+                              {facturasCliente.map((x: any) => (
+                                <tr key={x.id} className="border-b border-neutral-50 last:border-0">
+                                  <td className="w-24 px-3 py-1.5 text-neutral-400">{fmtFecha(x.fechaEmision)}</td>
+                                  <td className="px-3 py-1.5">{TIPO_COMPROBANTE[x.tipoComprobante] || x.tipoComprobante} {x.numero || ''}</td>
+                                  <td className="px-3 py-1.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${(ESTADO_FACTURA[x.estado] || { color: 'bg-neutral-100 text-neutral-500' }).color}`}>{(ESTADO_FACTURA[x.estado] || { label: x.estado }).label}</span></td>
+                                  <td className="px-3 py-1.5 text-right font-medium">{fmtMoney(x.total, x.moneda || moneda)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
             {lista.length === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-neutral-400">Sin datos en el período{vista === 'servicio' ? ' — marcá servicio en las facturas/ingresos para habilitar esta vista' : ''}.</td></tr>}
           </tbody>

@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { useModulePermission } from '@/hooks/useModulePermission';
-import { TrendingUp, Receipt, Wallet, Building2, HandCoins, Upload, Eye, Pin, Landmark, LineChart, Scale } from 'lucide-react';
+import { TrendingUp, Receipt, Wallet, Building2, HandCoins, Upload, Eye, Pin, Landmark, LineChart, Scale, PieChart, Settings } from 'lucide-react';
 import Dashboard from './_components/Dashboard';
 import Facturacion from './_components/Facturacion';
 import Gastos from './_components/Gastos';
@@ -14,10 +14,15 @@ import CuentasPorPagar from './_components/CuentasPorPagar';
 import FlujoCaja from './_components/FlujoCaja';
 import Rentabilidad from './_components/Rentabilidad';
 import Proyeccion from './_components/Proyeccion';
+import Balance from './_components/Balance';
 import ImportarSII from './_components/ImportarSII';
+import ConfigResultados from './_components/ConfigResultados';
 import { MESES } from './_components/fmt';
 
-type Tab = 'resultados' | 'facturacion' | 'cobrar' | 'gastos' | 'pagar' | 'caja' | 'proyeccion' | 'rentabilidad' | 'importar' | 'centros';
+type Tab = 'resultados' | 'facturacion' | 'cobrar' | 'gastos' | 'pagar' | 'caja' | 'proyeccion' | 'rentabilidad' | 'balance' | 'importar' | 'centros';
+
+// Tabs donde el consolidado multi-moneda (TODAS) está soportado por el backend.
+const TABS_TODAS: Tab[] = ['resultados'];
 
 const TABS: { key: Tab; label: string; icon: any; edit?: boolean }[] = [
   { key: 'resultados', label: 'Resultados', icon: TrendingUp },
@@ -28,6 +33,7 @@ const TABS: { key: Tab; label: string; icon: any; edit?: boolean }[] = [
   { key: 'caja', label: 'Flujo de caja', icon: LineChart },
   { key: 'proyeccion', label: 'Proyección', icon: Scale },
   { key: 'rentabilidad', label: 'Rentabilidad', icon: TrendingUp },
+  { key: 'balance', label: 'Balance', icon: PieChart },
   { key: 'importar', label: 'Importar SII', icon: Upload, edit: true },
   { key: 'centros', label: 'Centros de costo', icon: Building2 },
 ];
@@ -54,8 +60,14 @@ function ResultadosPageInner() {
   const [config, setConfig] = useState<{ monedaLocal: string | null; monedaDefault: string | null } | null>(null);
   const [centroCostoId, setCentroCostoId] = useState('');
   const [centros, setCentros] = useState<any[]>([]);
+  const [configOpen, setConfigOpen] = useState(false);
 
-  const setTab = (t: Tab) => { setTabState(t); router.replace(`/resultados?tab=${t}`, { scroll: false }); };
+  const setTab = (t: Tab) => {
+    setTabState(t);
+    // El consolidado (TODAS) solo existe en tabs analíticas: al salir, volver a la default.
+    if (!TABS_TODAS.includes(t)) setMoneda(m => m === 'TODAS' ? (config?.monedaDefault || config?.monedaLocal || 'USD') : m);
+    router.replace(`/resultados?tab=${t}`, { scroll: false });
+  };
 
   const loadCentros = useCallback(() => {
     apiFetch<{ centros: any[] }>('/finanzas/centros-costo').then(d => setCentros(d.centros)).catch(() => {});
@@ -103,7 +115,8 @@ function ResultadosPageInner() {
   const anios: number[] = [];
   for (let a = anioActual; a >= anioActual - 4; a--) anios.push(a);
   // Moneda local de la empresa + USD + cualquier otra con documentos cargados
-  const opcionesMoneda = [...new Set([config?.monedaLocal, 'USD', ...monedasUsadas, moneda].filter(Boolean) as string[])];
+  const opcionesMoneda = [...new Set([config?.monedaLocal, 'USD', ...monedasUsadas, moneda].filter((m): m is string => !!m && m !== 'TODAS'))];
+  const mostrarTodas = TABS_TODAS.includes(tab) && (monedasUsadas.length > 1 || opcionesMoneda.length > 1);
   const tabsVisibles = TABS.filter(t => !t.edit || canEdit);
   const sel = 'rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:outline-none';
 
@@ -116,15 +129,16 @@ function ResultadosPageInner() {
           {!canEdit && <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-500"><Eye size={11} />Modo consulta</p>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {['resultados', 'rentabilidad', 'proyeccion'].includes(tab) && (
+          {['resultados', 'rentabilidad', 'proyeccion', 'balance'].includes(tab) && (
             <select value={anio} onChange={e => setAnio(Number(e.target.value))} className={sel}>
               {anios.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           )}
-          <select value={moneda} onChange={e => setMoneda(e.target.value)} className={sel} title="Muestra solo los documentos cargados en esa moneda (no convierte)">
+          <select value={moneda} onChange={e => setMoneda(e.target.value)} className={sel} title={moneda === 'TODAS' ? 'Consolida todas las monedas a la moneda base usando los tipos de cambio configurados' : 'Muestra solo los documentos cargados en esa moneda (no convierte)'}>
+            {mostrarTodas && <option value="TODAS">⇄ Todas (consolidado)</option>}
             {opcionesMoneda.map(m => <option key={m} value={m}>{m === config?.monedaLocal ? `${m} (local)` : m}</option>)}
           </select>
-          {canEdit && moneda && config && moneda !== config.monedaDefault && (
+          {canEdit && moneda && config && moneda !== 'TODAS' && moneda !== config.monedaDefault && (
             <button onClick={fijarMoneda} className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-xs text-neutral-600 hover:bg-neutral-50" title="Que esta empresa abra siempre en esta moneda">
               <Pin size={12} /> Abrir siempre en {moneda}
             </button>
@@ -140,6 +154,11 @@ function ResultadosPageInner() {
             <option value="anual">Anual {anio}</option>
             {MESES.map((m, i) => <option key={i} value={i + 1}>{m} {anio}</option>)}
           </select>
+          {canEdit && (
+            <button onClick={() => setConfigOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-50" title="Metas, tipos de cambio, cierre de períodos, informe por email">
+              <Settings size={14} /> Configuración
+            </button>
+          )}
         </div>
       </div>
 
@@ -164,10 +183,12 @@ function ResultadosPageInner() {
           {tab === 'caja' && <FlujoCaja moneda={moneda} canEdit={canEdit} />}
           {tab === 'proyeccion' && <Proyeccion anio={anio} moneda={moneda} centroCostoId={centroCostoId} />}
           {tab === 'rentabilidad' && <Rentabilidad anio={anio} moneda={moneda} centroCostoId={centroCostoId} />}
+          {tab === 'balance' && <Balance anio={anio} moneda={moneda} />}
           {tab === 'importar' && canEdit && <ImportarSII centros={centros} moneda={moneda} monedas={opcionesMoneda} onChanged={onChanged} />}
           {tab === 'centros' && <CentrosCosto centros={centros} canEdit={canEdit} reload={loadCentros} />}
         </div>
       )}
+      {configOpen && <ConfigResultados monedas={opcionesMoneda} canEdit={canEdit} onClose={() => setConfigOpen(false)} />}
     </div>
   );
 }

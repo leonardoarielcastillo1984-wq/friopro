@@ -7,6 +7,7 @@ import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { randomBytes } from 'crypto';
 import { encryptApiKey, decryptApiKey } from '../services/llm/tenantCrypto.js';
+import { sendEmail } from '../services/email.js';
 // @ts-ignore — pdf-parse no publica tipos propios
 import pdfParse from 'pdf-parse';
 
@@ -32,6 +33,20 @@ function rubroDe(fuente: string): string {
   if (fuente.startsWith('FACTURA_') && fuente !== 'FACTURA_EMITIDA') return fuente.slice(8);
   return RUBRO_FUENTE[fuente] || 'OTRO';
 }
+
+// Moneda por defecto según el país del tenant (usada por rutas y por los
+// jobs diarios — por eso vive a nivel módulo).
+const MONEDA_PAIS: Record<string, string> = {
+  AR: 'ARS', CL: 'CLP', BR: 'BRL', UY: 'UYU', PY: 'PYG', BO: 'BOB', PE: 'PEN',
+  EC: 'USD', CO: 'COP', VE: 'VES', MX: 'MXN', US: 'USD', ES: 'EUR',
+};
+
+const APP_URL = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+// Cache en memoria del contexto del asistente /explicar: recolectar líneas
+// del mes es la parte cara; se reutiliza 10 minutos por tenant+período.
+const EXPLICA_CACHE = new Map<string, { at: number; lineas: any[] }>();
+const EXPLICA_CACHE_TTL = 10 * 60 * 1000;
 
 async function resolveUser(prisma: any, userId?: string | null) {
   if (!userId) return { id: null as string | null, nombre: null as string | null };
@@ -254,6 +269,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const { items, ...data } = body.data;
     const refError = await validarRefs(prisma(), tenantId, data);
     if (refError) return reply.code(400).send({ error: `${refError} no existe en esta empresa` });
+    if (await rechazarSiCerrado(tenantId, data.fechaEmision ? new Date(data.fechaEmision) : new Date(), reply)) return;
     // Dedupe manual: mismo número + tipo + cliente (como hace el import RCV).
     if (data.numero) {
       const dup = await prisma().finanzaFactura.findFirst({
@@ -288,8 +304,12 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const update: any = { ...data };
     if (data.fechaEmision) update.fechaEmision = new Date(data.fechaEmision);
     if (data.fechaVencimiento !== undefined) update.fechaVencimiento = data.fechaVencimiento ? new Date(data.fechaVencimiento) : null;
+    // Cierre de período: no se edita un doc de un mes cerrado ni se lo mueve a uno.
+    const prev = await prisma().finanzaFactura.findFirst({ where: { id, tenantId, deletedAt: null }, select: { fechaEmision: true } });
+    if (!prev) return reply.code(404).send({ error: 'Factura no encontrada' });
+    if (await rechazarSiCerrado(tenantId, prev.fechaEmision, reply)) return;
+    if (update.fechaEmision && await rechazarSiCerrado(tenantId, update.fechaEmision, reply)) return;
     const r = await prisma().finanzaFactura.updateMany({ where: { id, tenantId, deletedAt: null }, data: update });
-    if (!r.count) return reply.code(404).send({ error: 'Factura no encontrada' });
     if (items) {
       await prisma().finanzaFacturaItem.deleteMany({ where: { facturaId: id } });
       if (items.length) await prisma().finanzaFacturaItem.createMany({ data: items.map((i: any) => ({ ...i, facturaId: id })) });
@@ -305,6 +325,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
+    const prev = await prisma().finanzaFactura.findFirst({ where: { id, tenantId, deletedAt: null }, select: { fechaEmision: true } });
+    if (prev && await rechazarSiCerrado(tenantId, prev.fechaEmision, reply)) return;
     const r = await prisma().finanzaFactura.updateMany({ where: { id, tenantId, deletedAt: null }, data: { estado: 'ANULADA' } });
     if (!r.count) return reply.code(404).send({ error: 'Factura no encontrada' });
     return reply.send({ ok: true });
@@ -314,6 +336,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
+    const prev = await prisma().finanzaFactura.findFirst({ where: { id, tenantId, deletedAt: null }, select: { fechaEmision: true } });
+    if (prev && await rechazarSiCerrado(tenantId, prev.fechaEmision, reply)) return;
     const r = await prisma().finanzaFactura.updateMany({ where: { id, tenantId }, data: { deletedAt: new Date() } });
     if (!r.count) return reply.code(404).send({ error: 'Factura no encontrada' });
     return reply.send({ ok: true });
@@ -343,6 +367,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     // Moneda: forzada a la del documento — nunca se suman monedas distintas.
     if (body.data.moneda && body.data.moneda !== factura.moneda)
       return reply.code(400).send({ error: `El cobro debe ser en ${factura.moneda} (la factura es en esa moneda)` });
+    if (await rechazarSiCerrado(tenantId, body.data.fecha || new Date(), reply)) return;
     // Sobrecobro: el cobro no puede superar el saldo pendiente (no aplica a NC,
     // que no se cobran — el frontend ya las excluye pero el API no asumía nada).
     if (factura.tipoComprobante !== 'NOTA_CREDITO') {
@@ -383,6 +408,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (!cobro) return reply.code(404).send({ error: 'Cobro no encontrado' });
     const data: any = { ...body.data };
     if (data.fecha) data.fecha = new Date(data.fecha);
+    if (await rechazarSiCerrado(tenantId, data.fecha || cobro.fecha, reply)) return;
     if (data.importe !== undefined && cobro.factura?.tipoComprobante !== 'NOTA_CREDITO') {
       const saldo = num(cobro.factura?.total) - cobro.factura.cobros.filter((c: any) => c.id !== id).reduce((s: number, c: any) => s + num(c.importe), 0);
       if (data.importe > saldo + 0.5)
@@ -399,6 +425,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const { id } = req.params as any;
     const cobro = await prisma().finanzaCobro.findFirst({ where: { id, tenantId } });
     if (!cobro) return reply.code(404).send({ error: 'Cobro no encontrado' });
+    if (await rechazarSiCerrado(tenantId, cobro.fecha, reply)) return;
     await prisma().finanzaCobro.delete({ where: { id } });
     await syncFacturaEstado(app.prisma, cobro.facturaId);
     return reply.send({ ok: true });
@@ -455,6 +482,17 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const body = cartolaSchema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
     const { commit, moneda, filas } = body.data;
+    // Cierre de período: al commitear, los abonos de meses cerrados se omiten.
+    let filasU = filas;
+    if (commit) {
+      const meses = [...new Set(filas.map(f => f.fecha.slice(0, 7)))];
+      const cerrados = (await Promise.all(meses.map(m => periodoCerrado(tenantId, `${m}-15`)))).filter(Boolean) as string[];
+      if (cerrados.length) {
+        const setC = new Set(cerrados);
+        filasU = filas.filter(f => !setC.has(f.fecha.slice(0, 7)));
+        if (!filasU.length) return reply.code(423).send({ error: `Período(s) cerrado(s): ${cerrados.join(', ')}`, periodosCerrados: cerrados });
+      }
+    }
     const user = await resolveUser(app.prisma, (req as any).auth?.userId);
 
     // Cobros ya aplicados por cartola → dedup por firma
@@ -520,7 +558,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     };
 
     const resFilas: any[] = [];
-    for (const [idx, fl] of filas.entries()) {
+    for (const [idx, fl] of filasU.entries()) {
       const firma = firmaCobro(fl);
       const base = { idx, fecha: fl.fecha, descripcion: fl.descripcion, monto: fl.monto, referencia: fl.referencia ?? null, firma };
       if (aplicadas.has(firma)) { resFilas.push({ ...base, estado: 'ya_aplicado', facturas: [] }); continue; }
@@ -660,6 +698,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
     if (body.data.moneda && body.data.moneda !== gasto.moneda)
       return reply.code(400).send({ error: `El pago debe ser en ${gasto.moneda} (el gasto es en esa moneda)` });
+    if (await rechazarSiCerrado(tenantId, body.data.fecha || new Date(), reply)) return;
     // Sobrepago: no puede superar el saldo. Las NC no reciben pagos (restan).
     if (gasto.tipoComprobante === 'NOTA_CREDITO')
       return reply.code(400).send({ error: 'Una nota de crédito no recibe pagos' });
@@ -690,6 +729,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (!pago) return reply.code(404).send({ error: 'Pago no encontrado' });
     const data: any = { ...body.data };
     if (data.fecha) data.fecha = new Date(data.fecha);
+    if (await rechazarSiCerrado(tenantId, data.fecha || pago.fecha, reply)) return;
     if (data.importe !== undefined && pago.gasto?.tipoComprobante !== 'NOTA_CREDITO') {
       const saldo = num(pago.gasto?.total) - pago.gasto.pagos.filter((x: any) => x.id !== id).reduce((s: number, x: any) => s + num(x.importe), 0);
       if (data.importe > saldo + 0.5)
@@ -705,6 +745,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const { id } = req.params as any;
     const pago = await prisma().finanzaPago.findFirst({ where: { id, tenantId } });
     if (!pago) return reply.code(404).send({ error: 'Pago no encontrado' });
+    if (await rechazarSiCerrado(tenantId, pago.fecha, reply)) return;
     await prisma().finanzaPago.delete({ where: { id } });
     return reply.send({ ok: true });
   });
@@ -816,6 +857,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
     const refError = await validarRefs(prisma(), tenantId, body.data);
     if (refError) return reply.code(400).send({ error: `${refError} no existe en esta empresa` });
+    if (await rechazarSiCerrado(tenantId, body.data.fecha || new Date(), reply)) return;
     // Dedupe manual: mismo número + tipo + proveedor (como hace el import RCV).
     if (body.data.numeroComprobante) {
       const dup = await prisma().finanzaGasto.findFirst({
@@ -851,8 +893,12 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (data.fechaVencimiento !== undefined) data.fechaVencimiento = data.fechaVencimiento ? new Date(data.fechaVencimiento) : null;
     if (data.fechaDesde !== undefined) data.fechaDesde = data.fechaDesde ? new Date(data.fechaDesde) : null;
     if (data.fechaHasta !== undefined) data.fechaHasta = data.fechaHasta ? new Date(data.fechaHasta) : null;
+    // Cierre de período: no se edita un gasto de un mes cerrado ni se mueve a uno.
+    const prev = await prisma().finanzaGasto.findFirst({ where: { id, tenantId, deletedAt: null }, select: { fecha: true } });
+    if (!prev) return reply.code(404).send({ error: 'Gasto no encontrado' });
+    if (await rechazarSiCerrado(tenantId, prev.fecha, reply)) return;
+    if (data.fecha && await rechazarSiCerrado(tenantId, data.fecha, reply)) return;
     const r = await prisma().finanzaGasto.updateMany({ where: { id, tenantId, deletedAt: null }, data });
-    if (!r.count) return reply.code(404).send({ error: 'Gasto no encontrado' });
     return reply.send({ ok: true });
   });
 
@@ -903,20 +949,41 @@ export default async function finanzasRoutes(app: FastifyInstance) {
 
   // Configuración de moneda por empresa: la local sale del país del tenant;
   // la de inicio es configurable (ej. USD). USD siempre disponible.
-  const MONEDA_PAIS: Record<string, string> = {
-    AR: 'ARS', CL: 'CLP', BR: 'BRL', UY: 'UYU', PY: 'PYG', BO: 'BOB', PE: 'PEN',
-    EC: 'USD', CO: 'COP', VE: 'VES', MX: 'MXN', US: 'USD', ES: 'EUR',
-  };
   const configMoneda = async (tenantId: string) => {
     const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { country: true, monedaResultados: true, resultadosConfig: true } });
+    const conf = (t?.resultadosConfig as any) || {};
     const monedaLocal = (t?.country && MONEDA_PAIS[t.country]) || null;
-    const ivaTasa = ((t?.resultadosConfig as any)?.ivaTasa as Record<string, number> | undefined) || {};
-    const presupuesto = ((t?.resultadosConfig as any)?.presupuesto as Record<string, number> | undefined) || {};
-    const saldoInicial = ((t?.resultadosConfig as any)?.saldoInicial as Record<string, number> | undefined) || {};
+    const ivaTasa = (conf.ivaTasa as Record<string, number> | undefined) || {};
+    const presupuesto = (conf.presupuesto as Record<string, number> | undefined) || {};
+    const saldoInicial = (conf.saldoInicial as Record<string, number> | undefined) || {};
     // Credenciales SII: solo expone RUT + flag configurado (la clave nunca sale)
-    const siiCfg = (t?.resultadosConfig as any)?.sii;
+    const siiCfg = conf.sii;
     const sii = siiCfg?.rut ? { rut: siiCfg.rut, rutEmpresa: siiCfg.rutEmpresa || null, configurado: !!siiCfg.claveEnc } : null;
-    return { country: t?.country || null, monedaLocal, monedaDefault: t?.monedaResultados || monedaLocal, ivaTasa, presupuesto, saldoInicial, sii };
+    return {
+      country: t?.country || null, monedaLocal, monedaDefault: t?.monedaResultados || monedaLocal,
+      ivaTasa, presupuesto, saldoInicial, sii,
+      alertas: (conf.alertas as any) || {},
+      metas: (conf.metas as any) || {},
+      tiposCambio: (conf.tiposCambio as any) || {},
+      periodosCerrados: (conf.periodosCerrados as string[] | undefined) || [],
+      informeEmail: (conf.informeEmail as any) || null,
+    };
+  };
+
+  // Cierre de período: resultadosConfig.periodosCerrados = ['2026-09', …].
+  // Un mes cerrado rechaza cargas/ediciones con fecha en ese mes (423).
+  const periodoCerrado = async (tenantId: string, fecha: Date | string): Promise<string | null> => {
+    const d = fecha instanceof Date ? fecha : new Date(fecha);
+    if (isNaN(d.getTime())) return null;
+    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } }).catch(() => null);
+    const cerrados = (((t?.resultadosConfig as any)?.periodosCerrados) as string[] | undefined) || [];
+    return cerrados.includes(key) ? key : null;
+  };
+  const rechazarSiCerrado = async (tenantId: string, fecha: Date | string, reply: FastifyReply): Promise<boolean> => {
+    const mk = await periodoCerrado(tenantId, fecha);
+    if (mk) { reply.code(423).send({ error: `El período ${mk} está cerrado`, periodoCerrado: mk }); return true; }
+    return false;
   };
 
   app.get('/config', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -944,11 +1011,28 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         rutEmpresa: z.string().max(20).optional().nullable(),
         eliminar: z.boolean().optional(),
       }).nullable().optional(),
+      // Metas comerciales: avance en Dashboard (null = sin meta)
+      metas: z.object({
+        ventasMensual: z.number().min(0).nullable().optional(),
+        resultadoMensual: z.number().nullable().optional(),
+        ventasAnual: z.number().min(0).nullable().optional(),
+        resultadoAnual: z.number().nullable().optional(),
+      }).optional(),
+      // Tipos de cambio manuales para el consolidado: { USD: { '2026-10': 950, '*': 940 } }
+      // 'YYYY-MM' = tasa del mes; '*' = tasa por defecto. null borra la tasa.
+      tiposCambio: z.record(z.string().regex(/^[A-Z]{3}$/), z.record(z.string().regex(/^(\d{4}-\d{2}|\*)$/), z.number().positive().nullable())).optional(),
+      // Cierre de período: array de 'YYYY-MM' bloqueados para carga/edición.
+      periodosCerrados: z.array(z.string().regex(/^\d{4}-\d{2}$/)).max(240).optional(),
+      // Informe ejecutivo automático por email (día 1, mes anterior).
+      informeEmail: z.object({
+        activo: z.boolean().optional(),
+        emails: z.array(z.string().email()).max(10).optional(),
+      }).nullable().optional(),
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
     const data: any = {};
     if (body.data.monedaDefault !== undefined) data.monedaResultados = body.data.monedaDefault;
-    if (body.data.saldoInicial || body.data.claseCosto || body.data.alertas || body.data.ivaTasa || body.data.presupuesto) {
+    if (body.data.saldoInicial || body.data.claseCosto || body.data.alertas || body.data.ivaTasa || body.data.presupuesto || body.data.metas || body.data.tiposCambio || body.data.periodosCerrados || body.data.informeEmail !== undefined) {
       const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } });
       const conf = ((t?.resultadosConfig as any) || {}) as any;
       if (body.data.saldoInicial) conf.saldoInicial = body.data.saldoInicial;
@@ -961,6 +1045,20 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       if (body.data.presupuesto) {
         conf.presupuesto = { ...(conf.presupuesto || {}), ...Object.fromEntries(Object.entries(body.data.presupuesto).filter(([, v]) => v !== null)) };
         for (const [k, v] of Object.entries(body.data.presupuesto)) if (v === null) delete conf.presupuesto[k];
+      }
+      if (body.data.metas) conf.metas = { ...(conf.metas || {}), ...body.data.metas };
+      if (body.data.tiposCambio) {
+        conf.tiposCambio = conf.tiposCambio || {};
+        for (const [mon, tasas] of Object.entries(body.data.tiposCambio)) {
+          conf.tiposCambio[mon] = { ...(conf.tiposCambio[mon] || {}), ...Object.fromEntries(Object.entries(tasas).filter(([, v]) => v !== null)) };
+          for (const [k, v] of Object.entries(tasas)) if (v === null) delete conf.tiposCambio[mon][k];
+          if (!Object.keys(conf.tiposCambio[mon]).length) delete conf.tiposCambio[mon];
+        }
+      }
+      if (body.data.periodosCerrados) conf.periodosCerrados = body.data.periodosCerrados;
+      if (body.data.informeEmail !== undefined) {
+        if (body.data.informeEmail === null) delete conf.informeEmail;
+        else conf.informeEmail = { ...(conf.informeEmail || {}), ...body.data.informeEmail };
       }
       data.resultadosConfig = conf;
     }
@@ -1050,7 +1148,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       // Venta = base sin IVA (el IVA no es ingreso de la empresa). Sin neto cargado → total.
       const base = num(f.neto) > 0 ? num(f.neto) : num(f.total);
       const label = f.tipoComprobante === 'NOTA_CREDITO' ? 'Nota de crédito' : 'Factura';
-      add({ fecha: f.fechaEmision, concepto: `${label} ${[f.puntoVenta, f.numero].filter(Boolean).join('-') || 's/n'} — ${f.clienteNombre}`, importe: sign * base, grupo: 'FACTURADO', fuente: 'FACTURA_EMITIDA', modulo: 'Resultados', origenId: f.id, origenUrl: '/resultados?tab=facturacion', centroCostoId: f.centroCostoId });
+      add({ fecha: f.fechaEmision, concepto: `${label} ${[f.puntoVenta, f.numero].filter(Boolean).join('-') || 's/n'} — ${f.clienteNombre}`, importe: sign * base, grupo: 'FACTURADO', fuente: 'FACTURA_EMITIDA', modulo: 'Resultados', origenId: f.id, origenUrl: '/resultados?tab=facturacion', centroCostoId: f.centroCostoId, moneda: f.moneda });
     }
 
     // Cobros de facturas emitidas (caja)
@@ -1061,7 +1159,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     for (const c of cobros) {
       if (c.factura?.deletedAt) continue;
       if (!ccOk(c.factura?.centroCostoId)) continue;
-      add({ fecha: c.fecha, concepto: `Cobro fact. ${[c.factura?.puntoVenta, c.factura?.numero].filter(Boolean).join('-') || ''} — ${c.factura?.clienteNombre || ''}`, importe: num(c.importe), grupo: 'COBRADO', fuente: 'COBRO', modulo: 'Resultados', origenId: c.facturaId, origenUrl: '/resultados?tab=facturacion', centroCostoId: c.factura?.centroCostoId });
+      add({ fecha: c.fecha, concepto: `Cobro fact. ${[c.factura?.puntoVenta, c.factura?.numero].filter(Boolean).join('-') || ''} — ${c.factura?.clienteNombre || ''}`, importe: num(c.importe), grupo: 'COBRADO', fuente: 'COBRO', modulo: 'Resultados', origenId: c.facturaId, origenUrl: '/resultados?tab=facturacion', centroCostoId: c.factura?.centroCostoId, moneda: c.moneda || c.factura?.moneda });
     }
 
     // Ingresos operativos de flota (sin factura emitida)
@@ -1094,7 +1192,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       const sign = f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
       // Costo real = neto cuando el IVA se recupera; si no, el IVA es costo.
       const base = f.ivaRecuperable !== false && num(f.neto) > 0 ? num(f.neto) : num(f.total);
-      add({ fecha: f.fecha, concepto: `${f.concepto || f.categoria}${f.proveedor ? ' — ' + f.proveedor : ''}${veh ? ` (${veh.dominio})` : ''}`, importe: sign * base, grupo: 'COSTO_OP', fuente: `FACTURA_${f.categoria || 'GASTO'}`, modulo: 'Flota 360', origenId: f.id, origenUrl: f.vehiculoId ? `/flota-360/vehiculos/${f.vehiculoId}` : '/flota-360', centroCostoId: cc, iva: num(f.iva), ivaRecuperable: f.ivaRecuperable !== false });
+      add({ fecha: f.fecha, concepto: `${f.concepto || f.categoria}${f.proveedor ? ' — ' + f.proveedor : ''}${veh ? ` (${veh.dominio})` : ''}`, importe: sign * base, grupo: 'COSTO_OP', fuente: `FACTURA_${f.categoria || 'GASTO'}`, modulo: 'Flota 360', origenId: f.id, origenUrl: f.vehiculoId ? `/flota-360/vehiculos/${f.vehiculoId}` : '/flota-360', centroCostoId: cc, iva: num(f.iva), ivaRecuperable: f.ivaRecuperable !== false, moneda: f.moneda });
       if (f.neumaticoId) facturasNeumaticoIds.add(f.neumaticoId);
     }
     // También marcar neumáticos cubiertos por facturas vinculadas a OT
@@ -1268,7 +1366,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       const base = g.ivaRecuperable !== false && g.neto !== null && g.neto !== undefined ? num(g.neto) : num(g.total);
       const conceptoBase = `${g.concepto}${g.proveedor ? ' — ' + g.proveedor : ''}${veh ? ` (${veh.dominio})` : ''}`;
       const url = veh ? `/flota-360/vehiculos/${veh.id}` : '/resultados?tab=gastos';
-      const emisor = { grupo, fuente: `GASTO_${g.categoria}`, modulo: 'Resultados', origenId: g.id, origenUrl: url, centroCostoId: cc, ivaRecuperable: g.ivaRecuperable !== false };
+      const emisor = { grupo, fuente: `GASTO_${g.categoria}`, modulo: 'Resultados', origenId: g.id, origenUrl: url, centroCostoId: cc, ivaRecuperable: g.ivaRecuperable !== false, moneda: g.moneda };
       if (g.esAmortizable && g.fechaDesde && g.fechaHasta) {
         // Gasto anual prorrateado: el total se divide en partes iguales por
         // cada mes de la ventana; una línea por mes del rango que intersecte
@@ -1306,6 +1404,45 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     return lineas;
   }
 
+  // ── Consolidación multi-moneda (moneda=TODAS) ─────────────────
+  // Convierte cada línea a la moneda base del tenant usando
+  // resultadosConfig.tiposCambio: { USD: { '2026-10': 950, '*': 940 } }
+  // ('*' = tasa por defecto sin mes específico). Líneas cuya moneda no
+  // tiene tasa cargada quedan EXCLUIDAS del consolidado y se listan en
+  // `faltantes` (moneda·mes) para que el usuario cargue el tipo de cambio.
+  async function aplicarTiposCambio(tenantId: string, lineas: any[], monedaBase: string) {
+    const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } }).catch(() => null);
+    const tc = (((t?.resultadosConfig as any)?.tiposCambio) || {}) as Record<string, Record<string, number>>;
+    const faltantes = new Set<string>();
+    let excluidas = 0;
+    const out: any[] = [];
+    for (const l of lineas) {
+      const m = l.moneda || monedaBase;
+      if (m === monedaBase) { out.push(l); continue; }
+      const d = new Date(l.fecha);
+      const mesKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      const tasa = num(tc[m]?.[mesKey]) || num(tc[m]?.['*']);
+      if (tasa > 0) {
+        out.push({
+          ...l, importe: l.importe * tasa,
+          ...(l.iva !== undefined ? { iva: num(l.iva) * tasa } : {}),
+          ...(l.ivaBruto !== undefined ? { ivaBruto: num(l.ivaBruto) * tasa } : {}),
+          monedaOriginal: m, tasaAplicada: tasa,
+        });
+      } else { faltantes.add(`${m}·${mesKey}`); excluidas++; }
+    }
+    return { lineas: out, faltantes: [...faltantes].sort(), excluidas };
+  }
+
+  // Recolecta TODAS las monedas y las consolida en la moneda base.
+  async function recolectarConsolidado(tenantId: string, desde: Date, hasta: Date, centroCostoId: string | null) {
+    const cfg = await configMoneda(tenantId);
+    const base = cfg.monedaDefault || 'USD';
+    const crudas = await recolectarLineas(tenantId, desde, hasta, null, centroCostoId);
+    const r = await aplicarTiposCambio(tenantId, crudas, base);
+    return { ...r, monedaBase: base };
+  }
+
   // Fecha del último dato económico registrado/modificado. Alimenta la
   // leyenda "actualizado hoy 08:32" de cada cuadro del módulo.
   async function ultimaAct(tenantId: string, moneda: string | null): Promise<Date | null> {
@@ -1336,7 +1473,9 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const q = req.query as any;
     const anio = Math.min(Math.max(Number(q.anio) || new Date().getUTCFullYear(), 2000), 2100);
-    const moneda = q.moneda || null;
+    const monedaQ = q.moneda || null;
+    const consolidar = monedaQ === 'TODAS';
+    const moneda = consolidar ? null : monedaQ;
     const centroCostoId = q.centroCostoId || null;
 
     const mesActual = new Date().getUTCMonth() + 1;
@@ -1347,7 +1486,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     // (sueldos, cuotas, recurrentes, amortizables) vienen fechadas en su mes.
     const desdeAnio = new Date(Date.UTC(anio, 0, 1));
     const hastaAnio = new Date(Date.UTC(anio, mesesACalcular, 1));
-    const lineasAnio = await recolectarLineas(tenantId, desdeAnio, hastaAnio, moneda, centroCostoId);
+    const consol = consolidar ? await recolectarConsolidado(tenantId, desdeAnio, hastaAnio, centroCostoId) : null;
+    const lineasAnio = consol ? consol.lineas : await recolectarLineas(tenantId, desdeAnio, hastaAnio, moneda, centroCostoId);
 
     const meses: any[] = [];
     for (let m = 1; m <= mesesACalcular; m++) {
@@ -1394,7 +1534,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     totales.mesesNegativos = meses.filter(m => m.resultado < 0).length;
 
     const actualizadoEn = await ultimaAct(tenantId, moneda);
-    return reply.send({ anio, moneda, centroCostoId, meses, totales, actualizadoEn });
+    return reply.send({ anio, moneda: monedaQ, monedaBase: consol?.monedaBase ?? null, faltantesTC: consol?.faltantes ?? [], excluidasSinTC: consol?.excluidas ?? 0, centroCostoId, meses, totales, actualizadoEn });
   });
 
   // GET /resultado-mensual/detalle?anio=&mes=&moneda=&centroCostoId=&grupo=
@@ -2014,6 +2154,209 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   });
 
   // ═══════════════════════════════════════════════════════════════
+  // TENDENCIA — serie mensual de los últimos 12 meses + proyección de
+  // los próximos N meses por regresión lineal simple (mínimos cuadrados).
+  // Solo proyecta si hay al menos 4 meses con datos; confianza = R².
+  // ═══════════════════════════════════════════════════════════════
+  app.get('/tendencia', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const monedaQ = q.moneda || null;
+    const consolidar = monedaQ === 'TODAS';
+    const moneda = consolidar ? null : monedaQ;
+    const horizonte = Math.min(6, Math.max(1, Number(q.horizonte) || 3));
+    const hoy = new Date();
+    const baseMes = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1));
+    const desde12 = new Date(Date.UTC(baseMes.getUTCFullYear(), baseMes.getUTCMonth() - 11, 1));
+
+    let lineas: any[];
+    if (consolidar) lineas = (await recolectarConsolidado(tenantId, desde12, new Date(Date.UTC(baseMes.getUTCFullYear(), baseMes.getUTCMonth() + 1, 1)), q.centroCostoId || null)).lineas;
+    else lineas = await recolectarLineas(tenantId, desde12, new Date(Date.UTC(baseMes.getUTCFullYear(), baseMes.getUTCMonth() + 1, 1)), moneda, q.centroCostoId || null);
+
+    const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const esIng = (l: any) => ['FACTURADO', 'INGRESO_OPERATIVO'].includes(l.grupo);
+    const esCosto = (l: any) => ['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo);
+    const serie: { anio: number; mes: number; mesKey: string; label: string; ventas: number; costos: number; resultado: number; enCurso: boolean }[] = [];
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(Date.UTC(baseMes.getUTCFullYear(), baseMes.getUTCMonth() - 11 + i, 1));
+      const h = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+      const corte = d <= hoy && hoy < h ? hoy : h;
+      const ls = lineas.filter(l => { const f = new Date(l.fecha); return f >= d && f < corte; });
+      const ventas = ls.filter(esIng).reduce((s, l) => s + l.importe, 0);
+      const costos = ls.filter(esCosto).reduce((s, l) => s + l.importe, 0);
+      serie.push({
+        anio: d.getUTCFullYear(), mes: d.getUTCMonth() + 1,
+        mesKey: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
+        label: `${MESES[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}`,
+        ventas: Math.round(ventas), costos: Math.round(costos), resultado: Math.round(ventas - costos),
+        enCurso: d <= hoy && hoy < h,
+      });
+    }
+
+    // Regresión lineal sobre meses CERRADOS con actividad (el mes en curso
+    // queda fuera para no arrastrar la pendiente con un mes incompleto).
+    const datos = serie.filter(s => !s.enCurso && (s.ventas !== 0 || s.costos !== 0));
+    const regresion = (vals: number[]) => {
+      const n = vals.length;
+      if (n < 4) return null;
+      const xs = vals.map((_, i) => i);
+      const sx = xs.reduce((a, b) => a + b, 0), sy = vals.reduce((a, b) => a + b, 0);
+      const sxy = xs.reduce((a, x, i) => a + x * vals[i], 0);
+      const sxx = xs.reduce((a, x) => a + x * x, 0);
+      const pend = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+      const inter = (sy - pend * sx) / n;
+      // R²
+      const ym = sy / n;
+      const ssTot = vals.reduce((a, y) => a + (y - ym) ** 2, 0);
+      const ssRes = vals.reduce((a, y, i) => a + (y - (pend * i + inter)) ** 2, 0);
+      const r2 = ssTot > 0 ? Math.max(0, 1 - ssRes / ssTot) : 0;
+      return { pend, inter, r2 };
+    };
+    const n = datos.length;
+    const rVentas = regresion(datos.map(d => d.ventas));
+    const rCostos = regresion(datos.map(d => d.costos));
+
+    const proyectado: any[] = [];
+    for (let i = 1; i <= horizonte; i++) {
+      const d = new Date(Date.UTC(baseMes.getUTCFullYear(), baseMes.getUTCMonth() + i, 1));
+      const x = n - 1 + i;
+      const ventas = rVentas ? Math.max(0, rVentas.pend * x + rVentas.inter) : 0;
+      const costos = rCostos ? Math.max(0, rCostos.pend * x + rCostos.inter) : 0;
+      proyectado.push({
+        anio: d.getUTCFullYear(), mes: d.getUTCMonth() + 1,
+        mesKey: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
+        label: `${MESES[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}`,
+        ventas: Math.round(ventas), costos: Math.round(costos), resultado: Math.round(ventas - costos),
+      });
+    }
+    const r2min = Math.min(rVentas?.r2 ?? 0, rCostos?.r2 ?? 0);
+    return reply.send({
+      moneda: monedaQ || 'todas', horizonte, mesesConDatos: n,
+      serie, proyectado,
+      tendencia: {
+        ventasMensual: rVentas ? Math.round(rVentas.pend) : null,
+        costosMensual: rCostos ? Math.round(rCostos.pend) : null,
+        r2: Math.round(r2min * 100) / 100,
+        confianza: n < 4 ? 'INSUFICIENTE' : r2min >= 0.6 ? 'ALTA' : r2min >= 0.3 ? 'MEDIA' : 'BAJA',
+      },
+      metodo: 'Regresión lineal (mínimos cuadrados) sobre los últimos 12 meses cerrados con datos. El mes en curso no afecta la pendiente.',
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // BALANCE — estado de situación patrimonial estimado a fin de mes.
+  // No es contable formal: estima activo (caja + CxC + flota a valor de
+  // compra), pasivo (CxP + IVA a pagar estimado) y patrimonio por
+  // diferencia. Útil como brújula, con supuestos explícitos.
+  // ═══════════════════════════════════════════════════════════════
+  app.get('/balance', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const hoy = new Date();
+    const anio = Math.min(2100, Math.max(2000, Number(q.anio) || hoy.getUTCFullYear()));
+    const mes = Math.min(12, Math.max(1, Number(q.mes) || hoy.getUTCMonth() + 1));
+    const moneda = q.moneda || null;
+    const p = prisma();
+    const corte = new Date(Date.UTC(anio, mes, 1)); // fin del mes pedido
+    const inicioAnio = new Date(Date.UTC(anio, 0, 1));
+
+    const [cxcFacts, cxp, cobrosHist, pagosHist, ingresosCobrados, gastosSinPago, flotaFactsPagadas, vehiculos, tenant, facturasMes] = await Promise.all([
+      // CxC: emitidas hasta el corte con saldo al corte
+      p.finanzaFactura.findMany({
+        where: { tenantId, deletedAt: null, fechaEmision: { lt: corte }, ...(moneda ? { moneda } : {}) },
+        select: { total: true, tipoComprobante: true, cobros: { select: { importe: true, fecha: true } } },
+      }).catch(() => [] as any[]),
+      obtenerCxPInterno(p, tenantId, moneda).catch(() => [] as any[]),
+      p.finanzaCobro.findMany({ where: { tenantId, deletedAt: null, fecha: { gte: inicioAnio, lt: corte }, ...(moneda ? { moneda } : {}) }, select: { importe: true } }).catch(() => [] as any[]),
+      p.finanzaPago.findMany({ where: { tenantId, deletedAt: null, fecha: { gte: inicioAnio, lt: corte }, ...(moneda ? { moneda } : {}) }, select: { importe: true } }).catch(() => [] as any[]),
+      p.flotaIngreso.findMany({ where: { tenantId, ...(moneda ? { moneda } : {}), cobradoAt: { gte: inicioAnio, lt: corte } }, select: { monto: true } }).catch(() => [] as any[]),
+      p.finanzaGasto.findMany({ where: { tenantId, deletedAt: null, esRecurrente: false, esAmortizable: false, fecha: { gte: inicioAnio, lt: corte }, ...(moneda ? { moneda } : {}), pagos: { none: {} } }, select: { total: true, tipoComprobante: true } }).catch(() => [] as any[]),
+      p.flotaFactura.findMany({ where: { tenantId, tipoComprobante: { notIn: ['PRESUPUESTO', 'NOTA_CREDITO'] }, ...(moneda ? { moneda } : {}), pagadaAt: { gte: inicioAnio, lt: corte } }, select: { total: true } }).catch(() => [] as any[]),
+      p.vehiculo.findMany({ where: { tenantId, deletedAt: null }, select: { precioCompra: true, dominio: true, tipo: true, anio: true } }).catch(() => [] as any[]),
+      p.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } }).catch(() => null),
+      p.finanzaFactura.findMany({ where: { tenantId, deletedAt: null, fechaEmision: { gte: new Date(Date.UTC(anio, mes - 1, 1)), lt: corte }, ...(moneda ? { moneda } : {}) }, select: { iva: true, tipoComprobante: true } }).catch(() => [] as any[]),
+    ]);
+
+    // ── CxC al corte: total emitido − cobrado hasta el corte.
+    let cxc = 0; let cxcVencido = 0;
+    for (const f of cxcFacts) {
+      const signoF = f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
+      const cobrado = (f.cobros || []).filter((c: any) => new Date(c.fecha) < corte).reduce((s: number, c: any) => s + num(c.importe), 0);
+      const saldo = signoF * num(f.total) - cobrado;
+      if (saldo > 0.5) cxc += saldo;
+    }
+
+    // ── CxP al corte (saldo vivo hoy aproxima el pasivo corriente).
+    const cxpSaldo = cxp.reduce((s: number, i: any) => s + num(i.saldo), 0);
+    const cxpVencido = cxp.filter((i: any) => num(i.saldo) > 0.5 && num(i.diasVencimiento) > 0).reduce((s: number, i: any) => s + num(i.saldo), 0);
+
+    // ── Caja estimada: saldoInicial (al 1/1) + cobros − pagos del año.
+    const conf = (tenant?.resultadosConfig as any) || {};
+    const saldoInicial = num(conf?.saldoInicial?.[moneda || ''] ?? conf?.saldoInicial?.['*'] ?? 0);
+    const cobradoAnio = cobrosHist.reduce((s: number, c: any) => s + num(c.importe), 0)
+      + ingresosCobrados.reduce((s: number, i: any) => s + num(i.monto), 0);
+    const pagadoAnio = pagosHist.reduce((s: number, x: any) => s + num(x.importe), 0)
+      + gastosSinPago.reduce((s: number, g: any) => s + num(g.total) * (g.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1), 0)
+      + flotaFactsPagadas.reduce((s: number, f: any) => s + num(f.total), 0);
+    const caja = saldoInicial + cobradoAnio - pagadoAnio;
+
+    // ── Flota: valor de compra menos depreciación lineal simple a 10 años.
+    let flotaValor = 0;
+    const flotaDetalle: any[] = [];
+    for (const v of vehiculos) {
+      const compra = num(v.precioCompra);
+      if (compra <= 0) continue;
+      const aniosUso = v.anio ? Math.max(0, Math.min(10, anio - Number(v.anio) + (mes / 12))) : 0;
+      const valor = Math.round(compra * Math.max(0.1, 1 - aniosUso / 10));
+      flotaValor += valor;
+      flotaDetalle.push({ dominio: v.dominio, tipo: v.tipo, anio: v.anio, precioCompra: Math.round(compra), valorEstimado: valor });
+    }
+
+    // ── IVA a pagar estimado del mes (débito − crédito evidenciado).
+    const lineasMes = await recolectarLineas(tenantId, new Date(Date.UTC(anio, mes - 1, 1)), corte, moneda, null).catch(() => [] as any[]);
+    const ivaDebito = facturasMes.reduce((s: number, f: any) => s + (f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1) * num(f.iva), 0);
+    const ivaCredito = lineasMes.filter(l => num(l.iva) > 0 && l.ivaRecuperable !== false).reduce((s, l) => s + num(l.iva), 0);
+    const ivaPagar = Math.max(0, ivaDebito - ivaCredito);
+
+    const activoCorriente = caja + cxc;
+    const activoNoCorriente = flotaValor;
+    const activo = activoCorriente + activoNoCorriente;
+    const pasivoCorriente = cxpSaldo + ivaPagar;
+    const pasivo = pasivoCorriente;
+    const patrimonio = activo - pasivo;
+
+    return reply.send({
+      anio, mes, moneda, alCorteDe: corte.toISOString().slice(0, 10),
+      activo: {
+        corriente: { caja: Math.round(caja), cuentasPorCobrar: Math.round(cxc), total: Math.round(activoCorriente) },
+        noCorriente: { flotaValorEstimado: Math.round(flotaValor), total: Math.round(activoNoCorriente), unidades: vehiculos.length },
+        total: Math.round(activo),
+      },
+      pasivo: {
+        corriente: { cuentasPorPagar: Math.round(cxpSaldo), cxpVencido: Math.round(cxpVencido), ivaAPagarEstimado: Math.round(ivaPagar), total: Math.round(pasivoCorriente) },
+        total: Math.round(pasivo),
+      },
+      patrimonio: { estimado: Math.round(patrimonio), nota: 'Patrimonio = activo − pasivo. Es una estimación gerencial, no el balance contable.' },
+      ratios: {
+        liquidez: pasivoCorriente > 0 ? Math.round((activoCorriente / pasivoCorriente) * 100) / 100 : null,
+        endeudamiento: activo > 0 ? Math.round((pasivo / activo) * 1000) / 10 : null,
+        cxcSobreVentas: null as number | null,
+      },
+      flotaDetalle: flotaDetalle.sort((a, b) => b.valorEstimado - a.valorEstimado).slice(0, 30),
+      supuestos: [
+        'Caja = saldo inicial configurado + cobros − pagos del año hasta el corte.',
+        'CxC = facturas emitidas menos cobros registrados hasta el corte.',
+        'CxP = saldo actual de cuentas por pagar (aproxima pasivo corriente).',
+        'Flota = precio de compra con depreciación lineal a 10 años (valor residual mínimo 10 %).',
+        'IVA a pagar = débito del mes − crédito evidenciado del mes (sin remanente ni PPM).',
+      ],
+      actualizadoEn: await ultimaAct(tenantId, moneda),
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
   // IVA CRÉDITO FISCAL — evidencia del recupero de IVA en costos.
   // recuperado = IVA desagregado en documentos marcados recuperables;
   // noRecuperado = IVA que computa como costo; estimado = IVA implícito
@@ -2077,14 +2420,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   // Umbrales por tenant: resultadosConfig.alertas {atencion:10, critica:25}.
   // Severidad: INFO | ATENCION | CRITICA. Máximo 8, por impacto económico.
   // ═══════════════════════════════════════════════════════════════
-  app.get('/alertas', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
-    const q = req.query as any;
+  // Núcleo del cálculo de alertas — lo usa GET /alertas y el job diario
+  // que notifica las críticas a los administradores del tenant.
+  async function calcularAlertas(tenantId: string, anio: number, mes: number, moneda: string | null, centroCostoId: string | null) {
     const hoy = new Date();
-    const anio = Number(q.anio) || hoy.getUTCFullYear();
-    const mes = Number(q.mes) || hoy.getUTCMonth() + 1;
-    const moneda = q.moneda || null;
     const p = prisma();
 
     const tenant = await p.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } }).catch(() => null);
@@ -2111,9 +2450,9 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const refPrev = esActual ? `los primeros ${diasTranscurridos} días del mes anterior` : 'el mes anterior';
 
     const [lineas, lineasPrev, lineasHist, cxp, cxc] = await Promise.all([
-      recolectarLineas(tenantId, desde, corteAct, moneda, q.centroCostoId || null),
-      recolectarLineas(tenantId, desdePrev, cortePrev, moneda, q.centroCostoId || null),
-      recolectarLineas(tenantId, desdeHist, desdePrev, moneda, q.centroCostoId || null),
+      recolectarLineas(tenantId, desde, corteAct, moneda, centroCostoId),
+      recolectarLineas(tenantId, desdePrev, cortePrev, moneda, centroCostoId),
+      recolectarLineas(tenantId, desdeHist, desdePrev, moneda, centroCostoId),
       obtenerCxPInterno(p, tenantId, moneda).catch(() => [] as any[]),
       p.finanzaFactura.findMany({ where: { tenantId, deletedAt: null, estado: { in: ['EMITIDA', 'PARCIALMENTE_COBRADA'] }, ...(moneda ? { moneda } : {}) }, include: { cobros: true } }).catch(() => []),
     ]);
@@ -2212,7 +2551,22 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const sev: Record<string, number> = { CRITICA: 3, ATENCION: 2, INFO: 1 };
     alertas.sort((a, b) => sev[b.severidad] - sev[a.severidad] || b.impacto - a.impacto);
     const actualizadoEn = await ultimaAct(tenantId, moneda);
-    return reply.send({ alertas: alertas.slice(0, 8), umbrales: { atencion: UMB_AT, critica: UMB_CR }, actualizadoEn });
+    return { alertas: alertas.slice(0, 8), umbrales: { atencion: UMB_AT, critica: UMB_CR }, actualizadoEn };
+  }
+
+  app.get('/alertas', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const hoy = new Date();
+    const anio = Number(q.anio) || hoy.getUTCFullYear();
+    const mes = Number(q.mes) || hoy.getUTCMonth() + 1;
+    const monedaQ = q.moneda || null;
+    const consolidar = monedaQ === 'TODAS';
+    const moneda = consolidar ? null : monedaQ;
+    const cfgC = await configMoneda(tenantId);
+    const res = await calcularAlertas(tenantId, anio, mes, moneda, q.centroCostoId || null);
+    return reply.send({ ...res, moneda: monedaQ, monedaBase: consolidar ? (cfgC.monedaDefault || 'USD') : null });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -2226,7 +2580,9 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const q = req.query as any;
     const anio = Number(q.anio) || new Date().getUTCFullYear();
     const mes = Number(q.mes) || new Date().getUTCMonth() + 1;
-    const moneda = q.moneda || null;
+    const monedaQ = q.moneda || null;
+    const consolidar = monedaQ === 'TODAS';
+    const moneda = consolidar ? null : monedaQ;
     const cc = q.centroCostoId || null;
 
     const rango = (a: number, m: number) => [new Date(Date.UTC(a, m - 1, 1)), new Date(Date.UTC(a, m, 1))] as const;
@@ -2245,10 +2601,18 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const corteM = new Date(Math.min(dM.getTime() + diasT * 86400000, hM.getTime()));
     const corteY = new Date(Math.min(dY.getTime() + diasT * 86400000, hY.getTime()));
 
-    const [act, prev, yoy] = await Promise.all([
-      recolectarLineas(tenantId, dA, corteA, moneda, cc),
-      recolectarLineas(tenantId, dM, corteM, moneda, cc),
-      recolectarLineas(tenantId, dY, corteY, moneda, cc),
+    // YTD: acumulado del año hasta el mismo día/corte, contra el mismo tramo
+    // del año anterior (ene→N del año vs ene→N del año pasado).
+    const dYtd = new Date(Date.UTC(anio, 0, 1));
+    const dYtdPrev = new Date(Date.UTC(anio - 1, 0, 1));
+    const hYtdPrev = new Date(Date.UTC(anio - 1, mes, Math.min(diasT, new Date(Date.UTC(anio - 1, mes, 0)).getUTCDate())));
+
+    const rec = (d: Date, h: Date) => consolidar
+      ? recolectarConsolidado(tenantId, d, h, cc).then(r => r.lineas)
+      : recolectarLineas(tenantId, d, h, moneda, cc);
+    const [act, prev, yoy, ytdA, ytdP, consolInfo] = await Promise.all([
+      rec(dA, corteA), rec(dM, corteM), rec(dY, corteY), rec(dYtd, corteA), rec(dYtdPrev, hYtdPrev),
+      consolidar ? recolectarConsolidado(tenantId, dA, corteA, cc) : Promise.resolve(null),
     ]);
 
     const resumen = (ls: any[]) => {
@@ -2264,6 +2628,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       return { ventas, costos, estructura, costosTotales: costos + estructura, cobrado, resultado, margen: ventas > 0 ? (resultado / ventas) * 100 : null, porRubro, porFuenteIng, lineas: ls.length };
     };
     const A = resumen(act), P = resumen(prev), Y = resumen(yoy);
+    const YA = resumen(ytdA), YP = resumen(ytdP);
 
     const delta = (a: number, b: number) => ({ abs: a - b, pct: b !== 0 ? ((a - b) / Math.abs(b)) * 100 : null });
     const compara = (a: typeof A, b: typeof A) => ({
@@ -2289,14 +2654,21 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       drivers.sort((a, b) => Math.abs(b.variacion) - Math.abs(a.variacion));
     }
 
-    const huboPrev = P.lineas > 0, huboYoy = Y.lineas > 0;
+    const huboPrev = P.lineas > 0, huboYoy = Y.lineas > 0, huboYtdP = YP.lineas > 0;
     return reply.send({
-      anio, mes, moneda, esMesActual: esActual, diasTranscurridos: esActual ? diasT : null,
+      anio, mes, moneda: monedaQ, monedaBase: consolInfo?.monedaBase ?? null,
+      faltantesTC: consolInfo?.faltantes ?? [], esMesActual: esActual, diasTranscurridos: esActual ? diasT : null,
       actual: A,
       mesAnterior: { ...P, mesKey: `${prevMes.a}-${String(prevMes.m).padStart(2, '0')}`, hayDatos: huboPrev },
       mismoMesAnioAnterior: { ...Y, mesKey: `${anio - 1}-${String(mes).padStart(2, '0')}`, hayDatos: huboYoy },
       vsMesAnterior: compara(A, P),
       vsAnioAnterior: huboYoy ? compara(A, Y) : null,
+      // YTD: acumulado ene→corte del año vs el mismo tramo del año anterior
+      ytd: {
+        actual: { ...YA, desde: `${anio}-01`, hasta: `${anio}-${String(mes).padStart(2, '0')}` },
+        anioAnterior: { ...YP, desde: `${anio - 1}-01`, hasta: `${anio - 1}-${String(mes).padStart(2, '0')}`, hayDatos: huboYtdP },
+        vs: huboYtdP ? compara(YA, YP) : null,
+      },
       drivers: drivers.slice(0, 8),
       actualizadoEn: await ultimaAct(tenantId, moneda),
     });
@@ -2328,6 +2700,23 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     'iva-mes': 'La tabla por meses muestra la posición IVA de todo el año: débito (ventas), crédito (compras recuperable), remanente que se arrastra y a pagar estimado por mes.',
     f29: 'F29 real: la declaración efectivamente hecha en el SII para el período (folio, fecha y estado). El detalle compara lo declarado contra lo estimado por el sistema; diferencias típicas: documentos no válidos como crédito, PPM y retenciones que solo existen en el F29.',
     movimientos: 'Movimientos del período: cada línea económica del mes con su módulo de origen (Resultados, Flota 360, Infraestructura). El ícono del lápiz edita; el enlace abre el documento de origen.',
+    ytd: 'Acumulado del año (YTD): suma de enero hasta el mes seleccionado comparada contra el mismo tramo del año anterior. Permite ver la tendencia anual sin que un mes malo distorsione la foto.',
+    'balance-activo': 'Activo: lo que la empresa tiene — caja estimada (saldo inicial + cobros − pagos del año) más cuentas por cobrar (facturas emitidas sin cobrar) más la flota a valor estimado.',
+    'balance-caja': 'Caja estimada: saldo inicial configurado más todos los cobros registrados del año menos los pagos, hasta el corte del mes. Aproxima la plata disponible.',
+    'balance-cxc': 'Cuentas por cobrar: facturas emitidas a clientes que todavía no se cobraron al cierre del período (neto de notas de crédito).',
+    'balance-flota': 'Valor de flota estimado: precio de compra de cada vehículo con depreciación lineal a 10 años (piso del 10 %). Es una estimación gerencial, no un valor contable ni de mercado.',
+    'balance-pasivo': 'Pasivo: lo que la empresa debe — cuentas por pagar a proveedores (saldo vivo) más el IVA a pagar estimado del mes (débito − crédito evidenciado).',
+    'balance-cxp': 'Cuentas por pagar: gastos y facturas de proveedores cargados que aún no están pagados.',
+    'balance-iva': 'IVA a pagar estimado: débito del mes (IVA de facturas emitidas) menos crédito evidenciado del mes. Sin remanente ni PPM — el contador liquida el F29 real.',
+    'balance-patrimonio': 'Patrimonio estimado = activo − pasivo. Si es positivo y crece, la empresa acumula valor; si es negativo, debe más de lo que tiene. Estimación gerencial, no el balance contable.',
+    'balance-liquidez': 'Liquidez corriente = activo corriente ÷ pasivo corriente. Mayor a 1 significa que alcanza para cubrir las deudas de corto plazo; menor a 1 anticipa problemas de caja.',
+    'balance-endeudamiento': 'Endeudamiento = pasivo ÷ activo. Qué porcentaje de lo que hay está financiado con deuda. Más alto = más riesgo.',
+    tendencia: 'Tendencia y proyección: regresión lineal sobre los últimos 12 meses cerrados con datos. La pendiente muestra cuánto crecen (o caen) ventas y costos por mes; R² indica qué tan bien los datos explican la proyección.',
+    'meta-ventas': 'Meta de ventas: objetivo mensual cargado en Configuración. El avance compara lo facturado del mes contra la meta.',
+    'meta-resultado': 'Meta de resultado: objetivo de resultado mensual cargado en Configuración. El avance compara el resultado real contra la meta.',
+    'cierre-periodo': 'Cierre de período: meses bloqueados para carga y edición. Una vez cerrado, ningún documento con fecha de ese mes se puede crear, editar o borrar (error 423). Sirve para congelar números ya reportados.',
+    'informe-email': 'Informe ejecutivo por email: el día 1 de cada mes el sistema envía automáticamente el resumen del mes anterior a las direcciones configuradas.',
+    'tipos-cambio': 'Tipos de cambio: tasas manuales por moneda y mes (o "*" como default) usadas para consolidar todas las operaciones en la moneda base cuando se elige "Consolidado".',
   };
 
   app.post('/explicar', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -2338,13 +2727,17 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       titulo: z.string().max(140).optional().nullable(),
       anio: z.number().int().min(2000).max(2100),
       mes: z.number().int().min(1).max(12),
-      moneda: z.string().max(5).optional().nullable(),
+      moneda: z.string().max(6).optional().nullable(),
       centroCostoId: z.string().uuid().optional().nullable(),
       datos: z.any().optional().nullable(),
       texto: z.string().max(600).optional().nullable(),
+      pregunta: z.string().max(400).optional().nullable(),
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
-    const { metrica, titulo, anio, mes, moneda, centroCostoId, datos, texto } = body.data;
+    const { metrica, titulo, anio, mes, centroCostoId, datos, texto, pregunta } = body.data;
+    const monedaQ = body.data.moneda || null;
+    const consolidar = monedaQ === 'TODAS';
+    const moneda = consolidar ? null : monedaQ;
     const p = prisma();
 
     // Ventana like-for-like: si el mes está en curso se corta en hoy.
@@ -2355,7 +2748,23 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const corte = enCurso ? hoyX : hasta;
     const mesNombre = desde.toLocaleDateString('es-CL', { month: 'long', timeZone: 'UTC' });
 
-    const lineas = await recolectarLineas(tenantId, desde, corte, moneda || null, centroCostoId || null);
+    // Cache 10 min del contexto (recolectar es la parte cara del request).
+    const cacheKey = `${tenantId}:${anio}-${mes}:${monedaQ || '-'}:${centroCostoId || '-'}`;
+    const hit = EXPLICA_CACHE.get(cacheKey);
+    let lineas: any[];
+    if (hit && Date.now() - hit.at < EXPLICA_CACHE_TTL) {
+      lineas = hit.lineas;
+    } else {
+      lineas = consolidar
+        ? (await recolectarConsolidado(tenantId, desde, corte, centroCostoId || null)).lineas
+        : await recolectarLineas(tenantId, desde, corte, moneda, centroCostoId || null);
+      EXPLICA_CACHE.set(cacheKey, { at: Date.now(), lineas });
+      if (EXPLICA_CACHE.size > 200) {
+        // Limpieza simple: borra las entradas vencidas primero.
+        const ahora = Date.now();
+        for (const [k, v] of EXPLICA_CACHE) if (ahora - v.at > EXPLICA_CACHE_TTL) EXPLICA_CACHE.delete(k);
+      }
+    }
     const sg = (g: string[]) => lineas.filter(l => g.includes(l.grupo)).reduce((s, l) => s + l.importe, 0);
     const ventas = sg(['FACTURADO', 'INGRESO_OPERATIVO']);
     const costosOp = sg(['COSTO_OP', 'GASTO_MANUAL']);
@@ -2395,7 +2804,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
 
     const contexto = {
       periodo: `${mesNombre} ${anio}${enCurso ? ' (en curso)' : ''}`,
-      moneda: moneda || 'todas', centroCosto: centroCostoId ? 'filtrado' : 'todos',
+      moneda: consolidar ? 'consolidado (todas, convertidas a moneda base)' : moneda || 'todas', centroCosto: centroCostoId ? 'filtrado' : 'todos',
       resumen: {
         ventasNetas: Math.round(ventas), costosOperativos: Math.round(costosOp), estructura: Math.round(estructura),
         resultado: Math.round(resultado), cobradoConIva: Math.round(cobrado),
@@ -2412,15 +2821,21 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     let via = 'estatico';
     try {
       const llm = createGroqOnlyLLMProvider((req as any).tenant, p, tenantId, (req as any).auth?.userId ?? null, 'finanzas-asistente');
-      const prompt = `Sos el asistente financiero de una PyME de transporte/logística dentro de su ERP. El usuario hizo click sobre un indicador del módulo "Resultados de negocio" y quiere entenderlo para poder explicarlo a otros.
+      const prompt = `Sos el asistente financiero de una PyME de transporte/logística dentro de su ERP. ${pregunta
+        ? `El usuario hizo una PREGUNTA LIBRE sobre sus números del módulo "Resultados de negocio".
 
-Métrica clickeada: "${metrica}"${titulo ? ` (título en pantalla: "${titulo}")` : ''}.
+Pregunta del usuario: "${pregunta}"${metrica && metrica !== 'pregunta' ? ` (estaba mirando: "${titulo || metrica}")` : ''}`
+        : `El usuario hizo click sobre un indicador del módulo "Resultados de negocio" y quiere entenderlo para poder explicarlo a otros.
+
+Métrica clickeada: "${metrica}"${titulo ? ` (título en pantalla: "${titulo}")` : ''}.`}
 
 Contexto real del período (JSON):
 ${JSON.stringify(contexto)}
 
 Reglas:
-- Explicá QUÉ es el número, CÓMO se compone (la fórmula en criollo) y DE DÓNDE salen los datos (qué módulo/fuente: RCV del SII, facturas manuales, Flota 360, Infraestructura, RRHH).
+${pregunta
+        ? '- Respondé la pregunta DIRECTAMENTE usando solo los números del contexto. Si el dato necesario no está, decilo sin inventar.'
+        : '- Explicá QUÉ es el número, CÓMO se compone (la fórmula en criollo) y DE DÓNDE salen los datos (qué módulo/fuente: RCV del SII, facturas manuales, Flota 360, Infraestructura, RRHH).'}
 - Citá 1-2 líneas de "evidenciaPrincipales" con su monto si ayudan a entenderlo.
 - Si el mes está en curso, aclaralo ("todavía se está cargando/va a subir").
 - Si hay "numerosQueVeElUsuario", usá esos valores exactos para referirte a lo que ve en pantalla.
@@ -2431,7 +2846,11 @@ Reglas:
       if (explicacion) via = 'ia';
     } catch { /* sin LLM → fallback estático */ }
 
-    if (!explicacion) explicacion = EXPLICA_ESTATICO[metrica] || `Este indicador forma parte del resultado de ${mesNombre} ${anio}: ventas netas ${Math.round(ventas)}, costos ${Math.round(costosOp + estructura)}, resultado ${Math.round(resultado)} (${moneda || ''}). Cada línea del detalle indica su módulo de origen.`;
+    if (!explicacion) {
+      explicacion = pregunta
+        ? `En ${mesNombre} ${anio} llevás ventas netas ${Math.round(ventas).toLocaleString('es-AR')}, costos ${Math.round(costosOp + estructura).toLocaleString('es-AR')} y resultado ${Math.round(resultado).toLocaleString('es-AR')} (${monedaQ || 'todas'}). La IA no está disponible ahora, pero esos son los números del período.`
+        : EXPLICA_ESTATICO[metrica] || `Este indicador forma parte del resultado de ${mesNombre} ${anio}: ventas netas ${Math.round(ventas)}, costos ${Math.round(costosOp + estructura)}, resultado ${Math.round(resultado)} (${monedaQ || ''}). Cada línea del detalle indica su módulo de origen.`;
+    }
     return reply.send({ explicacion, via, periodo: `${mesNombre} ${anio}` });
   });
 
@@ -3249,4 +3668,148 @@ ${caja.proyeccion.map((p: any) => `<tr><td>${p.dias} días</td><td class="num">+
     reply.header('content-type', 'text/html; charset=utf-8');
     return reply.send(html);
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  // JOBS PROGRAMADOS — informe ejecutivo mensual + alertas proactivas.
+  // Vive dentro del plugin para reutilizar recolectarLineas /
+  // calcularAlertas / obtenerCxPInterno. Corre cada hora; la dedupe se
+  // persiste en resultadosConfig para sobrevivir reinicios.
+  // ═══════════════════════════════════════════════════════════════
+  const tickFinanzas = async () => {
+    const p = prisma();
+    const hoy = new Date();
+    const mesKeyHoy = `${hoy.getUTCFullYear()}-${String(hoy.getUTCMonth() + 1).padStart(2, '0')}`;
+    const hoyKey = hoy.toISOString().slice(0, 10);
+    // Mes anterior (período del informe)
+    const prev = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() - 1, 1));
+    const prevAnio = prev.getUTCFullYear(), prevMes = prev.getUTCMonth() + 1;
+    const prevKey = `${prevAnio}-${String(prevMes).padStart(2, '0')}`;
+    const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+    const tenants = await p.tenant.findMany({ where: { deletedAt: null }, select: { id: true, nombre: true, name: true, resultadosConfig: true, monedaResultados: true, country: true } }).catch(() => [] as any[]);
+    for (const t of tenants) {
+      try {
+        const conf = ((t.resultadosConfig as any) || {}) as any;
+        let dirty = false;
+
+        // ── 1) Informe ejecutivo mensual: día 1, informa el mes anterior.
+        const inf = conf.informeEmail;
+        const emails: string[] = Array.isArray(inf?.emails) ? inf.emails.filter((e: any) => typeof e === 'string' && e.includes('@')) : [];
+        if (inf?.activo && emails.length && hoy.getUTCDate() === 1 && inf.ultimoEnvio !== prevKey) {
+          const moneda = inf.moneda || t.monedaResultados || (t.country ? MONEDA_PAIS[t.country] : null) || null;
+          const desde = new Date(Date.UTC(prevAnio, prevMes - 1, 1));
+          const hasta = new Date(Date.UTC(prevAnio, prevMes, 1));
+          const [lineasInf, alertasInf, cxpInf, cxcFacts] = await Promise.all([
+            recolectarLineas(t.id, desde, hasta, moneda, null).catch(() => [] as any[]),
+            calcularAlertas(t.id, prevAnio, prevMes, moneda, null).catch(() => ({ alertas: [] } as any)),
+            obtenerCxPInterno(p, t.id, moneda).catch(() => [] as any[]),
+            p.finanzaFactura.findMany({ where: { tenantId: t.id, deletedAt: null, estado: { in: ['EMITIDA', 'PARCIALMENTE_COBRADA'] }, ...(moneda ? { moneda } : {}) }, include: { cobros: true } }).catch(() => [] as any[]),
+          ]);
+          const gSum = (g: string[]) => lineasInf.filter(l => g.includes(l.grupo)).reduce((s, l) => s + l.importe, 0);
+          const ventas = gSum(['FACTURADO', 'INGRESO_OPERATIVO']);
+          const costos = gSum(['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL']);
+          const resultado = ventas - costos;
+          const cobrado = gSum(['COBRADO']);
+          const margen = ventas > 0 ? (resultado / ventas) * 100 : null;
+          const porRubro: Record<string, number> = {};
+          for (const l of lineasInf) if (['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo)) porRubro[l.rubro] = (porRubro[l.rubro] || 0) + l.importe;
+          const topRubros = Object.entries(porRubro).sort((a, b) => b[1] - a[1]).slice(0, 5);
+          const cxpSaldo = cxpInf.reduce((s: number, i: any) => s + num(i.saldo), 0);
+          const cxcSaldo = cxcFacts.reduce((s: number, f: any) => {
+            const signoF = f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
+            const cob = (f.cobros || []).reduce((x: number, c: any) => x + num(c.importe), 0);
+            const saldo = signoF * num(f.total) - cob;
+            return s + (saldo > 0.5 ? saldo : 0);
+          }, 0);
+          const fm = (n: number | null) => n === null ? '—' : `${moneda || ''} ${Math.round(n).toLocaleString('es-AR')}`.trim();
+          const esc = (s: any) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const empresa = esc(t.nombre || t.name || 'Empresa');
+          const periodoLbl = `${MESES[prevMes - 1]} ${prevAnio}`;
+          const alertasHtml = (alertasInf.alertas || []).length
+            ? `<ul style="margin:8px 0;padding-left:18px">${(alertasInf.alertas as any[]).slice(0, 6).map(a => `<li style="margin:4px 0;color:${a.severidad === 'CRITICA' ? '#b91c1c' : a.severidad === 'ATENCION' ? '#b45309' : '#374151'}"><b>[${a.severidad}]</b> ${esc(a.mensaje)}</li>`).join('')}</ul>`
+            : '<p style="color:#6b7280">Sin alertas en el período.</p>';
+          const rubrosHtml = topRubros.length
+            ? `<ul style="margin:8px 0;padding-left:18px">${topRubros.map(([r, v]) => `<li>${esc(r)}: <b>${fm(v)}</b></li>`).join('')}</ul>`
+            : '<p style="color:#6b7280">Sin costos en el período.</p>';
+          const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;padding:32px 20px;color:#171717">
+            <h1 style="font-size:18px;margin:0 0 4px">Informe Ejecutivo — ${periodoLbl}</h1>
+            <p style="color:#6b7280;font-size:12px;margin:0 0 20px">${empresa} · generado automáticamente por SGI360</p>
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <tr><td style="padding:6px 0;border-bottom:1px solid #eee">Ventas netas</td><td style="text-align:right;font-weight:700;border-bottom:1px solid #eee">${fm(ventas)}</td></tr>
+              <tr><td style="padding:6px 0;border-bottom:1px solid #eee">Costos totales</td><td style="text-align:right;font-weight:700;border-bottom:1px solid #eee">${fm(costos)}</td></tr>
+              <tr><td style="padding:6px 0;border-bottom:1px solid #eee">Resultado</td><td style="text-align:right;font-weight:700;color:${resultado >= 0 ? '#15803d' : '#b91c1c'};border-bottom:1px solid #eee">${fm(resultado)}${margen !== null ? ` (${margen.toFixed(1)} %)` : ''}</td></tr>
+              <tr><td style="padding:6px 0;border-bottom:1px solid #eee">Cobrado</td><td style="text-align:right;font-weight:700;border-bottom:1px solid #eee">${fm(cobrado)}</td></tr>
+              <tr><td style="padding:6px 0;border-bottom:1px solid #eee">Por cobrar</td><td style="text-align:right;border-bottom:1px solid #eee">${fm(cxcSaldo)}</td></tr>
+              <tr><td style="padding:6px 0">Por pagar</td><td style="text-align:right">${fm(cxpSaldo)}</td></tr>
+            </table>
+            <h3 style="font-size:13px;margin:20px 0 4px">Principales costos</h3>${rubrosHtml}
+            <h3 style="font-size:13px;margin:20px 0 4px">Alertas</h3>${alertasHtml}
+            <div style="text-align:center;margin:24px 0"><a href="${APP_URL}/resultados" style="background:#171717;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:13px">Ver detalle en SGI360</a></div>
+            <p style="color:#9ca3af;font-size:11px;text-align:center">Informe del mes anterior, enviado el día 1. Desactivar en Resultados → Configuración.</p>
+          </div>`;
+          let enviados = 0;
+          for (const to of emails) {
+            const r = await sendEmail({ to, subject: `SGI360 — Informe ejecutivo ${periodoLbl}`, html, text: `Informe ejecutivo ${periodoLbl}: ventas ${fm(ventas)}, costos ${fm(costos)}, resultado ${fm(resultado)}.` }).catch(() => ({ success: false }));
+            if (r?.success !== false) enviados++;
+          }
+          if (enviados > 0) { inf.ultimoEnvio = prevKey; dirty = true; }
+          app.log.info(`[finanzas-job] informe ejecutivo ${prevKey} enviado a ${enviados}/${emails.length} — tenant ${t.id}`);
+        }
+
+        // ── 2) Alertas proactivas: notifica CRITICAS del mes en curso.
+        // Dedupe: avisa si cambió el set de tipos críticos o pasaron ≥3 días.
+        const aJob = (conf.alertasJob || {}) as any;
+        const monedaA = aJob.moneda || t.monedaResultados || (t.country ? MONEDA_PAIS[t.country] : null) || null;
+        const res = await calcularAlertas(t.id, hoy.getUTCFullYear(), hoy.getUTCMonth() + 1, monedaA, null).catch(() => null);
+        const criticas = ((res?.alertas || []) as any[]).filter(a => a.severidad === 'CRITICA');
+        const hash = criticas.map(a => a.tipo).sort().join('|');
+        const diasDesde = aJob.ultimoAviso ? Math.round((Date.now() - new Date(aJob.ultimoAviso).getTime()) / 86400000) : 999;
+        if (criticas.length && (hash !== aJob.ultimoHash || diasDesde >= 3)) {
+          const link = '/resultados';
+          const admins = await p.tenantMembership.findMany({ where: { tenantId: t.id, role: { in: ['TENANT_ADMIN', 'ADMIN', 'OWNER'] } }, select: { userId: true } }).catch(() => [] as any[]);
+          const titulo = `${criticas.length} alerta(s) crítica(s) en Resultados — ${mesKeyHoy}`;
+          const detalle = criticas.slice(0, 4).map((a: any) => `• ${a.mensaje}`).join('\n');
+          for (const m of admins) {
+            await p.notification.create({
+              data: { tenantId: t.id, userId: m.userId, type: 'FINANZAS_ALERTA', title: titulo, message: detalle, link, entityType: 'finanzas', entityId: mesKeyHoy },
+            }).catch(() => null);
+            const u = await p.platformUser.findUnique({ where: { id: m.userId }, select: { email: true } }).catch(() => null);
+            if (u?.email) {
+              const esc2 = (s: any) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              await sendEmail({
+                to: u.email,
+                subject: `SGI360 — ${titulo}`,
+                text: `${titulo}\n\n${detalle}\n\nVer: ${APP_URL}${link}`,
+                html: `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;padding:32px 20px">
+                  <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:20px">
+                  <h2 style="font-size:16px;margin:0 0 12px;color:#b91c1c">${esc2(titulo)}</h2>
+                  ${criticas.slice(0, 4).map((a: any) => `<p style="margin:6px 0;font-size:13px;color:#374151">• ${esc2(a.mensaje)}</p>`).join('')}
+                  </div>
+                  <div style="text-align:center;margin:20px 0"><a href="${APP_URL}${link}" style="background:#171717;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:13px">Ver Resultados</a></div>
+                </div>`,
+              }).catch(() => null);
+            }
+          }
+          conf.alertasJob = { ...aJob, ultimoAviso: hoyKey, ultimoHash: hash };
+          dirty = true;
+          app.log.info(`[finanzas-job] ${criticas.length} alertas críticas notificadas — tenant ${t.id}`);
+        } else if (aJob.ultimoHash && !criticas.length) {
+          conf.alertasJob = { ...aJob, ultimoHash: '' };
+          dirty = true;
+        }
+
+        if (dirty) await p.tenant.update({ where: { id: t.id }, data: { resultadosConfig: conf } }).catch(() => null);
+      } catch (e: any) {
+        app.log.warn(`[finanzas-job] tenant ${t.id}: ${e?.message || e}`);
+      }
+    }
+  };
+
+  if (!(globalThis as any).__finanzasJobStarted) {
+    (globalThis as any).__finanzasJobStarted = true;
+    const timer = setInterval(() => { tickFinanzas().catch(e => app.log.warn(`[finanzas-job] ${e?.message || e}`)); }, 60 * 60 * 1000);
+    // Primera corrida a los 2 min de arrancar (no en el boot para no competir recursos).
+    const kickoff = setTimeout(() => tickFinanzas().catch(e => app.log.warn(`[finanzas-job] ${e?.message || e}`)), 2 * 60 * 1000);
+    app.addHook('onClose', async () => { clearInterval(timer); clearTimeout(kickoff); });
+  }
 }

@@ -43,8 +43,8 @@ export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: 
   return (
     <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
       {A.Estilos}
-      <div className="-mb-1 flex items-center justify-between">
-        <A.Boton />
+      <div className="-mb-1 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2"><A.Boton /><A.PreguntaBar /></div>
         <div className="flex items-center gap-3">
         <button onClick={() => setCartolaOpen(true)}
           className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50">

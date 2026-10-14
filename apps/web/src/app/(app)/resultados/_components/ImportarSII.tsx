@@ -200,7 +200,7 @@ export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChan
   return (
     <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
       {A.Estilos}
-      <div className="-mb-1"><A.Boton /></div>
+      <div className="-mb-1 flex flex-wrap items-center gap-2"><A.Boton /><A.PreguntaBar /></div>
       {A.Panel}
       <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-4 text-sm text-sky-900" data-explica="importar-ayuda" data-explica-titulo="Cómo bajar el archivo del SII">
         <div className="mb-1 flex items-center gap-2 font-semibold"><Info size={15} />Cómo bajar el archivo del SII</div>

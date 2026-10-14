@@ -162,6 +162,7 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
       {A.Estilos}
       <div className="flex flex-wrap items-center gap-2">
         <A.Boton />
+        <A.PreguntaBar />
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-2.5 text-neutral-400" />
           <input value={buscar} onChange={e => setBuscar(e.target.value)} placeholder="Cliente, RUT o número…" className={`${inputCls} w-60 pl-8`} />

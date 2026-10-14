@@ -184,6 +184,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
       {A.Estilos}
       <div className="flex flex-wrap items-center gap-2">
         <A.Boton />
+        <A.PreguntaBar />
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-2.5 text-neutral-400" />
           <input value={buscar} onChange={e => setBuscar(e.target.value)} placeholder="Concepto, proveedor, RUT…" className={`${inputCls} w-56 pl-8`} />

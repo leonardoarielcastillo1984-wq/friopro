@@ -75,8 +75,8 @@ export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }:
   return (
     <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
       {A.Estilos}
-      <div className="-mb-1 flex items-center justify-between">
-        <A.Boton />
+      <div className="-mb-1 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2"><A.Boton /><A.PreguntaBar /></div>
         {data.actualizadoEn && <span className="text-[10px] text-neutral-400">Datos actualizados {fmtActualizado(data.actualizadoEn)}</span>}
       </div>
       {A.Panel}

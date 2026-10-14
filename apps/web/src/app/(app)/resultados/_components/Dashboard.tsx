@@ -21,6 +21,8 @@ type Linea = {
 type Comparativa = {
   actual: any; mesAnterior: any; mismoMesAnioAnterior: any;
   vsMesAnterior: any; vsAnioAnterior: any; drivers: Driver[];
+  ytd?: { actual: any; anioAnterior: any; vs: any | null };
+  esMesActual?: boolean; diasTranscurridos?: number | null;
   actualizadoEn?: string;
 };
 type Driver = { tipo: 'INGRESO' | 'COSTO'; clave: string; variacion: number; actual: number; anterior: number };
@@ -95,6 +97,9 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const [ivaTasaEdit, setIvaTasaEdit] = useState<string | null>(null);
   const [nuevoComentario, setNuevoComentario] = useState('');
   const [enviandoComentario, setEnviandoComentario] = useState(false);
+  // Metas configuradas (resultadosConfig.metas) y meta-info del consolidado
+  const [metas, setMetas] = useState<{ ventasMensual?: number; resultadoMensual?: number; ventasAnual?: number; resultadoAnual?: number } | null>(null);
+  const [consol, setConsol] = useState<{ monedaBase: string | null; faltantesTC: { moneda: string; periodo: string }[] } | null>(null);
 
   const mesKey = `${anio}-${String(mesSel).padStart(2, '0')}`;
 
@@ -102,8 +107,10 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
     setLoading(true); setDetalle(null); setError(null);
     const params = new URLSearchParams({ anio: String(anio), moneda });
     if (centroCostoId) params.set('centroCostoId', centroCostoId);
-    apiFetch<{ meses: Mes[]; totales: any }>(`/finanzas/resultado-mensual?${params}`)
-      .then(setData).catch((e: any) => { setData(null); setError(e?.message || null); }).finally(() => setLoading(false));
+    apiFetch<{ meses: Mes[]; totales: any; monedaBase?: string; faltantesTC?: any[] }>(`/finanzas/resultado-mensual?${params}`)
+      .then(d => { setData(d); setConsol(d.monedaBase ? { monedaBase: d.monedaBase, faltantesTC: d.faltantesTC || [] } : null); })
+      .catch((e: any) => { setData(null); setConsol(null); setError(e?.message || null); }).finally(() => setLoading(false));
+    apiFetch<{ metas?: any }>('/finanzas/config').then(d => setMetas(d.metas || null)).catch(() => setMetas(null));
     setMesSel(anio === hoy.getUTCFullYear() ? hoy.getUTCMonth() + 1 : 12);
   }, [anio, moneda, centroCostoId]);
 
@@ -114,9 +121,14 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
     apiFetch<Comparativa>(`/finanzas/comparativa?${params}`).then(setComp).catch(() => setComp(null));
     apiFetch<{ alertas: Alerta[]; actualizadoEn?: string }>(`/finanzas/alertas?${params}`).then(d => { setAlertas(d.alertas || []); setAlertasAct(d.actualizadoEn || null); }).catch(() => { setAlertas([]); setAlertasAct(null); });
     apiFetch<{ comentarios: Comentario[] }>(`/finanzas/comentarios-periodo?mesKey=${mesKey}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`).then(d => setComentarios(d.comentarios || [])).catch(() => setComentarios([]));
-    apiFetch<{ meses: any[]; tasaEstimada?: number }>(`/finanzas/iva-credito?anio=${anio}&moneda=${moneda}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`)
-      .then(d => { setIvaMeses(d.meses || []); const m = (d.meses || []).find((x: any) => x.mes === mesSel); setIva(m ? { recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar, debito: m.debito ?? 0, aPagar: m.aPagar ?? 0, remanente: m.remanente ?? 0, tasaEstimada: d.tasaEstimada ?? 0.21 } : null); })
-      .catch(() => { setIva(null); setIvaMeses([]); });
+    // IVA crédito es por moneda fiscal — con consolidado (TODAS) no aplica.
+    if (moneda === 'TODAS') {
+      setIva(null); setIvaMeses([]);
+    } else {
+      apiFetch<{ meses: any[]; tasaEstimada?: number }>(`/finanzas/iva-credito?anio=${anio}&moneda=${moneda}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`)
+        .then(d => { setIvaMeses(d.meses || []); const m = (d.meses || []).find((x: any) => x.mes === mesSel); setIva(m ? { recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar, debito: m.debito ?? 0, aPagar: m.aPagar ?? 0, remanente: m.remanente ?? 0, tasaEstimada: d.tasaEstimada ?? 0.21 } : null); })
+        .catch(() => { setIva(null); setIvaMeses([]); });
+    }
   }, [anio, mesSel, moneda, centroCostoId, mesKey]);
 
   // F29 real del período (SII vía APIGateway) — effect propio: solo depende del
@@ -244,13 +256,26 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   return (
     <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
       {A.Estilos}
-      <div className="-mb-1 flex items-center justify-between">
-        <A.Boton />
+      <div className="-mb-1 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2"><A.Boton /><A.PreguntaBar /></div>
         <span className="text-[10px] text-neutral-400">Datos actualizados {fmtActualizado((data as any)?.actualizadoEn)}</span>
       </div>
 
       {/* Panel de explicación del asistente */}
       {A.Panel}
+
+      {/* Banner consolidado multi-moneda */}
+      {consol && (
+        <div className="rounded-lg border border-violet-200 bg-violet-50/60 px-4 py-2.5 text-xs text-violet-800" data-explica="tipos-cambio" data-explica-titulo="Consolidado multi-moneda">
+          <strong>Vista consolidada en {consol.monedaBase}</strong> — las líneas en otras monedas se convirtieron con los tipos de cambio del período.
+          {consol.faltantesTC.length > 0 && (
+            <span className="ml-1 font-medium text-amber-700">
+              ⚠ Sin tipo de cambio para {consol.faltantesTC.map(f => `${f.moneda} (${f.periodo})`).join(', ')} — esas líneas quedaron fuera. Cargalas en Configuración.
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         {[
           { label: `Ventas ${anio}`, value: fmtMoney(totales.ventas, moneda), icon: DollarSign, color: 'text-blue-600', sub: 'sin IVA', explica: 'kpi-ventas' },
@@ -331,8 +356,78 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
                       {comp.vsAnioAnterior?.margen ? `${comp.vsAnioAnterior.margen.abs >= 0 ? '+' : ''}${comp.vsAnioAnterior.margen.abs.toFixed(1)} pp` : '—'}
                     </td>
                   </tr>
+                  {comp.ytd && (
+                    <tr className="border-t border-neutral-100 bg-neutral-50/50" data-explica="ytd" data-explica-titulo="Acumulado del año (YTD)" data-explica-datos={JSON.stringify({ ytdVentas: comp.ytd.actual?.ventas, ytdResultado: comp.ytd.actual?.resultado, ytdVentasPrev: comp.ytd.anioAnterior?.ventas, ytdResultadoPrev: comp.ytd.anioAnterior?.resultado })}>
+                      <td className="px-3 py-1.5 font-medium">Acumulado ene→{MESES[mesSel - 1]} vs {anio - 1}</td>
+                      {comp.ytd.vs ? [comp.ytd.vs.ventas, comp.ytd.vs.costos, comp.ytd.vs.resultado].map((d: any, i: number) => (
+                        <td key={i} className={`px-3 py-1.5 text-right ${d.pct === null ? 'text-neutral-300' : d.pct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {d.pct === null ? '—' : `${d.pct >= 0 ? '+' : ''}${d.pct.toFixed(1)}%`}
+                        </td>
+                      )) : <td colSpan={3} className="px-3 py-1.5 text-right text-neutral-300">sin datos</td>}
+                      <td className={`px-3 py-1.5 text-right ${!comp.ytd.vs?.margen ? 'text-neutral-300' : comp.ytd.vs.margen.abs >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {comp.ytd.vs?.margen ? `${comp.ytd.vs.margen.abs >= 0 ? '+' : ''}${comp.ytd.vs.margen.abs.toFixed(1)} pp` : '—'}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* Metas del período */}
+        {metas && (metas.ventasMensual || metas.resultadoMensual || metas.ventasAnual || metas.resultadoAnual) && comp && comp.actual.lineas >= 0 && (
+          <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="meta-ventas" data-explica-titulo={`Metas — ${MESES[mesSel - 1]} ${anio}`}>
+            <div className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-neutral-900"><TrendingUp size={14} className="text-emerald-600" />Metas{comp.esMesActual && <span className="text-[10px] font-normal text-neutral-400">· mes en curso</span>}</div>
+            <div className="space-y-3">
+              {metas.ventasMensual ? (
+                <div>
+                  <div className="flex items-baseline justify-between text-xs">
+                    <span className="text-neutral-500">Ventas del mes</span>
+                    <span className="font-medium">{fmtMoney(comp.actual.ventas, moneda === 'TODAS' ? consol?.monedaBase || 'USD' : moneda)} <span className="text-neutral-400">/ {fmtMoney(metas.ventasMensual, moneda === 'TODAS' ? consol?.monedaBase || 'USD' : moneda)}</span></span>
+                  </div>
+                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-neutral-100">
+                    <div className={`h-full rounded-full ${comp.actual.ventas >= metas.ventasMensual ? 'bg-emerald-500' : 'bg-blue-400'}`} style={{ width: `${Math.min(100, Math.max(0, (comp.actual.ventas / metas.ventasMensual) * 100))}%` }} />
+                  </div>
+                  <div className="mt-0.5 text-right text-[10px] text-neutral-400">{((comp.actual.ventas / metas.ventasMensual) * 100).toFixed(0)}% de la meta</div>
+                </div>
+              ) : null}
+              {metas.resultadoMensual ? (
+                <div data-explica="meta-resultado" data-explica-titulo="Meta de resultado">
+                  <div className="flex items-baseline justify-between text-xs">
+                    <span className="text-neutral-500">Resultado del mes</span>
+                    <span className="font-medium">{fmtMoney(comp.actual.resultado, moneda === 'TODAS' ? consol?.monedaBase || 'USD' : moneda)} <span className="text-neutral-400">/ {fmtMoney(metas.resultadoMensual, moneda === 'TODAS' ? consol?.monedaBase || 'USD' : moneda)}</span></span>
+                  </div>
+                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-neutral-100">
+                    <div className={`h-full rounded-full ${comp.actual.resultado >= metas.resultadoMensual ? 'bg-emerald-500' : 'bg-blue-400'}`} style={{ width: `${Math.min(100, Math.max(0, (comp.actual.resultado / metas.resultadoMensual) * 100))}%` }} />
+                  </div>
+                  <div className="mt-0.5 text-right text-[10px] text-neutral-400">{((comp.actual.resultado / metas.resultadoMensual) * 100).toFixed(0)}% de la meta</div>
+                </div>
+              ) : null}
+              {metas.ventasAnual ? (
+                <div>
+                  <div className="flex items-baseline justify-between text-xs">
+                    <span className="text-neutral-500">Ventas del año</span>
+                    <span className="font-medium">{fmtMoney(totales.ventas, moneda === 'TODAS' ? consol?.monedaBase || 'USD' : moneda)} <span className="text-neutral-400">/ {fmtMoney(metas.ventasAnual, moneda === 'TODAS' ? consol?.monedaBase || 'USD' : moneda)}</span></span>
+                  </div>
+                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-neutral-100">
+                    <div className={`h-full rounded-full ${totales.ventas >= metas.ventasAnual ? 'bg-emerald-500' : 'bg-blue-400'}`} style={{ width: `${Math.min(100, Math.max(0, (totales.ventas / metas.ventasAnual) * 100))}%` }} />
+                  </div>
+                  <div className="mt-0.5 text-right text-[10px] text-neutral-400">{((totales.ventas / metas.ventasAnual) * 100).toFixed(0)}% de la meta anual</div>
+                </div>
+              ) : null}
+              {metas.resultadoAnual ? (
+                <div>
+                  <div className="flex items-baseline justify-between text-xs">
+                    <span className="text-neutral-500">Resultado del año</span>
+                    <span className="font-medium">{fmtMoney(totales.resultado, moneda === 'TODAS' ? consol?.monedaBase || 'USD' : moneda)} <span className="text-neutral-400">/ {fmtMoney(metas.resultadoAnual, moneda === 'TODAS' ? consol?.monedaBase || 'USD' : moneda)}</span></span>
+                  </div>
+                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-neutral-100">
+                    <div className={`h-full rounded-full ${totales.resultado >= metas.resultadoAnual ? 'bg-emerald-500' : 'bg-blue-400'}`} style={{ width: `${Math.min(100, Math.max(0, (totales.resultado / metas.resultadoAnual) * 100))}%` }} />
+                  </div>
+                  <div className="mt-0.5 text-right text-[10px] text-neutral-400">{((totales.resultado / metas.resultadoAnual) * 100).toFixed(0)}% de la meta anual</div>
+                </div>
+              ) : null}
             </div>
           </div>
         )}

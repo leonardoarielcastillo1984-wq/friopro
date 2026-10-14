@@ -66,7 +66,7 @@ export default function FlujoCaja({ moneda, canEdit }: { moneda: string; canEdit
   return (
     <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
       {A.Estilos}
-      <div className="-mb-1"><A.Boton /></div>
+      <div className="-mb-1 flex flex-wrap items-center gap-2"><A.Boton /><A.PreguntaBar /></div>
       {A.Panel}
       <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-2.5 text-xs text-blue-800" data-explica="caja-intro" data-explica-titulo="Flujo de caja">
         <div className="flex items-center justify-between gap-2">

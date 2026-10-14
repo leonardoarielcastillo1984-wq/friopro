@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Loader2, Scale, CalendarClock, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
+import { Loader2, Scale, CalendarClock, ArrowDownToLine, ArrowUpFromLine, TrendingUp } from 'lucide-react';
+import { ResponsiveContainer, ComposedChart, Line, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { fmtMoney, fmtPct, fmtFecha, fmtActualizado, MESES } from './fmt';
 import { useAsistente } from './useAsistente';
 
@@ -17,6 +18,13 @@ type ProyCierre = BloqueMes & {
   mes: number; anio: number;
   siguiente?: { anio: number; mes: number } & BloqueMes;
   actualizadoEn?: string;
+};
+type Tendencia = {
+  moneda: string; horizonte: number; mesesConDatos: number;
+  serie: { mesKey: string; label: string; ventas: number; costos: number; resultado: number; enCurso: boolean }[];
+  proyectado: { mesKey: string; label: string; ventas: number; costos: number; resultado: number }[];
+  tendencia: { ventasMensual: number | null; costosMensual: number | null; r2: number; confianza: string };
+  metodo: string;
 };
 type FlujoData = {
   saldoActual: number;
@@ -33,8 +41,10 @@ export default function Proyeccion({ anio, moneda, centroCostoId }: { anio: numb
   const A = useAsistente({ anio, moneda, centroCostoId });
   const [cierre, setCierre] = useState<ProyCierre | null>(null);
   const [caja, setCaja] = useState<FlujoData | null>(null);
+  const [tend, setTend] = useState<Tendencia | null>(null);
   const [loading, setLoading] = useState(true);
   const [horizonte, setHorizonte] = useState(30);
+  const [horizonteMeses, setHorizonteMeses] = useState(3);
 
   useEffect(() => {
     setLoading(true);
@@ -44,6 +54,13 @@ export default function Proyeccion({ anio, moneda, centroCostoId }: { anio: numb
       apiFetch<FlujoData>(`/finanzas/flujo-caja${moneda ? `?moneda=${moneda}` : ''}`).catch(() => null),
     ]).then(([p, c]) => { setCierre(p); setCaja(c); }).finally(() => setLoading(false));
   }, [anio, moneda, centroCostoId]);
+
+  // Tendencia aparte: depende del horizonte de meses elegido.
+  useEffect(() => {
+    const cc = centroCostoId ? `&centroCostoId=${centroCostoId}` : '';
+    apiFetch<Tendencia>(`/finanzas/tendencia?moneda=${moneda}&horizonte=${horizonteMeses}${cc}`)
+      .then(setTend).catch(() => setTend(null));
+  }, [moneda, centroCostoId, horizonteMeses]);
 
   if (loading) return <div className="flex items-center justify-center py-16 text-neutral-400"><Loader2 className="mr-2 animate-spin" size={18} />Calculando proyección…</div>;
   if (!cierre && !caja) return <div className="py-16 text-center text-neutral-400">No se pudo cargar la proyección.</div>;
@@ -90,13 +107,79 @@ export default function Proyeccion({ anio, moneda, centroCostoId }: { anio: numb
   return (
     <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
       {A.Estilos}
-      <div className="-mb-1"><A.Boton /></div>
+      <div className="-mb-1 flex flex-wrap items-center gap-2"><A.Boton /><A.PreguntaBar /></div>
       {A.Panel}
       {/* 1 — Cierre del mes en curso (devengado) */}
       {cierre?.esMesActual && cardMes(cierre, 'Cierre del mes', `— ${MESES[cierre.mes - 1]} ${cierre.anio} · quedan ${cierre.diasRestantes} días${cierre.actualizadoEn ? ` · act. ${fmtActualizado(cierre.actualizadoEn)}` : ''}`)}
 
       {/* 2 — Mes siguiente */}
       {cierre?.siguiente && cardMes(cierre.siguiente, 'Mes siguiente', `— ${MESES[cierre.siguiente.mes - 1]} ${cierre.siguiente.anio}`)}
+
+      {/* 2b — Tendencia 12 meses + proyección por regresión */}
+      {tend && (
+        <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="tendencia" data-explica-titulo="Tendencia y proyección" data-explica-datos={JSON.stringify(tend.tendencia)}>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-sm font-semibold text-neutral-900">
+              <TrendingUp size={14} className="text-indigo-600" />Tendencia — últimos 12 meses
+              <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${tend.tendencia.confianza === 'ALTA' ? 'bg-green-50 text-green-700' : tend.tendencia.confianza === 'MEDIA' ? 'bg-amber-50 text-amber-700' : 'bg-neutral-100 text-neutral-500'}`}>
+                confianza {tend.tendencia.confianza}{tend.tendencia.confianza !== 'INSUFICIENTE' ? ` (R² ${tend.tendencia.r2})` : ''}
+              </span>
+            </span>
+            <div className="flex gap-1">
+              {[3, 6].map(m => (
+                <button key={m} onClick={() => setHorizonteMeses(m)}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${horizonteMeses === m ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'}`}>+{m}m</button>
+              ))}
+            </div>
+          </div>
+          {tend.mesesConDatos < 4 ? (
+            <p className="py-6 text-center text-xs text-neutral-400">Faltan meses con datos para proyectar (mínimo 4 meses cerrados).</p>
+          ) : (
+            <>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={[...tend.serie.map(s => ({ name: s.label, Ventas: s.ventas, Costos: s.costos, Resultado: s.resultado, proyectado: false })), ...tend.proyectado.map(p => ({ name: `${p.label}*`, 'Ventas est.': p.ventas, 'Costos est.': p.costos, 'Resultado est.': p.resultado, proyectado: true }))]}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                    <YAxis tick={{ fontSize: 10 }} tickFormatter={(v: number) => Math.abs(v) >= 1e6 ? `${(v / 1e6).toFixed(0)}M` : `${(v / 1e3).toFixed(0)}k`} />
+                    <Tooltip formatter={(v: any) => fmtMoney(Number(v), moneda === 'TODAS' ? tend.moneda : moneda)} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar dataKey="Ventas" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="Costos" fill="#f59e0b" radius={[3, 3, 0, 0]} />
+                    <Line type="monotone" dataKey="Resultado" stroke="#16a34a" strokeWidth={2} dot={{ r: 2 }} />
+                    <Line type="monotone" dataKey="Ventas est." stroke="#3b82f6" strokeDasharray="5 4" strokeWidth={1.5} dot={false} />
+                    <Line type="monotone" dataKey="Costos est." stroke="#f59e0b" strokeDasharray="5 4" strokeWidth={1.5} dot={false} />
+                    <Line type="monotone" dataKey="Resultado est." stroke="#16a34a" strokeDasharray="5 4" strokeWidth={2} dot={false} />
+                    {tend.serie.length > 0 && <ReferenceLine x={tend.serie[tend.serie.length - 1].label} stroke="#9ca3af" strokeDasharray="3 3" label={{ value: 'hoy →', fontSize: 9, fill: '#9ca3af' }} />}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
+                {tend.tendencia.ventasMensual !== null && (
+                  <div className="rounded-lg bg-neutral-50 p-2.5">
+                    <div className="text-[10px] uppercase tracking-wide text-neutral-500">Ventas por mes</div>
+                    <div className={`font-semibold ${tend.tendencia.ventasMensual >= 0 ? 'text-green-700' : 'text-red-600'}`}>{tend.tendencia.ventasMensual >= 0 ? '+' : ''}{fmtMoney(tend.tendencia.ventasMensual, moneda === 'TODAS' ? tend.moneda : moneda)}</div>
+                  </div>
+                )}
+                {tend.tendencia.costosMensual !== null && (
+                  <div className="rounded-lg bg-neutral-50 p-2.5">
+                    <div className="text-[10px] uppercase tracking-wide text-neutral-500">Costos por mes</div>
+                    <div className={`font-semibold ${tend.tendencia.costosMensual <= 0 ? 'text-green-700' : 'text-amber-700'}`}>{tend.tendencia.costosMensual >= 0 ? '+' : ''}{fmtMoney(tend.tendencia.costosMensual, moneda === 'TODAS' ? tend.moneda : moneda)}</div>
+                  </div>
+                )}
+                {tend.proyectado.map(p => (
+                  <div key={p.mesKey} className="rounded-lg bg-indigo-50/60 p-2.5">
+                    <div className="text-[10px] uppercase tracking-wide text-indigo-500">{p.label} (est.)</div>
+                    <div className={`font-semibold ${p.resultado >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmtMoney(p.resultado, moneda === 'TODAS' ? tend.moneda : moneda)}</div>
+                    <div className="text-[10px] text-neutral-400">V {fmtMoney(p.ventas, moneda === 'TODAS' ? tend.moneda : moneda)} · C {fmtMoney(p.costos, moneda === 'TODAS' ? tend.moneda : moneda)}</div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] text-neutral-400">{tend.metodo}</p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* 3 — Caja a futuro */}
       {caja && (
