@@ -81,6 +81,8 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const [alertasAct, setAlertasAct] = useState<string | null>(null);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
   const [iva, setIva] = useState<{ recuperado: number; noRecuperado: number; estimado: number; cargasSinDesagregar: number; tasaEstimada: number; debito: number; aPagar: number; remanente: number } | null>(null);
+  const [ivaMeses, setIvaMeses] = useState<any[]>([]);
+  const [ivaPorMeses, setIvaPorMeses] = useState(false);
   const [f29, setF29] = useState<{ configurado: boolean; declarado: boolean | null; vigente: { folio: string | null; fecha: string | null; estado: string | null } | null; declaraciones: any[]; periodo?: string; error?: string } | null>(null);
   const [f29Estados, setF29Estados] = useState<{ periodo: number; declarado: boolean; estado: string | null }[] | null>(null);
   const [f29Open, setF29Open] = useState(false);
@@ -111,8 +113,8 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
     apiFetch<{ alertas: Alerta[]; actualizadoEn?: string }>(`/finanzas/alertas?${params}`).then(d => { setAlertas(d.alertas || []); setAlertasAct(d.actualizadoEn || null); }).catch(() => { setAlertas([]); setAlertasAct(null); });
     apiFetch<{ comentarios: Comentario[] }>(`/finanzas/comentarios-periodo?mesKey=${mesKey}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`).then(d => setComentarios(d.comentarios || [])).catch(() => setComentarios([]));
     apiFetch<{ meses: any[]; tasaEstimada?: number }>(`/finanzas/iva-credito?anio=${anio}&moneda=${moneda}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`)
-      .then(d => { const m = (d.meses || []).find((x: any) => x.mes === mesSel); setIva(m ? { recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar, debito: m.debito ?? 0, aPagar: m.aPagar ?? 0, remanente: m.remanente ?? 0, tasaEstimada: d.tasaEstimada ?? 0.21 } : null); })
-      .catch(() => setIva(null));
+      .then(d => { setIvaMeses(d.meses || []); const m = (d.meses || []).find((x: any) => x.mes === mesSel); setIva(m ? { recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar, debito: m.debito ?? 0, aPagar: m.aPagar ?? 0, remanente: m.remanente ?? 0, tasaEstimada: d.tasaEstimada ?? 0.21 } : null); })
+      .catch(() => { setIva(null); setIvaMeses([]); });
   }, [anio, mesSel, moneda, centroCostoId, mesKey]);
 
   // F29 real del período (SII vía APIGateway) — effect propio: solo depende del
@@ -183,7 +185,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
     setIvaTasaEdit(null);
     await apiFetch('/finanzas/config', { method: 'PUT', json: { ivaTasa: { [moneda]: v / 100 } } }).catch(() => {});
     const d = await apiFetch<{ meses: any[]; tasaEstimada?: number }>(`/finanzas/iva-credito?anio=${anio}&moneda=${moneda}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`).catch(() => null);
-    if (d) { const m = (d.meses || []).find((x: any) => x.mes === mesSel); if (m) setIva({ recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar, debito: m.debito ?? 0, aPagar: m.aPagar ?? 0, remanente: m.remanente ?? 0, tasaEstimada: d.tasaEstimada ?? v / 100 }); }
+    if (d) { setIvaMeses(d.meses || []); const m = (d.meses || []).find((x: any) => x.mes === mesSel); if (m) setIva({ recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar, debito: m.debito ?? 0, aPagar: m.aPagar ?? 0, remanente: m.remanente ?? 0, tasaEstimada: d.tasaEstimada ?? v / 100 }); }
   };
 
   const enviarComentario = async () => {
@@ -524,6 +526,43 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
             </div>
           </div>
           {iva.estimado > 0 && <p className="mt-2 text-[11px] text-neutral-400">El estimado supone que el precio de surtidor incluye IVA al {(iva.tasaEstimada * 100).toFixed(0)} %{canEdit && ' (editable arriba — AR 21 %, CL 19 %)'} — cargá el IVA real del ticket en Flota 360 → Combustible para que compute como crédito evidenciado.</p>}
+          {/* Posición IVA por cada mes del año */}
+          {ivaMeses.length > 0 && (
+            <div className="mt-3">
+              <button type="button" onClick={() => setIvaPorMeses(o => !o)} className="flex items-center gap-1 text-[11px] font-medium text-neutral-500 hover:text-neutral-700">
+                <ChevronRight size={12} className={`transition-transform ${ivaPorMeses ? 'rotate-90' : ''}`} />
+                {ivaPorMeses ? 'ocultar detalle por mes' : `ver por meses (${anio})`}
+              </button>
+              {ivaPorMeses && (
+                <div className="mt-2 overflow-x-auto rounded-lg border border-neutral-100">
+                  <table className="w-full min-w-[560px] text-xs">
+                    <thead>
+                      <tr className="bg-neutral-50 text-left text-[10px] uppercase tracking-wide text-neutral-400">
+                        <th className="px-3 py-1.5 font-medium">Mes</th>
+                        <th className="px-3 py-1.5 font-medium text-right">Débito</th>
+                        <th className="px-3 py-1.5 font-medium text-right">Crédito</th>
+                        <th className="px-3 py-1.5 font-medium text-right">Remanente</th>
+                        <th className="px-3 py-1.5 font-medium text-right">A pagar</th>
+                        <th className="px-3 py-1.5 font-medium text-right">IVA al costo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ivaMeses.map((m: any) => (
+                        <tr key={m.mes} className={`border-t border-neutral-100 ${m.mes === mesSel ? 'bg-teal-50/60 font-medium' : ''}`}>
+                          <td className="px-3 py-1.5">{MESES[m.mes - 1]}{m.mes === mesSel && <span className="ml-1 text-[10px] text-teal-600">· viendo</span>}</td>
+                          <td className="px-3 py-1.5 text-right text-blue-700">{m.debito > 0 ? fmtMoney(m.debito, moneda) : '—'}</td>
+                          <td className="px-3 py-1.5 text-right text-emerald-700">{m.recuperado > 0 ? fmtMoney(m.recuperado, moneda) : '—'}</td>
+                          <td className="px-3 py-1.5 text-right text-teal-700">{m.remanente > 0 ? fmtMoney(m.remanente, moneda) : '—'}</td>
+                          <td className={`px-3 py-1.5 text-right ${m.aPagar > 0 ? 'font-medium text-red-700' : 'text-neutral-400'}`}>{m.aPagar > 0 ? fmtMoney(m.aPagar, moneda) : '—'}</td>
+                          <td className="px-3 py-1.5 text-right text-amber-700">{m.noRecuperado > 0 ? fmtMoney(m.noRecuperado, moneda) : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
