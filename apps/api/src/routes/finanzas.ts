@@ -1408,7 +1408,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       if (!porCliente.has(key)) porCliente.set(key, {
         cliente: f.clienteNombre, rut: f.clienteRut, facturado: 0, cobrado: 0, notasCredito: 0, saldo: 0,
         aging: { corriente: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90: 0 },
-        diasPago: [] as number[], fechasCobro: [] as number[], pendientes: [] as any[], ultimoCobro: null as Date | null,
+        diasPago: [] as number[], fechasCobro: [] as number[], pendientes: [] as any[], cobradas: [] as any[], ultimoCobro: null as Date | null,
       });
       const c = porCliente.get(key);
       const total = num(f.total);
@@ -1422,8 +1422,15 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       const saldo = Math.max(0, total - cobrado);
       if (saldo <= 0.5 && f.cobros.length) {
         // Días de pago = emisión → cobro que la canceló
-        const last = new Date(f.cobros[f.cobros.length - 1].fecha).getTime();
+        const cancelo = f.cobros[f.cobros.length - 1];
+        const last = new Date(cancelo.fecha).getTime();
         c.diasPago.push(Math.max(0, Math.round((last - new Date(f.fechaEmision).getTime()) / DIA)));
+        // Consolidado de cobradas (para que el cliente no "desaparezca" al saldar)
+        c.cobradas.push({
+          id: f.id, numero: [f.puntoVenta, f.numero].filter(Boolean).join('-') || null,
+          fechaEmision: f.fechaEmision, fechaCobro: cancelo.fecha, total, moneda: f.moneda,
+          fileUrl: f.fileUrl, origen: (cancelo.referencia || '').startsWith('CARTOLA:') ? 'cartola' : 'manual',
+        });
         continue;
       }
       if (saldo <= 0.5) continue;
@@ -1444,6 +1451,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const clientes = [...porCliente.values()].map(c => {
       const fechas = [...new Set(c.fechasCobro.map((t: number) => Math.floor(t / DIA)))].sort((a: any, b: any) => a - b) as number[];
       const intervalos = fechas.slice(1).map((d, i) => d - fechas[i]);
+      c.cobradas.sort((a: any, b: any) => new Date(b.fechaEmision).getTime() - new Date(a.fechaEmision).getTime());
       const { diasPago, fechasCobro, ...rest } = c;
       // NC sin aplicar a una factura puntual: se descuenta de la deuda más vieja primero
       let credito = c.notasCredito;

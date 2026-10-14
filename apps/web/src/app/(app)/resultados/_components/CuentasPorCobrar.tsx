@@ -10,7 +10,7 @@ type Cliente = {
   cliente: string; rut: string | null; facturado: number; cobrado: number; notasCredito: number; saldo: number;
   aging: { corriente: number; d1_30: number; d31_60: number; d61_90: number; d90: number };
   diasPagoPromedio: number | null; frecuenciaPagoDias: number | null; facturasPagadas: number;
-  ultimoCobro: string | null; pendientes: any[];
+  ultimoCobro: string | null; pendientes: any[]; cobradas: any[];
 };
 
 const BUCKETS: { key: keyof Cliente['aging']; label: string; color: string }[] = [
@@ -143,6 +143,41 @@ export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: 
                 </tbody>
               </table>
             ) : <div className="px-4 py-3 text-xs text-green-700">No tiene facturas pendientes.</div>}
+
+            {(c.cobradas?.length ?? 0) > 0 && (
+              <details className="px-4 pb-3">
+                <summary className="cursor-pointer select-none text-xs text-neutral-500 hover:text-neutral-700">
+                  {c.cobradas.length} factura{c.cobradas.length === 1 ? '' : 's'} cobrada{c.cobradas.length === 1 ? '' : 's'} ({fmtMoney(c.cobradas.reduce((s: number, x: any) => s + x.total, 0), moneda)})
+                </summary>
+                <table className="mt-2 w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[11px] uppercase tracking-wide text-neutral-400">
+                      <th className="py-1 font-medium">Factura</th><th className="py-1 font-medium">Emisión</th>
+                      <th className="py-1 font-medium">Cobrada</th><th className="py-1 text-right font-medium">Total</th>
+                      <th className="py-1 text-right font-medium">Origen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {c.cobradas.map((p: any) => (
+                      <tr key={p.id} className="border-t border-neutral-100 text-neutral-500">
+                        <td className="py-1.5">
+                          {p.numero || 's/n'}
+                          {p.fileUrl && <a href={p.fileUrl} target="_blank" rel="noreferrer" className="ml-1.5 inline-block text-blue-500" title="Ver factura"><Paperclip size={12} /></a>}
+                        </td>
+                        <td className="py-1.5 text-xs">{fmtFecha(p.fechaEmision)}</td>
+                        <td className="py-1.5 text-xs text-green-700">{fmtFecha(p.fechaCobro)}</td>
+                        <td className="py-1.5 text-right">{fmtMoney(p.total, p.moneda)}</td>
+                        <td className="py-1.5 text-right">
+                          {p.origen === 'cartola'
+                            ? <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">cartola</span>
+                            : <span className="text-[10px] text-neutral-400">manual</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </details>
+            )}
           </div>
         );
       })}
