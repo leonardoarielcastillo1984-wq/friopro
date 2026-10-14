@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Plus, X, Loader2, Paperclip, Trash2, Repeat, Pencil, Search, Tags } from 'lucide-react';
 import { fmtMoney, fmtFecha, CATEGORIA_GASTO, TIPO_COMPROBANTE, IVA_DEFAULT, MONEDAS, toDateInput } from './fmt';
+import { useAsistente } from './useAsistente';
 
 type Gasto = {
   id: string; fecha: string; proveedor: string | null; proveedorRut: string | null; concepto: string; categoria: string;
@@ -173,12 +174,16 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
     } catch (e: any) { setError(e?.message || 'No se pudo reclasificar'); }
   };
 
+  const A = useAsistente({ moneda });
+
   const inputCls = 'w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-neutral-400 focus:outline-none';
   const labelCls = 'block text-[11px] font-medium uppercase tracking-wide text-neutral-500 mb-1';
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
+      {A.Estilos}
       <div className="flex flex-wrap items-center gap-2">
+        <A.Boton />
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-2.5 text-neutral-400" />
           <input value={buscar} onChange={e => setBuscar(e.target.value)} placeholder="Concepto, proveedor, RUT…" className={`${inputCls} w-56 pl-8`} />
@@ -204,9 +209,10 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
         El resultado usa el <b>neto sin IVA</b> cuando el IVA es recuperable.
       </p>
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {A.Panel}
 
       {showProv && (
-        <div className="rounded-xl border border-neutral-200 bg-white">
+        <div className="rounded-xl border border-neutral-200 bg-white" data-explica="gasto-proveedores" data-explica-titulo="Clasificar por proveedor">
           <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-2.5">
             <span className="text-sm font-semibold">Clasificar por proveedor <span className="font-normal text-neutral-400">— cambia todos sus gastos y los próximos que importes</span></span>
             <button onClick={() => setShowProv(false)} className="text-neutral-400"><X size={16} /></button>
@@ -215,7 +221,8 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
             <table className="w-full text-sm">
               <tbody>
                 {proveedores.map((p, i) => (
-                  <tr key={i} className="border-b border-neutral-100 last:border-0">
+                  <tr key={i} data-explica="gasto-proveedor" data-explica-titulo={p.nombre} data-explica-datos={JSON.stringify({ proveedor: p.nombre, rut: p.rut, cantidadGastos: p.cantidad, total: Math.round(p.total), categoria: p.categoria, tipoGasto: p.tipoGasto })}
+                    className="border-b border-neutral-100 last:border-0">
                     <td className="px-4 py-2"><div className="font-medium text-neutral-900">{p.nombre}</div><div className="text-[11px] text-neutral-400">{p.rut || 'sin RUT'} · {p.cantidad} gastos · {fmtMoney(p.total, moneda)}</div></td>
                     <td className="px-2 py-2 w-56">
                       <select value={p.categoria} onChange={e => reclasificar(p, { categoria: e.target.value })} className="w-full rounded border border-neutral-200 px-2 py-1 text-xs">
@@ -237,7 +244,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
       )}
 
       {showPres && (
-        <div className="rounded-xl border border-neutral-200 bg-white">
+        <div className="rounded-xl border border-neutral-200 bg-white" data-explica="gasto-presupuesto" data-explica-titulo="Presupuesto mensual por categoría" data-explica-datos={JSON.stringify(presupuesto)}>
           <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-2.5">
             <span className="text-sm font-semibold">Presupuesto mensual por categoría <span className="font-normal text-neutral-400">— en {moneda}; si el gasto real del mes supera el tope, dispara una alerta en Resultados</span></span>
             <button onClick={() => setShowPres(false)} className="text-neutral-400"><X size={16} /></button>
@@ -360,7 +367,8 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
                 const t = TIPO_LABEL[g.tipoGasto] || TIPO_LABEL.OTRO;
                 const c = costo(g);
                 return (
-                  <tr key={g.id} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50/60">
+                  <tr key={g.id} data-explica="gasto" data-explica-titulo={g.concepto} data-explica-datos={JSON.stringify({ fecha: fmtFecha(g.fecha), concepto: g.concepto, proveedor: g.proveedor, categoria: CATEGORIA_GASTO[g.categoria] || g.categoria, tipo: t.label, costoNeto: Math.round(c), total: Math.round(g.total), moneda: g.moneda, iva: g.iva, ivaRecuperable: g.ivaRecuperable, origen: g.origen, recurrente: g.esRecurrente, amortizable: g.esAmortizable })}
+                    className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50/60">
                     <td className="px-4 py-2.5 text-xs text-neutral-500">{fmtFecha(g.fecha)}</td>
                     <td className="px-4 py-2.5">
                       <span className="font-medium text-neutral-900">{g.concepto}</span>
@@ -389,7 +397,8 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
             </tbody>
             {visibles.length > 0 && (
               <tfoot>
-                <tr className="border-t border-neutral-200 bg-neutral-50 text-sm font-semibold">
+                <tr data-explica="gasto-total" data-explica-titulo={`Total gastos (${visibles.length})`} data-explica-datos={JSON.stringify({ cantidad: visibles.length, totalCostoNeto: Math.round(totalCosto), moneda })}
+                  className="border-t border-neutral-200 bg-neutral-50 text-sm font-semibold">
                   <td colSpan={4} className="px-4 py-2.5 text-neutral-500">{visibles.length} gastos</td>
                   <td className="px-4 py-2.5 text-right">{fmtMoney(totalCosto, moneda)}</td>
                   <td colSpan={2}></td>

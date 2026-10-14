@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Upload, Loader2, CheckCircle2, AlertTriangle, FileSpreadsheet, Info, RefreshCw, KeyRound, ShieldCheck } from 'lucide-react';
 import { fmtMoney, fmtFecha, CATEGORIA_GASTO, MONEDAS } from './fmt';
+import { useAsistente } from './useAsistente';
 
 type Fila = {
   tipoDoc: string; folio: string; rut: string | null; razonSocial: string | null; fecha: string;
@@ -94,6 +95,7 @@ async function leerTexto(file: File) {
 }
 
 export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChanged }: { centros: any[]; moneda: string; monedas?: string[]; onChanged: () => void }) {
+  const A = useAsistente({ moneda });
   const [tipo, setTipo] = useState<'VENTAS' | 'COMPRAS'>('VENTAS');
   const [mon, setMon] = useState(moneda);
   const [centroCostoId, setCentroCostoId] = useState('');
@@ -196,8 +198,11 @@ export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChan
   const labelCls = 'block text-[11px] font-medium uppercase tracking-wide text-neutral-500 mb-1';
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-4 text-sm text-sky-900">
+    <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
+      {A.Estilos}
+      <div className="-mb-1"><A.Boton /></div>
+      {A.Panel}
+      <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-4 text-sm text-sky-900" data-explica="importar-ayuda" data-explica-titulo="Cómo bajar el archivo del SII">
         <div className="mb-1 flex items-center gap-2 font-semibold"><Info size={15} />Cómo bajar el archivo del SII</div>
         <ol className="ml-5 list-decimal space-y-0.5 text-[13px]">
           <li>Entrá a <b>sii.cl</b> con el RUT de la empresa → <b>Servicios online → Factura electrónica → Registro de Compras y Ventas</b>.</li>
@@ -208,7 +213,7 @@ export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChan
       </div>
 
       {/* ── Sincronización automática con el SII ── */}
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4" data-explica="importar-sync" data-explica-titulo="Actualizar desde el SII" data-explica-datos={JSON.stringify({ configurado: sii?.configurado, rut: sii?.rut, periodo: periodoSync, tipo: tipoSync })}>
         <div className="flex flex-wrap items-center gap-2">
           <RefreshCw size={15} className="text-emerald-700" />
           <span className="text-sm font-semibold text-emerald-900">Actualizar desde el SII</span>
@@ -321,7 +326,7 @@ export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChan
       )}
 
       {parsed && parsed.filas.length > 0 && !resultado && (
-        <div className="rounded-xl border border-neutral-200 bg-white">
+        <div className="rounded-xl border border-neutral-200 bg-white" data-explica="importar-preview" data-explica-titulo={`${parsed.filas.length} documentos detectados`} data-explica-datos={JSON.stringify(tot)}>
           <div className="flex flex-wrap items-center gap-3 border-b border-neutral-200 px-4 py-3">
             <span className="text-sm font-semibold">{parsed.filas.length} documentos detectados</span>
             {tot && <span className="text-xs text-neutral-500">Neto {fmtMoney(tot.neto, mon)} · IVA {fmtMoney(tot.iva, mon)} · Total {fmtMoney(tot.total, mon)}</span>}
@@ -340,7 +345,8 @@ export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChan
               </thead>
               <tbody>
                 {parsed.filas.slice(0, 200).map((f, i) => (
-                  <tr key={i} className="border-t border-neutral-100">
+                  <tr key={i} data-explica="importar-doc" data-explica-titulo={`${f.tipoDoc === '61' ? 'NC' : 'Doc'} ${f.folio} — ${f.razonSocial || ''}`} data-explica-datos={JSON.stringify(f)}
+                    className="border-t border-neutral-100">
                     <td className="px-4 py-1.5 text-xs text-neutral-500">{f.tipoDoc === '61' ? 'NC' : f.tipoDoc === '56' ? 'ND' : f.tipoDoc}</td>
                     <td className="px-4 py-1.5">{f.folio}</td>
                     <td className="px-4 py-1.5 text-xs text-neutral-500">{fmtFecha(f.fecha + 'T12:00:00')}</td>

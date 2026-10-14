@@ -2375,6 +2375,9 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     let rel = lineas;
     const g = GRUPO_DE[metrica];
     if (g?.length) rel = lineas.filter(l => g.includes(l.grupo));
+    if (['factura', 'cxc-factura', 'cxc-cobrada', 'importar-doc', 'factura-total'].includes(metrica)) rel = lineas.filter(l => l.grupo === 'FACTURADO');
+    if (['cobro', 'caja-cobro', 'cxc-total', 'cxc-vencido', 'cxc-90'].includes(metrica)) rel = lineas.filter(l => l.grupo === 'COBRADO');
+    if (['gasto', 'gasto-total', 'gasto-proveedor', 'cxp-item', 'caja-pago', 'rubro', 'rubros'].includes(metrica)) rel = lineas.filter(l => ['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo));
     if (metrica === 'iva-credito') rel = lineas.filter(l => num(l.iva) > 0 && l.ivaRecuperable !== false);
     if (metrica === 'iva-costo') rel = lineas.filter(l => num(l.iva) > 0 && l.ivaRecuperable === false);
     if (metrica === 'iva-estimado' || metrica === 'iva-cargas') rel = lineas.filter(l => l.fuente === 'COMBUSTIBLE');

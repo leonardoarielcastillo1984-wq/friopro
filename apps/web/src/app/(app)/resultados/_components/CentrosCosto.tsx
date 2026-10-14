@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Plus, X, Loader2, Trash2, Building2, GitBranch, Pencil, Check } from 'lucide-react';
+import { useAsistente } from './useAsistente';
 
 export type CentroCosto = {
   id: string; nombre: string; tipo: 'UNIDAD_NEGOCIO' | 'CENTRO_COSTO';
@@ -12,6 +13,7 @@ export type CentroCosto = {
 const vacio = { nombre: '', tipo: 'CENTRO_COSTO', parentId: '', notas: '', activo: true };
 
 export default function CentrosCosto({ centros, canEdit, reload }: { centros: CentroCosto[]; canEdit: boolean; reload: () => void }) {
+  const A = useAsistente({});
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -82,7 +84,8 @@ export default function CentrosCosto({ centros, canEdit, reload }: { centros: Ce
             </div>
           </div>
         ) : (
-          <div className={`flex items-center gap-3 border-b border-neutral-100 px-4 py-2.5 ${!c.activo ? 'opacity-50' : ''}`} style={{ paddingLeft: 16 + depth * 24 }}>
+          <div data-explica="centro-costo" data-explica-titulo={c.nombre} data-explica-datos={JSON.stringify({ nombre: c.nombre, tipo: c.tipo === 'UNIDAD_NEGOCIO' ? 'Unidad de negocio' : 'Centro de costo', padre: c.parentId ? (centros.find(x => x.id === c.parentId)?.nombre || null) : null, activo: c.activo, notas: c.notas })}
+            className={`flex items-center gap-3 border-b border-neutral-100 px-4 py-2.5 ${!c.activo ? 'opacity-50' : ''}`} style={{ paddingLeft: 16 + depth * 24 }}>
             {c.tipo === 'UNIDAD_NEGOCIO' ? <Building2 size={15} className="text-blue-600" /> : <GitBranch size={14} className="text-neutral-400" />}
             <span className="text-sm font-medium text-neutral-900">{c.nombre}</span>
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${c.tipo === 'UNIDAD_NEGOCIO' ? 'bg-blue-50 text-blue-700' : 'bg-neutral-100 text-neutral-500'}`}>
@@ -106,8 +109,10 @@ export default function CentrosCosto({ centros, canEdit, reload }: { centros: Ce
   const raices = centros.filter(c => !c.parentId || !centros.some(p => p.id === c.parentId));
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
+      {A.Estilos}
       <div className="flex items-center justify-between gap-4">
+        <A.Boton />
         <p className="text-xs text-neutral-400">
           Unidades de negocio y centros de costo para ver el resultado por operación (ej. "Chile" → "Almacenamiento" → "Distribución").
           Sirven para toda la operación: predio, depósito, recepción — no solo la flota. Filtrá el dashboard por unidad desde el selector de arriba.
@@ -119,6 +124,7 @@ export default function CentrosCosto({ centros, canEdit, reload }: { centros: Ce
         )}
       </div>
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {A.Panel}
 
       {showForm && (
         <div className="rounded-xl border border-neutral-200 bg-white p-4">

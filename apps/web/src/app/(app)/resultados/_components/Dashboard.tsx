@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { TrendingUp, TrendingDown, DollarSign, Wallet, Building2, ChevronRight, Loader2, X, AlertTriangle, MessageSquare, Sparkles, Send, Scale, Receipt, MousePointerClick } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Wallet, Building2, ChevronRight, Loader2, X, AlertTriangle, MessageSquare, Sparkles, Send, Scale, Receipt } from 'lucide-react';
+import { useAsistente } from './useAsistente';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ReferenceLine, CartesianGrid, Legend } from 'recharts';
 import { fmtMoney, fmtPct, fmtFecha, fmtActualizado, MESES, GRUPO_LABEL, labelRubro } from './fmt';
 
@@ -44,7 +45,7 @@ function Rubros({ porRubro, moneda, titulo, act }: { porRubro: Record<string, nu
   const total = items.reduce((s, [, v]) => s + v, 0);
   const max = Math.max(1, ...items.map(([, v]) => Math.abs(v)));
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4">
+    <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="rubros" data-explica-titulo={titulo}>
       <div className="mb-3 flex items-baseline justify-between">
         <span className="text-sm font-semibold text-neutral-900">{titulo}</span>
         <span className="text-xs text-neutral-500">Total {fmtMoney(total, moneda)}{act !== undefined && <span className="ml-2 text-[10px] text-neutral-400">· act. {fmtActualizado(act)}</span>}</span>
@@ -52,7 +53,8 @@ function Rubros({ porRubro, moneda, titulo, act }: { porRubro: Record<string, nu
       {items.length === 0 ? <div className="py-4 text-center text-sm text-neutral-400">Sin costos registrados.</div> : (
         <div className="space-y-2">
           {items.map(([r, v]) => (
-            <div key={r} className="grid grid-cols-[10rem_1fr_7rem_3rem] items-center gap-3 text-sm">
+            <div key={r} data-explica="rubro" data-explica-titulo={`Rubro: ${labelRubro(r)}`} data-explica-datos={JSON.stringify({ rubro: labelRubro(r), monto: Math.round(v), pctDelTotal: total ? Math.round((v / total) * 100) : 0, total })}
+              className="grid grid-cols-[10rem_1fr_7rem_3rem] items-center gap-3 text-sm">
               <span className="truncate text-neutral-700" title={labelRubro(r)}>{labelRubro(r)}</span>
               <div className="h-2.5 overflow-hidden rounded-full bg-neutral-100">
                 <div className="h-full rounded-full bg-amber-400" style={{ width: `${(Math.abs(v) / max) * 100}%` }} />
@@ -83,8 +85,6 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const [iva, setIva] = useState<{ recuperado: number; noRecuperado: number; estimado: number; cargasSinDesagregar: number; tasaEstimada: number; debito: number; aPagar: number; remanente: number } | null>(null);
   const [ivaMeses, setIvaMeses] = useState<any[]>([]);
   const [ivaPorMeses, setIvaPorMeses] = useState(false);
-  const [asistente, setAsistente] = useState(false);
-  const [explica, setExplica] = useState<{ titulo: string; texto: string; via: string; loading: boolean } | null>(null);
   const [f29, setF29] = useState<{ configurado: boolean; declarado: boolean | null; vigente: { folio: string | null; fecha: string | null; estado: string | null } | null; declaraciones: any[]; periodo?: string; error?: string } | null>(null);
   const [f29Estados, setF29Estados] = useState<{ periodo: number; declarado: boolean; estado: string | null }[] | null>(null);
   const [f29Open, setF29Open] = useState(false);
@@ -203,29 +203,10 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
     return { totales, meses };
   };
 
-  const pedirExplicacion = async (metrica: string, titulo: string, texto?: string, extra?: any) => {
-    setExplica({ titulo, texto: '', via: '', loading: true });
-    try {
-      const r = await apiFetch<{ explicacion: string; via: string; periodo: string }>('/finanzas/explicar', {
-        method: 'POST',
-        json: { metrica, titulo, anio, mes: extra?.mes || mesSel, moneda: moneda || null, centroCostoId: centroCostoId || null, datos: datosDe(metrica, extra), texto: texto?.slice(0, 600) || null },
-      });
-      setExplica({ titulo: `${r.periodo} — ${titulo}`, texto: r.explicacion, via: r.via, loading: false });
-    } catch (e: any) {
-      setExplica({ titulo, texto: e?.message || 'No se pudo generar la explicación.', via: 'error', loading: false });
-    }
-  };
-
-  // En modo asistente cualquier click sobre un [data-explica] pide la
-  // explicación en vez de ejecutar la acción normal del elemento.
-  const onAsistenteClick = (e: React.MouseEvent) => {
-    if (!asistente) return;
-    const el = (e.target as HTMLElement).closest('[data-explica]') as HTMLElement | null;
-    if (!el) return;
-    e.preventDefault();
-    e.stopPropagation();
-    pedirExplicacion(el.dataset.explica!, el.dataset.explicaTitulo || el.textContent?.slice(0, 80) || 'Indicador', el.dataset.explicaTexto || el.textContent || undefined, el.dataset.explicaMes ? { mes: Number(el.dataset.explicaMes) } : undefined);
-  };
+  const A = useAsistente({
+    anio, mes: mesSel, moneda, centroCostoId,
+    datosDe: (metrica, datosEl, mesRef) => datosEl !== undefined ? datosEl : datosDe(metrica, { mes: mesRef }),
+  });
 
   const enviarComentario = async () => {
     if (!nuevoComentario.trim()) return;
@@ -261,31 +242,15 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const tip = (v: any) => fmtMoney(Number(v), moneda);
 
   return (
-    <div className={`space-y-4 ${asistente ? 'asist-on' : ''}`} onClickCapture={onAsistenteClick}>
-      {/* Modo asistente: resalta lo explicable al hover y cambia el cursor */}
-      {asistente && <style>{`.asist-on, .asist-on * { cursor: help !important; } .asist-on [data-explica] { outline: 1.5px dashed transparent; border-radius: 6px; transition: outline-color .15s; } .asist-on [data-explica]:hover { outline-color: #7c3aed; background: rgba(124,58,237,.05); }`}</style>}
+    <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
+      {A.Estilos}
       <div className="-mb-1 flex items-center justify-between">
-        <button type="button" onClick={() => { setAsistente(a => !a); setExplica(null); }}
-          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors ${asistente ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-neutral-200 bg-white text-neutral-500 hover:border-purple-200 hover:text-purple-600'}`}>
-          <MousePointerClick size={12} />
-          {asistente ? 'Asistente activo — hacé click sobre cualquier número' : 'Asistente ¿qué es esto?'}
-        </button>
+        <A.Boton />
         <span className="text-[10px] text-neutral-400">Datos actualizados {fmtActualizado((data as any)?.actualizadoEn)}</span>
       </div>
 
       {/* Panel de explicación del asistente */}
-      {explica && (
-        <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-4">
-          <div className="mb-1.5 flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-xs font-semibold text-purple-800"><Sparkles size={12} />{explica.titulo}</span>
-            <button onClick={() => setExplica(null)} className="text-purple-400 hover:text-purple-700"><X size={14} /></button>
-          </div>
-          {explica.loading
-            ? <p className="flex items-center gap-1.5 text-xs text-purple-600"><Loader2 size={12} className="animate-spin" />Analizando los datos del período…</p>
-            : <p className="whitespace-pre-line text-sm leading-relaxed text-neutral-800">{explica.texto}</p>}
-          {!explica.loading && explica.via === 'estatico' && <p className="mt-2 text-[10px] text-purple-400">Explicación de referencia (IA no configurada — GROQ_API_KEY)</p>}
-        </div>
-      )}
+      {A.Panel}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         {[
           { label: `Ventas ${anio}`, value: fmtMoney(totales.ventas, moneda), icon: DollarSign, color: 'text-blue-600', sub: 'sin IVA', explica: 'kpi-ventas' },
@@ -629,7 +594,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
       )}
 
       {/* Comentario del período */}
-      <div className="rounded-xl border border-neutral-200 bg-white p-4">
+      <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="comentario" data-explica-titulo={`Comentario del período — ${MESES[mesSel - 1]}`}>
         <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-neutral-900"><MessageSquare size={14} className="text-neutral-500" />Comentario del período — {MESES[mesSel - 1]} {anio}</div>
         {comentarios.length === 0 && <p className="text-xs text-neutral-400">Sin comentarios. {canEdit && 'Registrá contexto gerencial para este mes (ej.: reparación extraordinaria, cliente nuevo).'}</p>}
         {comentarios.map(c => (
@@ -653,7 +618,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-neutral-200 bg-white p-4">
+        <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="grafico-resultado" data-explica-titulo={`Resultado por mes — ${anio}`}>
           <div className="mb-2 text-sm font-semibold text-neutral-900">Resultado por mes <span className="font-normal text-neutral-400">— verde ganó, rojo perdió · clic para ver el detalle</span>{(data as any)?.actualizadoEn && <span className="ml-2 text-[10px] font-normal text-neutral-400">· act. {fmtActualizado((data as any).actualizadoEn)}</span>}</div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -663,14 +628,17 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
                 <YAxis tickFormatter={compact} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={48} />
                 <Tooltip formatter={tip} cursor={{ fill: '#f5f5f5' }} />
                 <ReferenceLine y={0} stroke="#a3a3a3" />
-                <Bar dataKey="Resultado" radius={[4, 4, 0, 0]} onClick={(d: any) => d?.payload?.mes && abrirDetalle(d.payload.mes)} className="cursor-pointer">
+                <Bar dataKey="Resultado" radius={[4, 4, 0, 0]} className="cursor-pointer"
+                  onClick={(d: any) => d?.payload?.mes && (A.asistente
+                    ? A.pedirExplicacion('grafico-mes', `Resultado de ${d.payload.name} ${anio}`, undefined, { mes: d.payload.mes, resultado: d.payload.Resultado, ventas: d.payload.Ventas, costos: d.payload.Costos }, d.payload.mes)
+                    : abrirDetalle(d.payload.mes))}>
                   {chartData.map((d, i) => <Cell key={i} fill={d.Resultado >= 0 ? '#16a34a' : '#dc2626'} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
-        <div className="rounded-xl border border-neutral-200 bg-white p-4">
+        <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="grafico-ventas" data-explica-titulo={`Ventas vs costos — ${anio}`}>
           <div className="mb-2 text-sm font-semibold text-neutral-900">Ventas vs costos{(data as any)?.actualizadoEn && <span className="ml-2 text-[10px] font-normal text-neutral-400">· act. {fmtActualizado((data as any).actualizadoEn)}</span>}</div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -680,8 +648,10 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
                 <YAxis tickFormatter={compact} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={48} />
                 <Tooltip formatter={tip} cursor={{ fill: '#f5f5f5' }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="Ventas" fill="#3b82f6" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="Costos" fill="#f59e0b" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="Ventas" fill="#3b82f6" radius={[3, 3, 0, 0]} className="cursor-pointer"
+                  onClick={(d: any) => d?.payload?.mes && A.asistente && A.pedirExplicacion('grafico-mes', `Ventas de ${d.payload.name} ${anio}`, undefined, { mes: d.payload.mes, ventas: d.payload.Ventas }, d.payload.mes)} />
+                <Bar dataKey="Costos" fill="#f59e0b" radius={[3, 3, 0, 0]} className="cursor-pointer"
+                  onClick={(d: any) => d?.payload?.mes && A.asistente && A.pedirExplicacion('grafico-mes', `Costos de ${d.payload.name} ${anio}`, undefined, { mes: d.payload.mes, costos: d.payload.Costos }, d.payload.mes)} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -707,7 +677,8 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
           </thead>
           <tbody>
             {meses.map(m => (
-              <tr key={m.mes} className={`cursor-pointer border-b border-neutral-100 last:border-0 hover:bg-neutral-50/60 ${mesSel === m.mes ? 'bg-blue-50/40' : ''}`} onClick={() => abrirDetalle(m.mes)}>
+              <tr key={m.mes} data-explica="tabla-mes" data-explica-titulo={`${MESES[m.mes - 1]} ${anio}`} data-explica-mes={m.mes} data-explica-datos={JSON.stringify(m)}
+                className={`cursor-pointer border-b border-neutral-100 last:border-0 hover:bg-neutral-50/60 ${mesSel === m.mes ? 'bg-blue-50/40' : ''}`} onClick={() => abrirDetalle(m.mes)}>
                 <td className="px-4 py-2.5 font-medium text-neutral-900">{MESES[m.mes - 1]}</td>
                 <td className="px-4 py-2.5 text-right">{fmtMoney(m.ventas, moneda)}</td>
                 <td className="px-4 py-2.5 text-right text-amber-700">{fmtMoney(m.costosOperativos, moneda)}</td>
@@ -760,7 +731,8 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
             <table className="w-full text-sm">
               <tbody>
                 {detalle.lineas.filter(l => !grupoFiltro || l.grupo === grupoFiltro).map((l, i) => (
-                  <tr key={i} className="border-b border-neutral-100 last:border-0">
+                  <tr key={i} data-explica="movimiento" data-explica-titulo={l.concepto} data-explica-datos={JSON.stringify({ fecha: fmtFecha(l.fecha), concepto: l.concepto, grupo: GRUPO_LABEL[l.grupo] || l.grupo, rubro: labelRubro(l.rubro), fuente: l.fuente, modulo: l.modulo, importe: Math.round(l.importe), iva: l.iva, ivaRecuperable: l.ivaRecuperable })}
+                    className="border-b border-neutral-100 last:border-0">
                     <td className="w-24 px-4 py-2 text-xs text-neutral-400">{fmtFecha(l.fecha)}</td>
                     <td className="px-4 py-2 text-neutral-800">
                       {l.origenUrl ? <a href={l.origenUrl} className="hover:text-blue-600 hover:underline">{l.concepto}</a> : l.concepto}

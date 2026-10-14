@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Plus, X, Loader2, Paperclip, Ban, DollarSign, ChevronDown, ChevronUp, Trash2, Pencil, Check, Search } from 'lucide-react';
 import { fmtMoney, fmtFecha, ESTADO_FACTURA, TIPO_COMPROBANTE, IVA_DEFAULT, MONEDAS, toDateInput } from './fmt';
+import { useAsistente } from './useAsistente';
 
 type Factura = {
   id: string; numero: string | null; puntoVenta: string | null; tipoComprobante: string;
@@ -150,13 +151,17 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
     await apiFetch(`/finanzas/facturas/${f.id}`, { method: 'DELETE' }); await load(); onChanged();
   };
 
+  const A = useAsistente({ moneda });
+
   const inputCls = 'w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-neutral-400 focus:outline-none';
   const labelCls = 'block text-[11px] font-medium uppercase tracking-wide text-neutral-500 mb-1';
   const smallIn = 'rounded border border-neutral-200 px-2 py-1 text-xs';
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
+      {A.Estilos}
       <div className="flex flex-wrap items-center gap-2">
+        <A.Boton />
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-2.5 text-neutral-400" />
           <input value={buscar} onChange={e => setBuscar(e.target.value)} placeholder="Cliente, RUT o número…" className={`${inputCls} w-60 pl-8`} />
@@ -172,6 +177,7 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
         )}
       </div>
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {A.Panel}
 
       {showForm && (
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
@@ -244,7 +250,8 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
                 const nc = f.tipoComprobante === 'NOTA_CREDITO';
                 return (
                   <Fragment key={f.id}>
-                    <tr className="border-b border-neutral-100 hover:bg-neutral-50/60 cursor-pointer" onClick={() => setExpandId(open ? null : f.id)}>
+                    <tr data-explica="factura" data-explica-titulo={`${nc ? 'NC ' : ''}${[f.puntoVenta, f.numero].filter(Boolean).join('-') || TIPO_COMPROBANTE[f.tipoComprobante]} — ${f.clienteNombre}`} data-explica-datos={JSON.stringify({ tipo: TIPO_COMPROBANTE[f.tipoComprobante], cliente: f.clienteNombre, emision: fmtFecha(f.fechaEmision), vence: fmtFecha(f.fechaVencimiento), neto: f.neto, iva: f.iva, total: f.total, saldo: f.saldo, cobrado: f.cobrado, estado: st.label, moneda: f.moneda, origen: f.origen })}
+                      className="border-b border-neutral-100 hover:bg-neutral-50/60 cursor-pointer" onClick={() => setExpandId(open ? null : f.id)}>
                       <td className="px-4 py-2.5 text-xs text-neutral-500">{fmtFecha(f.fechaEmision)}</td>
                       <td className="px-4 py-2.5"><div className="font-medium text-neutral-900">{f.clienteNombre}</div>{f.clienteRut && <div className="text-[11px] text-neutral-400">{f.clienteRut}</div>}</td>
                       <td className="px-4 py-2.5 text-neutral-600">
@@ -287,7 +294,8 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
                                     <button onClick={() => setCobroForm(null)} className="text-neutral-400"><X size={14} /></button>
                                   </div>
                                 ) : (
-                                  <div key={c.id} className="mt-1 flex items-center gap-2 text-xs text-neutral-600">
+                                  <div key={c.id} data-explica="cobro" data-explica-titulo={`Cobro ${fmtFecha(c.fecha)} — ${fmtMoney(Number(c.importe), c.moneda)}`} data-explica-datos={JSON.stringify({ fecha: fmtFecha(c.fecha), importe: Number(c.importe), moneda: c.moneda, medioPago: c.medioPago, referencia: c.referencia, factura: f.numero, cliente: f.clienteNombre })}
+                                    className="mt-1 flex items-center gap-2 text-xs text-neutral-600">
                                     <span>{fmtFecha(c.fecha)}</span><span className="font-medium text-emerald-700">{fmtMoney(Number(c.importe), c.moneda)}</span>
                                     {c.medioPago && <span className="text-neutral-400">{c.medioPago}</span>}
                                     {c.referencia && <span className="text-neutral-400">#{c.referencia}</span>}
@@ -342,7 +350,8 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
             </tbody>
             {visibles.length > 0 && (
               <tfoot>
-                <tr className="border-t border-neutral-200 bg-neutral-50 text-sm font-semibold">
+                <tr data-explica="factura-total" data-explica-titulo={`Total facturación (${visibles.length} comprobantes)`} data-explica-datos={JSON.stringify({ cantidad: visibles.length, neto: Math.round(tot.neto), iva: Math.round(tot.iva), total: Math.round(tot.total), saldo: Math.round(tot.saldo), moneda })}
+                  className="border-t border-neutral-200 bg-neutral-50 text-sm font-semibold">
                   <td colSpan={3} className="px-4 py-2.5 text-neutral-500">{visibles.length} comprobantes</td>
                   <td className="px-4 py-2.5 text-right">{fmtMoney(tot.neto, moneda)}</td>
                   <td className="px-4 py-2.5 text-right text-neutral-500">{fmtMoney(tot.iva, moneda)}</td>

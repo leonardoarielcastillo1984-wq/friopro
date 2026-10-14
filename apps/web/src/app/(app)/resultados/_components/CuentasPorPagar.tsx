@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Loader2, AlertTriangle, Clock, CheckCircle2, Plus, X, Building2 } from 'lucide-react';
 import { fmtMoney, fmtFecha, fmtActualizado } from './fmt';
+import { useAsistente } from './useAsistente';
 
 type Item = {
   id: string; origen: 'GASTO' | 'FLOTA'; proveedor: string; proveedorRut: string | null;
@@ -23,6 +24,7 @@ const ESTADO_STYLE: Record<string, string> = {
 };
 
 export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }: { moneda: string; centros: any[]; canEdit: boolean; onChanged: () => void }) {
+  const A = useAsistente({ moneda });
   const [data, setData] = useState<{ items: Item[]; totales: any; ranking: any[]; actualizadoEn?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [soloPendientes, setSoloPendientes] = useState(true);
@@ -71,16 +73,22 @@ export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }:
   const lista = soloPendientes ? items.filter(i => i.saldo > 0.5) : items;
 
   return (
-    <div className="space-y-4">
-      {data.actualizadoEn && <div className="-mb-1 text-right text-[10px] text-neutral-400">Datos actualizados {fmtActualizado(data.actualizadoEn)}</div>}
+    <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
+      {A.Estilos}
+      <div className="-mb-1 flex items-center justify-between">
+        <A.Boton />
+        {data.actualizadoEn && <span className="text-[10px] text-neutral-400">Datos actualizados {fmtActualizado(data.actualizadoEn)}</span>}
+      </div>
+      {A.Panel}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          { label: 'Total por pagar', value: fmtMoney(totales.porPagar, moneda), icon: Building2, color: 'text-neutral-700' },
-          { label: 'Vencido', value: fmtMoney(totales.vencido, moneda), icon: AlertTriangle, color: totales.vencido > 0 ? 'text-red-600' : 'text-neutral-400' },
-          { label: 'Vence en 7 días', value: fmtMoney(totales.vence7, moneda), icon: Clock, color: 'text-amber-600' },
-          { label: 'Vence en 30 días', value: fmtMoney(totales.vence30, moneda), icon: Clock, color: 'text-blue-600' },
+          { label: 'Total por pagar', value: fmtMoney(totales.porPagar, moneda), icon: Building2, color: 'text-neutral-700', key: 'cxp-total' },
+          { label: 'Vencido', value: fmtMoney(totales.vencido, moneda), icon: AlertTriangle, color: totales.vencido > 0 ? 'text-red-600' : 'text-neutral-400', key: 'cxp-vencido' },
+          { label: 'Vence en 7 días', value: fmtMoney(totales.vence7, moneda), icon: Clock, color: 'text-amber-600', key: 'cxp-vence7' },
+          { label: 'Vence en 30 días', value: fmtMoney(totales.vence30, moneda), icon: Clock, color: 'text-blue-600', key: 'cxp-vence30' },
         ].map((k, i) => (
-          <div key={i} className="rounded-xl border border-neutral-200 bg-white p-4">
+          <div key={i} data-explica={k.key} data-explica-titulo={k.label} data-explica-texto={`${k.label}: ${k.value}`} data-explica-datos={JSON.stringify(totales)}
+            className="rounded-xl border border-neutral-200 bg-white p-4">
             <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-neutral-500"><k.icon size={13} className={k.color} />{k.label}</div>
             <div className="mt-1 text-lg font-semibold text-neutral-900">{k.value}</div>
           </div>
@@ -111,7 +119,8 @@ export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }:
               </thead>
               <tbody>
                 {lista.map(i => (
-                  <tr key={`${i.origen}-${i.id}`} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50/60">
+                  <tr key={`${i.origen}-${i.id}`} data-explica="cxp-item" data-explica-titulo={`${i.proveedor} — ${i.concepto}`} data-explica-datos={JSON.stringify({ proveedor: i.proveedor, comprobante: i.comprobante, concepto: i.concepto, emision: fmtFecha(i.fechaEmision), vence: fmtFecha(i.fechaVencimiento), total: i.total, pagado: i.pagado, saldo: i.saldo, moneda: i.moneda, estado: i.estado, diasVencimiento: i.diasVencimiento, origen: i.origen, categoria: i.categoria })}
+                    className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50/60">
                     <td className="px-4 py-2.5">
                       <div className="font-medium text-neutral-900">{i.proveedor}</div>
                       <div className="text-[11px] text-neutral-400">{[i.comprobante, centroNombre(i.centroCostoId)].filter(Boolean).join(' · ')}</div>
@@ -146,12 +155,13 @@ export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }:
           </div>
         </div>
 
-        <div className="rounded-xl border border-neutral-200 bg-white p-4">
+        <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="cxp-ranking" data-explica-titulo="Proveedores con mayor saldo">
           <div className="mb-3 text-sm font-semibold text-neutral-900">Proveedores con mayor saldo</div>
           {ranking.length === 0 ? <div className="py-4 text-center text-xs text-neutral-400">Sin deudas pendientes.</div> : (
             <div className="space-y-2">
               {ranking.slice(0, 8).map((r: any) => (
-                <div key={r.proveedor} className="flex items-center justify-between gap-2 text-sm">
+                <div key={r.proveedor} data-explica="cxp-proveedor" data-explica-titulo={r.proveedor} data-explica-datos={JSON.stringify(r)}
+                  className="flex items-center justify-between gap-2 text-sm">
                   <span className="truncate text-neutral-700">{r.proveedor}</span>
                   <span className={`font-medium ${r.vencido > 0 ? 'text-red-600' : 'text-neutral-900'}`}>{fmtMoney(r.saldo, moneda)}</span>
                 </div>

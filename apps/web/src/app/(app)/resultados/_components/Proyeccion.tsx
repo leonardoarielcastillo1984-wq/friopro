@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Loader2, Scale, CalendarClock, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import { fmtMoney, fmtPct, fmtFecha, fmtActualizado, MESES } from './fmt';
+import { useAsistente } from './useAsistente';
 
 type BloqueMes = {
   ventas: { real?: number; compromisos: number; estimacion: number; proyectado: number };
@@ -29,6 +30,7 @@ type FlujoData = {
 const confColor = (c: number) => c >= 70 ? 'text-green-700 bg-green-50' : c >= 40 ? 'text-amber-700 bg-amber-50' : 'text-red-700 bg-red-50';
 
 export default function Proyeccion({ anio, moneda, centroCostoId }: { anio: number; moneda: string; centroCostoId: string }) {
+  const A = useAsistente({ anio, moneda, centroCostoId });
   const [cierre, setCierre] = useState<ProyCierre | null>(null);
   const [caja, setCaja] = useState<FlujoData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,7 +53,7 @@ export default function Proyeccion({ anio, moneda, centroCostoId }: { anio: numb
   const cortesP = caja?.proximosPagos.filter(c => new Date(c.fecha) <= new Date(Date.now() + horizonte * 86400000)) || [];
 
   const cardMes = (b: BloqueMes, titulo: string, sub: string) => (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4">
+    <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="proyeccion-mes" data-explica-titulo={titulo} data-explica-datos={JSON.stringify(b)}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-semibold text-neutral-900"><Scale size={15} className="mr-1 inline text-purple-600" />{titulo}{' '}
           <span className="font-normal text-neutral-400">{sub}</span></span>
@@ -86,7 +88,10 @@ export default function Proyeccion({ anio, moneda, centroCostoId }: { anio: numb
   );
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
+      {A.Estilos}
+      <div className="-mb-1"><A.Boton /></div>
+      {A.Panel}
       {/* 1 — Cierre del mes en curso (devengado) */}
       {cierre?.esMesActual && cardMes(cierre, 'Cierre del mes', `— ${MESES[cierre.mes - 1]} ${cierre.anio} · quedan ${cierre.diasRestantes} días${cierre.actualizadoEn ? ` · act. ${fmtActualizado(cierre.actualizadoEn)}` : ''}`)}
 
@@ -95,7 +100,7 @@ export default function Proyeccion({ anio, moneda, centroCostoId }: { anio: numb
 
       {/* 3 — Caja a futuro */}
       {caja && (
-        <div className="rounded-xl border border-neutral-200 bg-white p-4">
+        <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="proyeccion-caja" data-explica-titulo={`Proyección de caja a ${horizonte} días`} data-explica-datos={JSON.stringify(proy)}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm font-semibold text-neutral-900"><CalendarClock size={14} className="mr-1 inline" />Proyección de caja{caja.actualizadoEn && <span className="ml-2 text-[10px] font-normal text-neutral-400">· act. {fmtActualizado(caja.actualizadoEn)}</span>}</span>
             <div className="flex gap-1">
@@ -136,7 +141,8 @@ export default function Proyeccion({ anio, moneda, centroCostoId }: { anio: numb
             <table className="w-full text-sm">
               <tbody>
                 {cortes.slice(0, 12).map((c, i) => (
-                  <tr key={i} className="border-b border-neutral-100 last:border-0">
+                  <tr key={i} data-explica="caja-cobro" data-explica-titulo={c.concepto} data-explica-datos={JSON.stringify(c)}
+                    className="border-b border-neutral-100 last:border-0">
                     <td className="w-24 px-4 py-2 text-xs text-neutral-400">
                       {fmtFecha(c.fecha)}
                       {c.via === 'HISTORIAL' && <span className="block text-[9px] text-sky-600" title="Estimado por hábito de pago del cliente">historial</span>}
@@ -154,7 +160,8 @@ export default function Proyeccion({ anio, moneda, centroCostoId }: { anio: numb
             <table className="w-full text-sm">
               <tbody>
                 {cortesP.slice(0, 12).map((c, i) => (
-                  <tr key={i} className="border-b border-neutral-100 last:border-0">
+                  <tr key={i} data-explica="caja-pago" data-explica-titulo={c.concepto} data-explica-datos={JSON.stringify(c)}
+                    className="border-b border-neutral-100 last:border-0">
                     <td className="w-24 px-4 py-2 text-xs text-neutral-400">{fmtFecha(c.fecha)}</td>
                     <td className="max-w-60 truncate px-4 py-2 text-neutral-700" title={c.concepto}>{c.concepto}</td>
                     <td className="w-32 px-4 py-2 text-right font-medium text-amber-700">{fmtMoney(c.importe, moneda)}</td>

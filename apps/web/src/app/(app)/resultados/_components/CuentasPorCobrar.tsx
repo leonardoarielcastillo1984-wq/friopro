@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Loader2, Wallet, AlertTriangle, Clock, CalendarClock, Paperclip, Landmark } from 'lucide-react';
 import { fmtMoney, fmtFecha, fmtActualizado } from './fmt';
+import { useAsistente } from './useAsistente';
 import ConciliarCartola from './ConciliarCartola';
 
 type Cliente = {
@@ -22,6 +23,7 @@ const BUCKETS: { key: keyof Cliente['aging']; label: string; color: string }[] =
 ];
 
 export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: string; onIrFacturacion: () => void }) {
+  const A = useAsistente({ moneda });
   const [data, setData] = useState<{ clientes: Cliente[]; totales: { saldo: number; vencido: number; d90: number }; actualizadoEn?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,25 +41,30 @@ export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: 
   const { clientes, totales } = data;
 
   return (
-    <div className="space-y-4">
-      <div className="-mb-1 flex items-center justify-end gap-3">
+    <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
+      {A.Estilos}
+      <div className="-mb-1 flex items-center justify-between">
+        <A.Boton />
+        <div className="flex items-center gap-3">
         <button onClick={() => setCartolaOpen(true)}
           className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50">
           <Landmark size={13} className="text-blue-600" /> Conciliar cartola
         </button>
         {data.actualizadoEn && <span className="text-[10px] text-neutral-400">Datos actualizados {fmtActualizado(data.actualizadoEn)}</span>}
+        </div>
       </div>
+      {A.Panel}
       {cartolaOpen && <ConciliarCartola moneda={moneda} onClose={() => setCartolaOpen(false)} onDone={() => setReloadTick(t => t + 1)} />}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-neutral-200 bg-white p-4">
+        <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="cxc-total" data-explica-titulo="Nos deben en total" data-explica-texto={`Total adeudado: ${fmtMoney(totales.saldo, moneda)}`} data-explica-datos={JSON.stringify(totales)}>
           <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-neutral-500"><Wallet size={13} className="text-blue-600" />Nos deben en total</div>
           <div className="mt-1 text-xl font-semibold text-neutral-900">{fmtMoney(totales.saldo, moneda)}</div>
         </div>
-        <div className="rounded-xl border border-neutral-200 bg-white p-4">
+        <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="cxc-vencido" data-explica-titulo="Vencido" data-explica-texto={`Vencido: ${fmtMoney(totales.vencido, moneda)}`} data-explica-datos={JSON.stringify(totales)}>
           <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-neutral-500"><AlertTriangle size={13} className="text-amber-600" />Vencido</div>
           <div className="mt-1 text-xl font-semibold text-amber-700">{fmtMoney(totales.vencido, moneda)}</div>
         </div>
-        <div className="rounded-xl border border-neutral-200 bg-white p-4">
+        <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="cxc-90" data-explica-titulo="Más de 90 días" data-explica-texto={`Más de 90 días vencido: ${fmtMoney(totales.d90, moneda)}`} data-explica-datos={JSON.stringify(totales)}>
           <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-neutral-500"><AlertTriangle size={13} className="text-red-600" />Más de 90 días</div>
           <div className="mt-1 text-xl font-semibold text-red-600">{fmtMoney(totales.d90, moneda)}</div>
         </div>
@@ -72,7 +79,8 @@ export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: 
       {clientes.map(c => {
         const totalAging = BUCKETS.reduce((s, b) => s + c.aging[b.key], 0);
         return (
-          <div key={c.cliente + c.rut} className="rounded-xl border border-neutral-200 bg-white">
+          <div key={c.cliente + c.rut} data-explica="cxc-cliente" data-explica-titulo={c.cliente} data-explica-datos={JSON.stringify({ cliente: c.cliente, rut: c.rut, facturado: c.facturado, cobrado: c.cobrado, saldo: c.saldo, tardaEnPagarDias: c.diasPagoPromedio, pagaCadaDias: c.frecuenciaPagoDias, aging: c.aging, pendientes: c.pendientes.length })}
+            className="rounded-xl border border-neutral-200 bg-white">
             <div className="flex flex-wrap items-start gap-6 border-b border-neutral-100 p-4">
               <div className="min-w-48 flex-1">
                 <div className="text-base font-semibold text-neutral-900">{c.cliente}</div>
@@ -126,7 +134,8 @@ export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: 
                 </thead>
                 <tbody>
                   {c.pendientes.map((p: any) => (
-                    <tr key={p.id} className="border-t border-neutral-100">
+                    <tr key={p.id} data-explica="cxc-factura" data-explica-titulo={`Factura ${p.numero || 's/n'} — ${c.cliente}`} data-explica-datos={JSON.stringify({ cliente: c.cliente, numero: p.numero, emision: fmtFecha(p.fechaEmision), vence: fmtFecha(p.fechaVencimiento), total: p.total, saldo: p.saldo, diasAtraso: p.diasAtraso, moneda: p.moneda })}
+                      className="border-t border-neutral-100">
                       <td className="px-4 py-2 text-neutral-700">
                         {p.numero || 's/n'}
                         {p.fileUrl && <a href={p.fileUrl} target="_blank" rel="noreferrer" className="ml-1.5 inline-block text-blue-500" title="Ver factura"><Paperclip size={12} /></a>}
@@ -159,7 +168,8 @@ export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: 
                   </thead>
                   <tbody>
                     {c.cobradas.map((p: any) => (
-                      <tr key={p.id} className="border-t border-neutral-100 text-neutral-500">
+                      <tr key={p.id} data-explica="cxc-cobrada" data-explica-titulo={`Factura ${p.numero || 's/n'} cobrada — ${c.cliente}`} data-explica-datos={JSON.stringify({ cliente: c.cliente, numero: p.numero, emision: fmtFecha(p.fechaEmision), cobrada: fmtFecha(p.fechaCobro), total: p.total, moneda: p.moneda, origen: p.origen })}
+                        className="border-t border-neutral-100 text-neutral-500">
                         <td className="py-1.5">
                           {p.numero || 's/n'}
                           {p.fileUrl && <a href={p.fileUrl} target="_blank" rel="noreferrer" className="ml-1.5 inline-block text-blue-500" title="Ver factura"><Paperclip size={12} /></a>}

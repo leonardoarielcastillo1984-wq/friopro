@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Loader2, Target, TrendingUp, TrendingDown, AlertTriangle, Users, Building2, Layers } from 'lucide-react';
 import { fmtMoney, fmtPct, fmtActualizado, labelRubro } from './fmt';
+import { useAsistente } from './useAsistente';
 
 type Fila = { key: string; nombre: string; metodo: string; ventas: number; costos: number | null; resultado: number | null; margen: number | null };
 type PE = {
@@ -16,6 +17,7 @@ type PE = {
 };
 
 export default function Rentabilidad({ anio, moneda, centroCostoId }: { anio: number; moneda: string; centroCostoId: string }) {
+  const A = useAsistente({ anio, moneda, centroCostoId });
   const [vista, setVista] = useState<'centro' | 'cliente' | 'servicio'>('centro');
   const [rent, setRent] = useState<{ porCentroCosto: Fila[]; porCliente: Fila[]; porServicio: Fila[]; notaCostos: string } | null>(null);
   const [pe, setPe] = useState<PE | null>(null);
@@ -43,10 +45,13 @@ export default function Rentabilidad({ anio, moneda, centroCostoId }: { anio: nu
   }
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
+      {A.Estilos}
+      <div className="-mb-1"><A.Boton /></div>
+      {A.Panel}
       {/* Punto de equilibrio */}
       {pe && pe.peMensual !== null && (
-        <div className="rounded-xl border border-neutral-200 bg-white p-4">
+        <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="rent-pe" data-explica-titulo="Punto de equilibrio" data-explica-datos={JSON.stringify({ peMensual: pe.peMensual, ventasProm: pe.ventasMensualProm, ratioContribucion: pe.ratioContribucion, costosFijos: pe.costosFijos, costosVariables: pe.costosVariables, vsPuntoEquilibrio: pe.vsPuntoEquilibrio, sinClasificar: pe.sinClasificar })}>
           <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-neutral-900"><Target size={15} className="text-blue-600" />Punto de equilibrio <span className="font-normal text-neutral-400">— facturación mensual mínima para no perder</span>{pe.actualizadoEn && <span className="ml-auto text-[10px] font-normal text-neutral-400">act. {fmtActualizado(pe.actualizadoEn)}</span>}</div>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <div className="rounded-lg bg-neutral-50 p-3">
@@ -77,7 +82,8 @@ export default function Rentabilidad({ anio, moneda, centroCostoId }: { anio: nu
             <summary className="cursor-pointer text-[11px] text-neutral-400 hover:text-neutral-600">Ver clasificación por rubro</summary>
             <div className="mt-2 grid grid-cols-2 gap-1 text-[11px] sm:grid-cols-3 lg:grid-cols-4">
               {pe.porRubro.map(r => (
-                <div key={r.rubro} className="flex justify-between rounded bg-neutral-50 px-2 py-1">
+                <div key={r.rubro} data-explica="rent-rubro" data-explica-titulo={`Clasificación: ${labelRubro(r.rubro)}`} data-explica-datos={JSON.stringify(r)}
+                  className="flex justify-between rounded bg-neutral-50 px-2 py-1">
                   <span className="truncate">{labelRubro(r.rubro)}</span>
                   <span className={`ml-2 font-medium ${r.clase === 'FIJO' ? 'text-blue-600' : r.clase === 'VARIABLE' ? 'text-amber-600' : 'text-neutral-400'}`}>{r.clase || '—'}</span>
                 </div>
@@ -118,7 +124,8 @@ export default function Rentabilidad({ anio, moneda, centroCostoId }: { anio: nu
           </thead>
           <tbody>
             {lista.map(f => (
-              <tr key={f.key} className={`border-b border-neutral-100 last:border-0 ${(f.resultado ?? 0) < 0 ? 'bg-red-50/40' : ''}`}>
+              <tr key={f.key} data-explica="rent-fila" data-explica-titulo={`${vista === 'cliente' ? 'Cliente' : vista === 'servicio' ? 'Servicio' : 'Centro'}: ${f.nombre}`} data-explica-datos={JSON.stringify(f)}
+                className={`border-b border-neutral-100 last:border-0 ${(f.resultado ?? 0) < 0 ? 'bg-red-50/40' : ''}`}>
                 <td className="px-4 py-2.5">
                   <div className="font-medium text-neutral-900">{f.nombre}</div>
                   {f.metodo === 'PROPORCIONAL_VENTAS' && <div className="text-[10px] text-neutral-400">costos prorrateados por ventas</div>}
