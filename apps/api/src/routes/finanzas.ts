@@ -2098,9 +2098,20 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const desdePrev = new Date(Date.UTC(anio, mes - 2, 1));
     const desdeHist = new Date(Date.UTC(anio, mes - 7, 1));
 
+    // Comparación like-for-like: si el mes consultado es el que está en curso,
+    // el mes anterior se corta en el mismo día (1..N vs 1..N). Comparar un mes
+    // a medias contra uno completo infla falsas caídas del ~100%.
+    const hoyA = new Date();
+    const esActual = hoyA >= desde && hoyA < hasta;
+    const corteAct = esActual ? hoyA : hasta;
+    const diasTranscurridos = Math.max(1, Math.round((corteAct.getTime() - desde.getTime()) / 86400000));
+    const cortePrev = new Date(Math.min(desdePrev.getTime() + diasTranscurridos * 86400000, desde.getTime()));
+    const mesNombre = new Date(desde).toLocaleDateString('es-CL', { month: 'long', timeZone: 'UTC' });
+    const refPrev = esActual ? `los primeros ${diasTranscurridos} días del mes anterior` : 'el mes anterior';
+
     const [lineas, lineasPrev, lineasHist, cxp, cxc] = await Promise.all([
-      recolectarLineas(tenantId, desde, hasta, moneda, q.centroCostoId || null),
-      recolectarLineas(tenantId, desdePrev, desde, moneda, q.centroCostoId || null),
+      recolectarLineas(tenantId, desde, corteAct, moneda, q.centroCostoId || null),
+      recolectarLineas(tenantId, desdePrev, cortePrev, moneda, q.centroCostoId || null),
       recolectarLineas(tenantId, desdeHist, desdePrev, moneda, q.centroCostoId || null),
       obtenerCxPInterno(p, tenantId, moneda).catch(() => [] as any[]),
       p.finanzaFactura.findMany({ where: { tenantId, deletedAt: null, estado: { in: ['EMITIDA', 'PARCIALMENTE_COBRADA'] }, ...(moneda ? { moneda } : {}) }, include: { cobros: true } }).catch(() => []),
@@ -2125,14 +2136,20 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const varPct = (a: number, b: number) => (b !== 0 ? ((a - b) / Math.abs(b)) * 100 : null);
 
     // Variación de facturación / resultado / margen
-    const vVentas = varPct(vAct, vPrev);
-    if (vVentas !== null && Math.abs(vVentas) >= UMB_AT)
-      push(vVentas >= UMB_CR ? 'CRITICA' : Math.abs(vVentas) >= UMB_CR ? 'CRITICA' : 'ATENCION', vVentas > 0 ? 'VENTAS_UP' : 'VENTAS_DOWN',
-        `Ventas ${vVentas > 0 ? 'aumentaron' : 'cayeron'} ${Math.abs(vVentas).toFixed(1)} % respecto del mes anterior`, vAct - vPrev);
-    const vRes = varPct(rAct, rPrev);
-    if (vRes !== null && Math.abs(vRes) >= UMB_AT)
-      push(rAct < rPrev ? 'ATENCION' : 'INFO', 'RESULTADO',
-        `Resultado ${vRes! > 0 ? 'mejoró' : 'empeoró'} ${Math.abs(vRes!).toFixed(1)} % respecto del mes anterior`, rAct - rPrev);
+    // Mes sin datos cargados: una variación de −100% es falso positivo (faltan
+    // cargas, no ventas). Se reporta como INFO en vez de CRITICA.
+    if (lineas.length === 0 && lineasPrev.length > 0) {
+      push('INFO', 'SIN_DATOS', `${mesNombre} todavía no tiene movimientos cargados — las variaciones contra el mes anterior no son comparables`, vPrev - cPrev);
+    } else {
+      const vVentas = varPct(vAct, vPrev);
+      if (vVentas !== null && Math.abs(vVentas) >= UMB_AT)
+        push(vVentas >= UMB_CR ? 'CRITICA' : Math.abs(vVentas) >= UMB_CR ? 'CRITICA' : 'ATENCION', vVentas > 0 ? 'VENTAS_UP' : 'VENTAS_DOWN',
+          `Ventas ${vVentas > 0 ? 'aumentaron' : 'cayeron'} ${Math.abs(vVentas).toFixed(1)} % respecto de ${refPrev}`, vAct - vPrev);
+      const vRes = varPct(rAct, rPrev);
+      if (vRes !== null && Math.abs(vRes) >= UMB_AT)
+        push(rAct < rPrev ? 'ATENCION' : 'INFO', 'RESULTADO',
+          `Resultado ${vRes! > 0 ? 'mejoró' : 'empeoró'} ${Math.abs(vRes!).toFixed(1)} % respecto de ${refPrev}`, rAct - rPrev);
+    }
 
     // Variación por rubro vs mes anterior y vs promedio 6 meses
     const rubAct = porRubro(lineas), rubPrev = porRubro(lineasPrev), rubHist = porRubro(lineasHist);
