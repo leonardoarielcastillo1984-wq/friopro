@@ -63,8 +63,8 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
   }, [facturas, buscar, filtroEstado]);
   const tot = visibles.reduce((t, f) => {
     const s = f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
-    return { neto: t.neto + s * (f.neto || f.total), total: t.total + s * f.total, saldo: t.saldo + (s > 0 ? f.saldo : 0) };
-  }, { neto: 0, total: 0, saldo: 0 });
+    return { neto: t.neto + s * (f.neto || f.total), iva: t.iva + s * (f.iva || 0), total: t.total + s * f.total, saldo: t.saldo + (s > 0 ? f.saldo : 0) };
+  }, { neto: 0, iva: 0, total: 0, saldo: 0 });
 
   // Cálculo automático: neto + tasa → IVA y total; o total + tasa → neto
   const setNeto = (v: string) => setForm(f => {
@@ -232,7 +232,8 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
               <tr className="border-b border-neutral-200 bg-neutral-50 text-left text-[11px] uppercase tracking-wide text-neutral-500">
                 <th className="px-4 py-2.5 font-medium">Emisión</th><th className="px-4 py-2.5 font-medium">Cliente</th>
                 <th className="px-4 py-2.5 font-medium">Comprobante</th><th className="px-4 py-2.5 text-right font-medium">Neto</th>
-                <th className="px-4 py-2.5 text-right font-medium">Total</th><th className="px-4 py-2.5 text-right font-medium">Saldo</th>
+                <th className="px-4 py-2.5 text-right font-medium">IVA</th><th className="px-4 py-2.5 text-right font-medium">Total</th>
+                <th className="px-4 py-2.5 text-right font-medium">Saldo</th>
                 <th className="px-4 py-2.5 font-medium">Estado</th><th className="px-4 py-2.5 font-medium"></th>
               </tr>
             </thead>
@@ -252,6 +253,7 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
                         {f.origen === 'IMPORT_RCV' && <span className="ml-1.5 rounded bg-sky-50 px-1 text-[10px] text-sky-600">SII</span>}
                       </td>
                       <td className={`px-4 py-2.5 text-right ${nc ? 'text-red-600' : ''}`}>{nc ? '−' : ''}{fmtMoney(f.neto || f.total, f.moneda)}</td>
+                      <td className={`px-4 py-2.5 text-right text-neutral-500 ${nc ? 'text-red-600' : ''}`}>{nc ? '−' : ''}{fmtMoney(f.iva, f.moneda)}</td>
                       <td className="px-4 py-2.5 text-right font-medium">{fmtMoney(f.total, f.moneda)}</td>
                       <td className={`px-4 py-2.5 text-right ${f.saldo > 0 && !nc ? 'text-amber-700' : 'text-neutral-400'}`}>{nc ? '—' : fmtMoney(f.saldo, f.moneda)}</td>
                       <td className="px-4 py-2.5 whitespace-nowrap">
@@ -268,7 +270,7 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
                     </tr>
                     {open && (
                       <tr className="border-b border-neutral-100 bg-neutral-50/50">
-                        <td colSpan={8} className="px-6 py-3">
+                        <td colSpan={9} className="px-6 py-3">
                           <div className="flex flex-wrap items-start gap-6">
                             <div className="min-w-72 flex-1">
                               <div className="text-[11px] font-medium uppercase text-neutral-400">Cobros recibidos</div>
@@ -336,13 +338,14 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
                   </Fragment>
                 );
               })}
-              {visibles.length === 0 && <tr><td colSpan={8} className="px-4 py-10 text-center text-neutral-400">Sin facturas en {moneda}. Cargalas a mano o importalas desde el SII.</td></tr>}
+              {visibles.length === 0 && <tr><td colSpan={9} className="px-4 py-10 text-center text-neutral-400">Sin facturas en {moneda}. Cargalas a mano o importalas desde el SII.</td></tr>}
             </tbody>
             {visibles.length > 0 && (
               <tfoot>
                 <tr className="border-t border-neutral-200 bg-neutral-50 text-sm font-semibold">
                   <td colSpan={3} className="px-4 py-2.5 text-neutral-500">{visibles.length} comprobantes</td>
                   <td className="px-4 py-2.5 text-right">{fmtMoney(tot.neto, moneda)}</td>
+                  <td className="px-4 py-2.5 text-right text-neutral-500">{fmtMoney(tot.iva, moneda)}</td>
                   <td className="px-4 py-2.5 text-right">{fmtMoney(tot.total, moneda)}</td>
                   <td className="px-4 py-2.5 text-right text-amber-700">{fmtMoney(tot.saldo, moneda)}</td>
                   <td colSpan={2}></td>
