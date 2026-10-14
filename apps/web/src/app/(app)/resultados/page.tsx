@@ -13,10 +13,11 @@ import CuentasPorCobrar from './_components/CuentasPorCobrar';
 import CuentasPorPagar from './_components/CuentasPorPagar';
 import FlujoCaja from './_components/FlujoCaja';
 import Rentabilidad from './_components/Rentabilidad';
+import Proyeccion from './_components/Proyeccion';
 import ImportarSII from './_components/ImportarSII';
 import { MESES } from './_components/fmt';
 
-type Tab = 'resultados' | 'facturacion' | 'cobrar' | 'gastos' | 'pagar' | 'caja' | 'rentabilidad' | 'importar' | 'centros';
+type Tab = 'resultados' | 'facturacion' | 'cobrar' | 'gastos' | 'pagar' | 'caja' | 'proyeccion' | 'rentabilidad' | 'importar' | 'centros';
 
 const TABS: { key: Tab; label: string; icon: any; edit?: boolean }[] = [
   { key: 'resultados', label: 'Resultados', icon: TrendingUp },
@@ -25,7 +26,8 @@ const TABS: { key: Tab; label: string; icon: any; edit?: boolean }[] = [
   { key: 'gastos', label: 'Gastos', icon: Wallet },
   { key: 'pagar', label: 'Cuentas por pagar', icon: Landmark },
   { key: 'caja', label: 'Flujo de caja', icon: LineChart },
-  { key: 'rentabilidad', label: 'Rentabilidad y proyección', icon: Scale },
+  { key: 'proyeccion', label: 'Proyección', icon: Scale },
+  { key: 'rentabilidad', label: 'Rentabilidad', icon: TrendingUp },
   { key: 'importar', label: 'Importar SII', icon: Upload, edit: true },
   { key: 'centros', label: 'Centros de costo', icon: Building2 },
 ];
@@ -114,7 +116,7 @@ function ResultadosPageInner() {
           {!canEdit && <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-500"><Eye size={11} />Modo consulta</p>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {['resultados', 'rentabilidad'].includes(tab) && (
+          {['resultados', 'rentabilidad', 'proyeccion'].includes(tab) && (
             <select value={anio} onChange={e => setAnio(Number(e.target.value))} className={sel}>
               {anios.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
@@ -127,7 +129,7 @@ function ResultadosPageInner() {
               <Pin size={12} /> Abrir siempre en {moneda}
             </button>
           )}
-          {['resultados', 'rentabilidad'].includes(tab) && (
+          {['resultados', 'rentabilidad', 'proyeccion'].includes(tab) && (
             <select value={centroCostoId} onChange={e => setCentroCostoId(e.target.value)} className={sel}>
               <option value="">Toda la empresa</option>
               {centros.filter(c => c.activo).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
@@ -159,7 +161,8 @@ function ResultadosPageInner() {
           {tab === 'cobrar' && <CuentasPorCobrar moneda={moneda} onIrFacturacion={() => setTab('facturacion')} />}
           {tab === 'gastos' && <Gastos centros={centros} moneda={moneda} monedas={opcionesMoneda} canEdit={canEdit} onChanged={onChanged} />}
           {tab === 'pagar' && <CuentasPorPagar moneda={moneda} centros={centros} canEdit={canEdit} onChanged={onChanged} />}
-          {tab === 'caja' && <FlujoCaja moneda={moneda} />}
+          {tab === 'caja' && <FlujoCaja moneda={moneda} canEdit={canEdit} />}
+          {tab === 'proyeccion' && <Proyeccion anio={anio} moneda={moneda} centroCostoId={centroCostoId} />}
           {tab === 'rentabilidad' && <Rentabilidad anio={anio} moneda={moneda} centroCostoId={centroCostoId} />}
           {tab === 'importar' && canEdit && <ImportarSII centros={centros} moneda={moneda} monedas={opcionesMoneda} onChanged={onChanged} />}
           {tab === 'centros' && <CentrosCosto centros={centros} canEdit={canEdit} reload={loadCentros} />}

@@ -1671,6 +1671,25 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       }
     }
 
+    // Hábito de pago por cliente: lag promedio emisión → cobro final, medido
+    // sobre facturas ya canceladas. Alimenta la fecha estimada de los cobros
+    // esperados (fallback: vencimiento del documento).
+    const facturasHist = await p.finanzaFactura.findMany({
+      where: { tenantId, deletedAt: null, tipoComprobante: { not: 'NOTA_CREDITO' }, ...(moneda ? { moneda } : {}), cobros: { some: {} } },
+      select: { clienteNombre: true, fechaEmision: true, total: true, cobros: { select: { fecha: true, importe: true } } },
+    }).catch(() => [] as any[]);
+    const lagAcc = new Map<string, { s: number; n: number }>();
+    for (const f of facturasHist) {
+      const cobrado = f.cobros.reduce((s: number, c: any) => s + num(c.importe), 0);
+      if (cobrado < num(f.total) - 0.5) continue;
+      const last = f.cobros.reduce((m: any, c: any) => (!m || c.fecha > m ? c.fecha : m), null as Date | null);
+      if (!last) continue;
+      const d = Math.max(0, Math.round((new Date(last).getTime() - new Date(f.fechaEmision).getTime()) / 86400000));
+      const k = (f.clienteNombre || '').toLowerCase().trim();
+      const a = lagAcc.get(k) || { s: 0, n: 0 }; a.s += d; a.n += 1; lagAcc.set(k, a);
+    }
+    const lagCliente = new Map([...lagAcc.entries()].map(([k, a]) => [k, Math.round(a.s / a.n)] as [string, number]));
+
     const conf = (tenant?.resultadosConfig as any) || {};
     const saldoInicial = num(conf?.saldoInicial?.[moneda || ''] ?? conf?.saldoInicial?.['*'] ?? 0);
 
@@ -1694,7 +1713,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       ...facturasPend.filter((f: any) => f.tipoComprobante !== 'NOTA_CREDITO').map((f: any) => {
         const cobrado = f.cobros.reduce((s: number, c: any) => s + num(c.importe), 0);
         const saldo = Math.max(0, num(f.total) - cobrado);
-        return { fecha: new Date(f.fechaVencimiento || f.fechaEmision), importe: saldo, concepto: `Cobro ${[f.puntoVenta, f.numero].filter(Boolean).join('-')} — ${f.clienteNombre}`, tipo: 'FACTURA' };
+        const lag = lagCliente.get((f.clienteNombre || '').toLowerCase().trim());
+        let fecha = lag != null ? new Date(new Date(f.fechaEmision).getTime() + lag * 86400000) : new Date(f.fechaVencimiento || f.fechaEmision);
+        if (fecha < hoy) fecha = hoy; // la estimación ya pasó y sigue sin cobrarse
+        return { fecha, importe: saldo, concepto: `Cobro ${[f.puntoVenta, f.numero].filter(Boolean).join('-')} — ${f.clienteNombre}`, tipo: 'FACTURA', via: lag != null ? 'HISTORIAL' : 'VENCIMIENTO' };
       }).filter((x: any) => x.importe > 0.5 && x.fecha <= horizonte),
       ...ingresosPend.map((i: any) => ({ fecha: new Date(i.fechaCobroEstimada), importe: num(i.monto), concepto: `${i.concepto}${i.cliente ? ' — ' + i.cliente : ''}`, tipo: 'INGRESO_FLOTA' })),
     ];
@@ -1948,6 +1970,26 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const base = ventasProj + costosProj;
     const confianza = base > 0 ? Math.round(((ventasReal + costosReal + compromisosPago) / base) * 100) : 0;
 
+    // ── Mes siguiente: compromisos conocidos (líneas periódicas ya
+    // comprometidas + CxP con vencimiento en ese mes) + baseline del
+    // promedio mensual de los últimos 3 meses con datos.
+    const hastaSig = new Date(Date.UTC(anio, mes + 1, 1));
+    const lineasSig = await recolectarLineas(tenantId, hasta, hastaSig, moneda, q.centroCostoId || null).catch(() => [] as any[]);
+    const ventasCompSig = lineasSig.filter(esIng).reduce((s, l) => s + l.importe, 0);
+    const costosCompSig = lineasSig.filter(esCosto).reduce((s, l) => s + l.importe, 0)
+      + pendCxP
+        .filter((i: any) => i.saldo > 0.5 && new Date(i.fechaVencimiento || i.fechaEmision) >= hasta && new Date(i.fechaVencimiento || i.fechaEmision) < hastaSig)
+        .reduce((s: number, i: any) => s + i.saldo, 0);
+    const ventasBaseMes = ventasPrev / mesesPrevConDatos;
+    const costosBaseMes = costosPrev / mesesPrevConDatos;
+    const estVentasSig = Math.max(0, ventasBaseMes - ventasCompSig);
+    const estCostosSig = Math.max(0, costosBaseMes - costosCompSig);
+    const ventasProjSig = ventasCompSig + estVentasSig;
+    const costosProjSig = costosCompSig + estCostosSig;
+    const resultadoProjSig = ventasProjSig - costosProjSig;
+    const baseSig = ventasProjSig + costosProjSig;
+    const confianzaSig = baseSig > 0 ? Math.round(((ventasCompSig + costosCompSig) / baseSig) * 100) : 0;
+
     return reply.send({
       anio, mes, moneda, esMesActual: esActual, diasTranscurridos, diasRestantes,
       ventas: { real: ventasReal, compromisos: 0, estimacion: estVentas, proyectado: ventasProj },
@@ -1956,6 +1998,16 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       margenProyectado: ventasProj > 0 ? Math.round((resultadoProj / ventasProj) * 1000) / 10 : null,
       confianza, confianzaLabel: confianza >= 70 ? 'ALTA' : confianza >= 40 ? 'MEDIA' : 'BAJA',
       metodo: 'Real registrado + compromisos (CxP con vencimiento en el mes) + ritmo diario de los últimos 3 meses con datos.',
+      siguiente: {
+        anio: hasta.getUTCFullYear(), mes: hasta.getUTCMonth() + 1,
+        ventas: { compromisos: ventasCompSig, estimacion: estVentasSig, proyectado: ventasProjSig },
+        costos: { compromisos: costosCompSig, estimacion: estCostosSig, proyectado: costosProjSig },
+        resultadoProyectado: resultadoProjSig,
+        margenProyectado: ventasProjSig > 0 ? Math.round((resultadoProjSig / ventasProjSig) * 1000) / 10 : null,
+        confianza: confianzaSig,
+        confianzaLabel: confianzaSig >= 70 ? 'ALTA' : confianzaSig >= 40 ? 'MEDIA' : 'BAJA',
+        metodo: 'Compromisos del mes (sueldos, recurrentes, cuotas, CxP a vencer) + promedio mensual de los últimos 3 meses con datos.',
+      },
       actualizadoEn: await ultimaAct(tenantId, moneda),
     });
   });

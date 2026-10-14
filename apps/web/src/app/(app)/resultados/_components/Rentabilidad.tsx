@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Loader2, Target, TrendingUp, TrendingDown, AlertTriangle, Users, Building2, Layers, Scale } from 'lucide-react';
+import { Loader2, Target, TrendingUp, TrendingDown, AlertTriangle, Users, Building2, Layers } from 'lucide-react';
 import { fmtMoney, fmtPct, fmtActualizado, labelRubro } from './fmt';
 
 type Fila = { key: string; nombre: string; metodo: string; ventas: number; costos: number | null; resultado: number | null; margen: number | null };
@@ -14,22 +14,11 @@ type PE = {
   mesesConsiderados: number;
   actualizadoEn?: string;
 };
-type Proy = {
-  esMesActual: boolean; diasTranscurridos: number; diasRestantes: number;
-  ventas: { real: number; compromisos: number; estimacion: number; proyectado: number };
-  costos: { real: number; compromisos: number; estimacion: number; proyectado: number };
-  resultadoProyectado: number; margenProyectado: number | null;
-  confianza: number; confianzaLabel: string; metodo: string;
-  actualizadoEn?: string;
-};
-
-const MESES_CORTO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
 export default function Rentabilidad({ anio, moneda, centroCostoId }: { anio: number; moneda: string; centroCostoId: string }) {
   const [vista, setVista] = useState<'centro' | 'cliente' | 'servicio'>('centro');
   const [rent, setRent] = useState<{ porCentroCosto: Fila[]; porCliente: Fila[]; porServicio: Fila[]; notaCostos: string } | null>(null);
   const [pe, setPe] = useState<PE | null>(null);
-  const [proy, setProy] = useState<Proy | null>(null);
   const [loading, setLoading] = useState(true);
   const [ordenCliente, setOrdenCliente] = useState<'ventas' | 'resultado' | 'margen' | 'menorMargen' | 'perdida'>('ventas');
 
@@ -39,8 +28,7 @@ export default function Rentabilidad({ anio, moneda, centroCostoId }: { anio: nu
     Promise.all([
       apiFetch<any>(`/finanzas/rentabilidad?anio=${anio}&moneda=${moneda}${cc}`).catch(() => null),
       apiFetch<PE>(`/finanzas/punto-equilibrio?anio=${anio}&moneda=${moneda}${cc}`).catch(() => null),
-      apiFetch<Proy>(`/finanzas/proyeccion-cierre?anio=${anio}&moneda=${moneda}${cc}`).catch(() => null),
-    ]).then(([r, p, pr]) => { setRent(r); setPe(p); setProy(pr); }).finally(() => setLoading(false));
+    ]).then(([r, p]) => { setRent(r); setPe(p); }).finally(() => setLoading(false));
   }, [anio, moneda, centroCostoId]);
 
   if (loading) return <div className="flex items-center justify-center py-16 text-neutral-400"><Loader2 className="mr-2 animate-spin" size={18} />Calculando rentabilidad…</div>;
@@ -53,8 +41,6 @@ export default function Rentabilidad({ anio, moneda, centroCostoId }: { anio: nu
     if (ordenCliente === 'menorMargen') lista.sort((a, b) => (a.margen ?? 999) - (b.margen ?? 999));
     if (ordenCliente === 'perdida') lista = lista.filter(f => (f.resultado ?? 0) < 0);
   }
-
-  const confColor = proy ? (proy.confianza >= 70 ? 'text-green-700 bg-green-50' : proy.confianza >= 40 ? 'text-amber-700 bg-amber-50' : 'text-red-700 bg-red-50') : '';
 
   return (
     <div className="space-y-4">
@@ -98,38 +84,6 @@ export default function Rentabilidad({ anio, moneda, centroCostoId }: { anio: nu
               ))}
             </div>
           </details>
-        </div>
-      )}
-
-      {/* Proyección de cierre */}
-      {proy && proy.esMesActual && (
-        <div className="rounded-xl border border-neutral-200 bg-white p-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm font-semibold text-neutral-900"><Scale size={15} className="mr-1 inline text-purple-600" />Proyección de cierre — {MESES_CORTO[new Date().getUTCMonth()]} {new Date().getUTCFullYear()}{proy.actualizadoEn && <span className="ml-2 text-[10px] font-normal text-neutral-400">· act. {fmtActualizado(proy.actualizadoEn)}</span>}</span>
-            <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${confColor}`}>Confianza {proy.confianzaLabel} ({proy.confianza}% respaldado)</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div className="rounded-lg bg-neutral-50 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-neutral-500">Ventas proyectadas</div>
-              <div className="mt-1 font-semibold">{fmtMoney(proy.ventas.proyectado, moneda)}</div>
-              <div className="mt-1 text-[10px] text-neutral-400">real {fmtMoney(proy.ventas.real, moneda)} + est. {fmtMoney(proy.ventas.estimacion, moneda)}</div>
-            </div>
-            <div className="rounded-lg bg-neutral-50 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-neutral-500">Costos proyectados</div>
-              <div className="mt-1 font-semibold">{fmtMoney(proy.costos.proyectado, moneda)}</div>
-              <div className="mt-1 text-[10px] text-neutral-400">real {fmtMoney(proy.costos.real, moneda)} + comp. {fmtMoney(proy.costos.compromisos, moneda)} + est. {fmtMoney(proy.costos.estimacion, moneda)}</div>
-            </div>
-            <div className={`rounded-lg p-3 ${proy.resultadoProyectado >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-              <div className="text-[11px] uppercase tracking-wide text-neutral-500">Resultado proyectado</div>
-              <div className={`mt-1 font-semibold ${proy.resultadoProyectado >= 0 ? 'text-green-700' : 'text-red-700'}`}>{fmtMoney(proy.resultadoProyectado, moneda)}</div>
-            </div>
-            <div className="rounded-lg bg-neutral-50 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-neutral-500">Margen proyectado</div>
-              <div className="mt-1 font-semibold">{fmtPct(proy.margenProyectado)}</div>
-              <div className="mt-1 text-[10px] text-neutral-400">quedan {proy.diasRestantes} días</div>
-            </div>
-          </div>
-          <p className="mt-2 text-[11px] text-neutral-400">{proy.metodo}</p>
         </div>
       )}
 
