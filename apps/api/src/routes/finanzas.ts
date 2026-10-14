@@ -6,6 +6,8 @@ import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { randomBytes } from 'crypto';
 import { encryptApiKey, decryptApiKey } from '../services/llm/tenantCrypto.js';
+// @ts-ignore — pdf-parse no publica tipos propios
+import pdfParse from 'pdf-parse';
 
 // ════════════════════════════════════════════════════════════════════════════
 // RESULTADOS DEL NEGOCIO — /api/finanzas
@@ -2342,34 +2344,49 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   const f29InFlight = new Map<string, Promise<any>>();
   const F29_TTL_MS = 6 * 3600 * 1000;
 
-  app.get('/f29', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
-    const q = req.query as any;
-    if (!/^\d{4}-\d{2}$/.test(q.periodo || '')) return reply.code(400).send({ error: 'periodo YYYY-MM requerido' });
-    const cacheKey = `${tenantId}:${q.periodo}`;
+  // Credenciales SII del tenant (rut login + rut declarante + clave descifrada)
+  async function getSiiAuth(tenantId: string): Promise<{ rutLogin: string; rutEmpresa: string | null; clave: string } | null> {
+    const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } });
+    const sii = (t?.resultadosConfig as any)?.sii;
+    if (!sii?.rut || !sii?.claveEnc) return null;
+    let clave: string;
+    try { clave = decryptApiKey(sii.claveEnc); }
+    catch { throw new Error('No se pudo descifrar la clave SII guardada. Volvé a guardarla.'); }
+    return { rutLogin: normalizarRut(sii.rut), rutEmpresa: sii.rutEmpresa ? normalizarRut(sii.rutEmpresa) : null, clave };
+  }
+
+  // POST genérico a APIGateway con credenciales SII (auth.pass)
+  function f29ApiPost(path: string, rut: string, clave: string) {
+    const token = process.env.APIGATEWAY_API_TOKEN;
+    if (!token) throw new Error('Falta configurar APIGATEWAY_API_TOKEN en el servidor');
+    return fetch(`https://app.apigateway.cl/api/v2${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auth: { pass: { rut, clave } } }),
+    });
+  }
+
+  // Dedup genérico: si hay una promesa en vuelo para la key, se comparte
+  async function deduped<T>(map: Map<string, Promise<any>>, key: string, fn: () => Promise<T>): Promise<T> {
+    const p = map.get(key);
+    if (p) return p;
+    const c = fn();
+    map.set(key, c);
+    try { return await c; } finally { map.delete(key); }
+  }
+
+  // Listado de declaraciones del período con cache + dedup (compartido por
+  // /f29 y /f29/montos). La promesa se registra sincrónicamente, antes de
+  // cualquier await — si no, una request que llega durante el await de
+  // prisma pasaría el check de enVuelo y dispararía otro login al SII.
+  async function f29Listado(tenantId: string, periodo: string): Promise<any> {
+    const cacheKey = `${tenantId}:${periodo}`;
     const cached = f29Cache.get(cacheKey);
-    if (cached && Date.now() - cached.ts < F29_TTL_MS) return reply.send(cached.payload);
-
-    // Request duplicada mientras otra sigue en vuelo → compartir su resultado
-    const enVuelo = f29InFlight.get(cacheKey);
-    if (enVuelo) {
-      try { return reply.send(await enVuelo); }
-      catch { return reply.send(cached ? { ...cached.payload, stale: true } : { configurado: true, periodo: q.periodo, declarado: null, error: 'Consulta en curso falló', declaraciones: [] }); }
-    }
-
-    // La promesa envuelve TODO (tenant lookup + decrypt + fetch SII) y se
-    // registra sincrónicamente — si no, una request que llegue durante el
-    // await de prisma pasaría el check de enVuelo y dispararía otro login.
-    const consulta = (async () => {
-      const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } });
-      const sii = (t?.resultadosConfig as any)?.sii;
-      if (!sii?.rut || !sii?.claveEnc) return { configurado: false, declarado: null, declaraciones: [] };
-      let clave: string;
-      try { clave = decryptApiKey(sii.claveEnc); }
-      catch { throw new Error('No se pudo descifrar la clave SII guardada. Volvé a guardarla.'); }
-
-      const declaraciones = await fetchF29Listado(normalizarRut(sii.rut), clave, sii.rutEmpresa ? normalizarRut(sii.rutEmpresa) : null, q.periodo);
+    if (cached && Date.now() - cached.ts < F29_TTL_MS) return cached.payload;
+    return deduped(f29InFlight, cacheKey, async () => {
+      const auth = await getSiiAuth(tenantId);
+      if (!auth) return { configurado: false, declarado: null, declaraciones: [] };
+      const declaraciones = await fetchF29Listado(auth.rutLogin, auth.clave, auth.rutEmpresa, periodo);
       // La última de la lista es la vigente (las anteriores son rectificadas/historial)
       const norm = declaraciones.map((d: any) => ({
         folio: d.folio ?? null,
@@ -2378,19 +2395,204 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         fecha: d.fecha ?? d.fecha_hora ?? null,
         estado: d.estado ?? null,
       }));
-      const payload = { configurado: true, periodo: q.periodo, declarado: norm.length > 0, declaraciones: norm, vigente: norm[norm.length - 1] || null };
+      const payload = { configurado: true, periodo, declarado: norm.length > 0, declaraciones: norm, vigente: norm[norm.length - 1] || null };
       f29Cache.set(cacheKey, { payload, ts: Date.now() });
       return payload;
-    })();
-    f29InFlight.set(cacheKey, consulta);
+    });
+  }
+
+  app.get('/f29', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    if (!/^\d{4}-\d{2}$/.test(q.periodo || '')) return reply.code(400).send({ error: 'periodo YYYY-MM requerido' });
+    const cacheKey = `${tenantId}:${q.periodo}`;
+    const cached = f29Cache.get(cacheKey);
     try {
-      return reply.send(await consulta);
+      return reply.send(await f29Listado(tenantId, q.periodo));
     } catch (e: any) {
       // Si el SII tira error transitorio pero teníamos dato cacheado, servirlo stale
       if (cached) return reply.send({ ...cached.payload, stale: true });
       return reply.send({ configurado: true, periodo: q.periodo, declarado: null, error: e?.message?.slice(0, 200) || 'error', declaraciones: [] });
-    } finally {
-      f29InFlight.delete(cacheKey);
+    }
+  });
+
+  // ── Estados de TODOS los períodos (una sola consulta al SII) ──────────────
+  const f29EstadosCache = new Map<string, { payload: any; ts: number }>();
+  const f29EstadosInFlight = new Map<string, Promise<any>>();
+  app.get('/f29/estados', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const cached = f29EstadosCache.get(tenantId);
+    if (cached && Date.now() - cached.ts < F29_TTL_MS) return reply.send(cached.payload);
+    try {
+      const payload = await deduped(f29EstadosInFlight, tenantId, async () => {
+        const auth = await getSiiAuth(tenantId);
+        if (!auth) return { configurado: false, periodos: [] };
+        const resp = await f29ApiPost('/sii/f29/obtener_estados', auth.rutEmpresa || auth.rutLogin, auth.clave);
+        const raw = await resp.text();
+        let json: any = null; try { json = JSON.parse(raw); } catch { /* no-json */ }
+        if (!resp.ok) throw new Error(`SII/F29 estados: ${json?.detail || json?.message || `HTTP ${resp.status}`}`);
+        const periodos = (Array.isArray(json?.data) ? json.data : []).map((p: any) => ({
+          periodo: p.periodo ?? null, declarado: !!p.declarado, estado: p.estado ?? null,
+        }));
+        const out = { configurado: true, periodos };
+        f29EstadosCache.set(tenantId, { payload: out, ts: Date.now() });
+        return out;
+      });
+      return reply.send(payload);
+    } catch (e: any) {
+      if (cached) return reply.send({ ...cached.payload, stale: true });
+      return reply.send({ configurado: true, periodos: [], error: e?.message?.slice(0, 200) || 'error' });
+    }
+  });
+
+  // ── Detalle de una declaración por folio (historial de eventos) ───────────
+  const f29DetalleCache = new Map<string, { payload: any; ts: number }>();
+  const f29DetalleInFlight = new Map<string, Promise<any>>();
+  app.get('/f29/detalle', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const folio = String((req.query as any).folio || '').replace(/\D/g, '');
+    if (!folio) return reply.code(400).send({ error: 'folio requerido' });
+    const cacheKey = `${tenantId}:${folio}`;
+    const cached = f29DetalleCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < F29_TTL_MS) return reply.send(cached.payload);
+    try {
+      const payload = await deduped(f29DetalleInFlight, cacheKey, async () => {
+        const auth = await getSiiAuth(tenantId);
+        if (!auth) return { configurado: false };
+        const resp = await f29ApiPost(`/sii/f29/detalles_declaracion/${folio}`, auth.rutEmpresa || auth.rutLogin, auth.clave);
+        const raw = await resp.text();
+        let json: any = null; try { json = JSON.parse(raw); } catch { /* no-json */ }
+        if (!resp.ok) throw new Error(`SII/F29 detalle: ${json?.detail || json?.message || `HTTP ${resp.status}`}`);
+        const d = json?.data || {};
+        const out = {
+          configurado: true,
+          folio: d.folio ?? folio,
+          periodo: d.periodo ?? null,
+          fechaHora: d.fecha_hora ?? d.fechaHora ?? null,
+          estado: d.estado ?? null,
+          historial: (Array.isArray(d.historial) ? d.historial : []).map((h: any) => ({ fecha: h.fecha ?? null, descripcion: h.descripcion ?? null })),
+        };
+        f29DetalleCache.set(cacheKey, { payload: out, ts: Date.now() });
+        return out;
+      });
+      return reply.send(payload);
+    } catch (e: any) {
+      if (cached) return reply.send({ ...cached.payload, stale: true });
+      return reply.send({ configurado: true, error: e?.message?.slice(0, 200) || 'error' });
+    }
+  });
+
+  // ── PDF de la declaración (compacto o certificado solemne) ────────────────
+  const f29PdfCache = new Map<string, { buf: Buffer; ts: number }>();
+  const f29PdfInFlight = new Map<string, Promise<any>>();
+  async function f29PdfBytes(tenantId: string, folio: string, tipo: 'compacto' | 'solemne'): Promise<Buffer> {
+    const cacheKey = `${tenantId}:${tipo}:${folio}`;
+    const cached = f29PdfCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < F29_TTL_MS) return cached.buf;
+    return deduped(f29PdfInFlight, cacheKey, async () => {
+      const auth = await getSiiAuth(tenantId);
+      if (!auth) throw new Error('Sin credenciales SII configuradas');
+      const recurso = tipo === 'solemne' ? 'certificado_solemne' : 'formulario_compacto';
+      const resp = await f29ApiPost(`/sii/f29/${recurso}/pdf/${folio}`, auth.rutEmpresa || auth.rutLogin, auth.clave);
+      if (!resp.ok) {
+        const raw = await resp.text();
+        let json: any = null; try { json = JSON.parse(raw); } catch { /* pdf/html */ }
+        throw new Error(`SII/F29 pdf: ${json?.detail || json?.message || `HTTP ${resp.status}`}`);
+      }
+      const buf = Buffer.from(await resp.arrayBuffer());
+      if (!buf.subarray(0, 5).equals(Buffer.from('%PDF-'))) throw new Error('La respuesta del SII no fue un PDF válido');
+      f29PdfCache.set(cacheKey, { buf, ts: Date.now() });
+      return buf;
+    });
+  }
+
+  app.get('/f29/pdf', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const folio = String(q.folio || '').replace(/\D/g, '');
+    if (!folio) return reply.code(400).send({ error: 'folio requerido' });
+    const tipo = q.tipo === 'solemne' ? 'solemne' : 'compacto';
+    try {
+      const buf = await f29PdfBytes(tenantId, folio, tipo);
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `attachment; filename="F29_${tipo}_${folio}.pdf"`);
+      return reply.send(buf);
+    } catch (e: any) {
+      return reply.code(502).send({ error: e?.message?.slice(0, 200) || 'error' });
+    }
+  });
+
+  // ── Montos declarados: PDF compacto → texto → códigos del F29 ─────────────
+  // El F29 compacto lista cada línea como "código  descripción  valor" (valor
+  // con puntos de miles). Se mapean los códigos conocidos y se devuelve el
+  // resto crudo para inspección.
+  const F29_CODES: Record<string, string> = {
+    '502': 'Ventas y/o servicios netos', '538': 'IVA débito fiscal',
+    '511': 'IVA crédito fiscal', '077': 'Remanente crédito mes anterior',
+    '062': 'PPM neto determinado', '089': 'Total a pagar',
+    '151': 'Retención honorarios', '563': 'Base imponible retenida',
+  };
+  function parseF29PdfText(text: string): Record<string, { descripcion: string; valor: number }> {
+    const codigos: Record<string, { descripcion: string; valor: number }> = {};
+    for (const raw of (text || '').split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line) continue;
+      // "538 Débito fiscal ......... 14.569.148" o "[538] ... $ 14.569.148"
+      const m = line.match(/^\[?\s*(\d{2,4})\s*\]?\s+(.+?)\s+\$?\s*(-?\d{1,3}(?:\.\d{3})+|-?\d+)\s*$/);
+      if (m) {
+        const valor = parseInt(m[3].replace(/\./g, ''), 10);
+        if (Number.isFinite(valor) && !codigos[m[1]]) {
+          const desc = m[2].replace(/[.\s]{3,}/g, ' ').trim();
+          codigos[m[1]] = { descripcion: desc || F29_CODES[m[1]] || '', valor };
+        }
+      }
+    }
+    return codigos;
+  }
+
+  const f29MontosCache = new Map<string, { payload: any; ts: number }>();
+  const f29MontosInFlight = new Map<string, Promise<any>>();
+  app.get('/f29/montos', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    if (!/^\d{4}-\d{2}$/.test(q.periodo || '')) return reply.code(400).send({ error: 'periodo YYYY-MM requerido' });
+    const cacheKey = `${tenantId}:${q.periodo}`;
+    const cached = f29MontosCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < F29_TTL_MS) return reply.send(cached.payload);
+    try {
+      const payload = await deduped(f29MontosInFlight, cacheKey, async () => {
+        const lst = await f29Listado(tenantId, q.periodo);
+        if (!lst.configurado) return { configurado: false };
+        if (!lst.vigente?.folio) return { configurado: true, periodo: q.periodo, montos: null, motivo: 'sin declaración vigente' };
+        const buf = await f29PdfBytes(tenantId, lst.vigente.folio, 'compacto');
+        const parsed = await pdfParse(buf);
+        const codigos = parseF29PdfText(parsed?.text || '');
+        const n = Object.keys(codigos).length;
+        if (!n) console.error(`[f29-montos] parse vacío folio ${lst.vigente.folio}, texto:`, (parsed?.text || '').slice(0, 1200));
+        const cod = (c: string) => codigos[c]?.valor ?? null;
+        const out = {
+          configurado: true,
+          periodo: q.periodo,
+          folio: lst.vigente.folio,
+          principales: {
+            baseVentas: cod('502'), debito: cod('538'), credito: cod('511'),
+            remanente: cod('077'), ppm: cod('062'), retencion: cod('151'), totalPagar: cod('089'),
+          },
+          codigos,
+          nCodigos: n,
+        };
+        f29MontosCache.set(cacheKey, { payload: out, ts: Date.now() });
+        return out;
+      });
+      return reply.send(payload);
+    } catch (e: any) {
+      if (cached) return reply.send({ ...cached.payload, stale: true });
+      return reply.send({ configurado: true, periodo: q.periodo, error: e?.message?.slice(0, 200) || 'error' });
     }
   });
   app.get('/informe-ejecutivo', async (req: FastifyRequest, reply: FastifyReply) => {

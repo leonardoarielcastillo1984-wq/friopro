@@ -82,6 +82,12 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
   const [iva, setIva] = useState<{ recuperado: number; noRecuperado: number; estimado: number; cargasSinDesagregar: number; tasaEstimada: number; debito: number; aPagar: number; remanente: number } | null>(null);
   const [f29, setF29] = useState<{ configurado: boolean; declarado: boolean | null; vigente: { folio: string | null; fecha: string | null; estado: string | null } | null; declaraciones: any[]; periodo?: string; error?: string } | null>(null);
+  const [f29Estados, setF29Estados] = useState<{ periodo: number; declarado: boolean; estado: string | null }[] | null>(null);
+  const [f29Open, setF29Open] = useState(false);
+  const [f29Det, setF29Det] = useState<any>(null);
+  const [f29Montos, setF29Montos] = useState<any>(null);
+  const [f29DetLoading, setF29DetLoading] = useState(false);
+  const [f29PdfBusy, setF29PdfBusy] = useState<string | null>(null);
   const [ivaTasaEdit, setIvaTasaEdit] = useState<string | null>(null);
   const [nuevoComentario, setNuevoComentario] = useState('');
   const [enviandoComentario, setEnviandoComentario] = useState(false);
@@ -126,6 +132,48 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
       })
       .catch(() => setF29(null));
   }, [mesKey]);
+
+  // Estado F29 de TODOS los períodos — una sola consulta al SII (cacheada 6h server)
+  useEffect(() => {
+    apiFetch<any>('/finanzas/f29/estados').then(d => setF29Estados(d?.periodos || [])).catch(() => setF29Estados([]));
+  }, []);
+
+  // Detalle + montos declarados al expandir la línea F29
+  useEffect(() => {
+    if (!f29Open || !f29?.vigente?.folio) return;
+    setF29DetLoading(true); setF29Det(null); setF29Montos(null);
+    apiFetch<any>(`/finanzas/f29/detalle?folio=${f29.vigente.folio}`).then(setF29Det).catch(() => setF29Det(null));
+    apiFetch<any>(`/finanzas/f29/montos?periodo=${mesKey}`).then(setF29Montos).catch(() => setF29Montos(null))
+      .finally(() => setF29DetLoading(false));
+  }, [f29Open, f29?.vigente?.folio, mesKey]);
+
+  // Descarga el PDF de la declaración (compacto o certificado solemne)
+  const descargarF29Pdf = async (tipo: 'compacto' | 'solemne') => {
+    const folio = f29?.vigente?.folio;
+    if (!folio || f29PdfBusy) return;
+    setF29PdfBusy(tipo);
+    try {
+      const res = await fetch(`/api/finanzas/f29/pdf?folio=${folio}&tipo=${tipo}`, {
+        headers: { authorization: `Bearer ${localStorage.getItem('accessToken') || ''}`, 'x-tenant-id': localStorage.getItem('tenantId') || '' },
+      });
+      if (!res.ok) {
+        const j: any = await res.json().catch(() => null);
+        alert(j?.error || 'No se pudo descargar el PDF del F29');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `F29_${tipo}_${folio}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+    } finally { setF29PdfBusy(null); }
+  };
+
+  // Vencimiento F29: día 20 del mes siguiente al período
+  const f29Vencido = (yyyymm: number) => Date.now() > new Date(Date.UTC(Math.floor(yyyymm / 100), yyyymm % 100, 20)).getTime();
+  const f29EstadoDe = (yyyymm: number) => f29Estados?.find(p => Number(p.periodo) === yyyymm) || null;
+  const f29YmActual = hoy.getUTCFullYear() * 100 + hoy.getUTCMonth() + 1;
+  const f29Atrasados = (f29Estados || []).filter(p => !p.declarado && Number(p.periodo) < f29YmActual && f29Vencido(Number(p.periodo)));
 
   const guardarTasaIva = async () => {
     const v = Number(ivaTasaEdit);
@@ -343,17 +391,119 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
           </div>
           {/* F29 real (SII): lo que el contador efectivamente declaró */}
           {f29?.configurado && (
-            <div className={`mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-3 py-2 text-xs ${f29.declarado ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-              {f29.declarado && f29.vigente ? (
-                <>
-                  <span className="font-semibold">F29 real:</span>
-                  declarado el {f29.vigente.fecha || '—'}{f29.vigente.folio ? ` · folio ${f29.vigente.folio}` : ''}{f29.vigente.estado ? ` · ${f29.vigente.estado}` : ''}
-                  {f29.declaraciones.length > 1 && <span className="text-blue-600">({f29.declaraciones.length} declaraciones — incluye rectificatorias)</span>}
-                </>
-              ) : f29.error ? (
-                <span className="text-neutral-500">F29 real: no se pudo consultar ({f29.error})</span>
-              ) : (
-                <span><span className="font-semibold">F29 real:</span> sin declaración para este período — vence el día 20 del mes siguiente</span>
+            <div className={`mb-3 rounded-lg border text-xs ${f29.declarado ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2">
+                {f29.declarado && f29.vigente ? (
+                  <>
+                    <span className="font-semibold">F29 real:</span>
+                    declarado el {f29.vigente.fecha || '—'}{f29.vigente.folio ? ` · folio ${f29.vigente.folio}` : ''}{f29.vigente.estado ? ` · ${f29.vigente.estado}` : ''}
+                    {f29.declaraciones.length > 1 && <span className="text-blue-600">({f29.declaraciones.length} declaraciones — incluye rectificatorias)</span>}
+                    <button type="button" onClick={() => setF29Open(o => !o)} className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 font-medium hover:bg-blue-100/60">
+                      <ChevronRight size={12} className={`transition-transform ${f29Open ? 'rotate-90' : ''}`} />
+                      {f29Open ? 'ocultar detalle' : 'ver detalle'}
+                    </button>
+                  </>
+                ) : f29.error ? (
+                  <span className="text-neutral-500">F29 real: no se pudo consultar ({f29.error})</span>
+                ) : (
+                  <span><span className="font-semibold">F29 real:</span> sin declaración para este período — vence el día 20 del mes siguiente</span>
+                )}
+              </div>
+              {f29Open && f29.declarado && (
+                <div className="border-t border-blue-200 px-3 py-2.5 text-neutral-700">
+                  {f29DetLoading && <p className="flex items-center gap-1.5 text-neutral-500"><Loader2 size={12} className="animate-spin" />Consultando SII (detalle + formulario)… puede tardar ~15 s</p>}
+                  {(f29Det?.error || f29Montos?.error) && (
+                    <p className="mb-1.5 text-amber-700">No se pudo obtener parte del detalle: {f29Det?.error || f29Montos?.error}</p>
+                  )}
+                  {f29Montos?.principales && (
+                    <div className="mb-2.5 overflow-x-auto">
+                      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Declarado en el SII vs estimado del sistema</div>
+                      <table className="w-full min-w-[420px] text-left">
+                        <thead>
+                          <tr className="text-[10px] uppercase tracking-wide text-neutral-400">
+                            <th className="pb-1 pr-3 font-medium">Concepto</th>
+                            <th className="pb-1 pr-3 font-medium text-right">Declarado</th>
+                            <th className="pb-1 pr-3 font-medium text-right">Estimado</th>
+                            <th className="pb-1 font-medium text-right">Diferencia</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {([
+                            { label: 'IVA débito (ventas)', dec: f29Montos.principales.debito, est: iva.debito },
+                            { label: 'IVA crédito (compras)', dec: f29Montos.principales.credito, est: iva.recuperado },
+                            { label: 'Remanente a favor', dec: f29Montos.principales.remanente, est: iva.remanente },
+                            { label: 'PPM', dec: f29Montos.principales.ppm, est: null },
+                            { label: 'Retenciones', dec: f29Montos.principales.retencion, est: null },
+                            { label: 'Total a pagar', dec: f29Montos.principales.totalPagar, est: iva.aPagar },
+                          ] as { label: string; dec: number | null; est: number | null }[])
+                            .filter(r => r.dec !== null || r.est !== null)
+                            .map(r => {
+                              const dif = r.dec !== null && r.est !== null ? r.dec - r.est : null;
+                              return (
+                                <tr key={r.label} className="border-t border-blue-100">
+                                  <td className="py-1 pr-3">{r.label}</td>
+                                  <td className="py-1 pr-3 text-right font-medium">{r.dec !== null ? fmtMoney(r.dec, moneda) : '—'}</td>
+                                  <td className="py-1 pr-3 text-right text-neutral-500">{r.est !== null ? fmtMoney(r.est, moneda) : '—'}</td>
+                                  <td className={`py-1 text-right font-medium ${dif === null || Math.abs(dif) < 1 ? 'text-neutral-400' : dif > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                    {dif === null ? '—' : `${dif > 0 ? '+' : ''}${fmtMoney(dif, moneda)}`}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                      {f29Montos.nCodigos === 0 && <p className="mt-1 text-[11px] text-amber-700">El PDF se descargó pero no se pudieron extraer los montos — revisá el formulario con el botón de abajo.</p>}
+                    </div>
+                  )}
+                  {f29Det?.historial?.length > 0 && (
+                    <div className="mb-2.5">
+                      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Historial de la declaración</div>
+                      {f29Det.historial.map((h: any, i: number) => (
+                        <p key={i} className="text-[11px] text-neutral-600">{h.fecha || '—'} — {h.descripcion || ''}</p>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button type="button" onClick={() => descargarF29Pdf('compacto')} disabled={!!f29PdfBusy}
+                      className="flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-2.5 py-1.5 font-medium text-blue-700 hover:bg-blue-100/60 disabled:opacity-50">
+                      {f29PdfBusy === 'compacto' ? <Loader2 size={12} className="animate-spin" /> : <Receipt size={12} />}
+                      PDF formulario compacto
+                    </button>
+                    <button type="button" onClick={() => descargarF29Pdf('solemne')} disabled={!!f29PdfBusy}
+                      className="flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-2.5 py-1.5 font-medium text-blue-700 hover:bg-blue-100/60 disabled:opacity-50">
+                      {f29PdfBusy === 'solemne' ? <Loader2 size={12} className="animate-spin" /> : <Receipt size={12} />}
+                      PDF certificado solemne
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {/* Tira de estados F29 del año + alerta de períodos vencidos sin declarar */}
+          {f29Estados && f29Estados.length > 0 && (
+            <div className="mb-3">
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">F29 {anio}</span>
+                {MESES.map((mLabel, i) => {
+                  const ym = anio * 100 + i + 1;
+                  const st = f29EstadoDe(ym);
+                  const pendiente = st && !st.declarado;
+                  const vencido = pendiente && f29Vencido(ym);
+                  const conObs = !!st?.declarado && (st.estado || '').toLowerCase().includes('observ');
+                  const cls = st?.declarado
+                    ? conObs ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                    : vencido ? 'bg-red-100 text-red-700 font-semibold' : pendiente ? 'bg-amber-50 text-amber-700' : 'bg-neutral-100 text-neutral-400';
+                  return (
+                    <span key={ym} title={st ? (st.declarado ? st.estado || 'Declarado' : `Sin declarar${vencido ? ' — vencido' : ' — aún en plazo'}`) : 'Sin datos del SII'}
+                      className={`rounded px-1.5 py-0.5 text-[10px] ${cls}`}>{mLabel.slice(0, 3)}</span>
+                  );
+                })}
+              </div>
+              {f29Atrasados.length > 0 && (
+                <p className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-700">
+                  <AlertTriangle size={12} />
+                  {f29Atrasados.length === 1 ? 'Un período F29 vencido sin declarar' : `${f29Atrasados.length} períodos F29 vencidos sin declarar`}: {f29Atrasados.map(p => `${MESES[Number(p.periodo) % 100 - 1]} ${Math.floor(Number(p.periodo) / 100)}`).join(', ')}
+                </p>
               )}
             </div>
           )}
