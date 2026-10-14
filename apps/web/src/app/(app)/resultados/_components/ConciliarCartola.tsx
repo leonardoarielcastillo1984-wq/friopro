@@ -8,7 +8,7 @@ import { fmtMoney, fmtFecha } from './fmt';
 type Fila = { fecha: string; descripcion: string; monto: number; referencia: string | null };
 type FilaResp = Fila & {
   idx: number; estado: 'match' | 'sin_match' | 'ya_aplicado'; como?: string; confianza?: 'alta' | 'media' | 'baja';
-  excedente?: number; motivo?: string; facturas: { id: string; numero: string | null; cliente: string; aplicar: number; saldoPrevio: number }[];
+  excedente?: number; motivo?: string; firma?: string; facturas: { id: string; numero: string | null; cliente: string; aplicar: number; saldoPrevio: number }[];
 };
 
 // ── Parseo de cartola (CSV/TXT/Excel) ───────────────────────────────────────
@@ -145,6 +145,17 @@ export default function ConciliarCartola({ moneda, onClose, onDone }: { moneda: 
     finally { setBusy(null); }
   };
 
+  const deshacer = async (firma: string) => {
+    if (!confirm('¿Deshacer esta conciliación? Se eliminan los cobros registrados por ese abono y las facturas vuelven a pendiente.')) return;
+    setBusy('commit'); setError(null);
+    try {
+      await apiFetch('/finanzas/cartola-deshacer', { method: 'POST', json: { referencia: firma } });
+      const r = await apiFetch<any>('/finanzas/cartola-conciliar', { method: 'POST', json: { commit: false, moneda, filas } });
+      setPreview(r); onDone();
+    } catch (e: any) { setError(e?.message || 'Error al deshacer'); }
+    finally { setBusy(null); }
+  };
+
   const chip = (f: FilaResp) => {
     if (f.estado === 'ya_aplicado') return <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium text-neutral-500">ya aplicado</span>;
     if (f.estado === 'sin_match') return <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">sin match</span>;
@@ -168,7 +179,7 @@ export default function ConciliarCartola({ moneda, onClose, onDone }: { moneda: 
           {!resultado && (
             <>
               <p className="mb-3 text-xs text-neutral-500">
-                Subí la cartola del banco (Excel o CSV). Se toman solo los <b>abonos</b> y se cruzan con las facturas pendientes por RUT, nombre del cliente o monto exacto. Re-subir el mismo archivo no duplica cobros.
+                Subí la cartola del banco (Excel o CSV). Se toman solo los <b>abonos</b> y se cruzan con las facturas pendientes por RUT o nombre del cliente — solo se imputa cuando una factura (o una combinación) suma <b>exactamente</b> el abono, y nunca a facturas emitidas después del pago. Re-subir el mismo archivo no duplica cobros, y lo ya aplicado se puede <b>deshacer</b>.
               </p>
               <button onClick={() => fileRef.current?.click()} disabled={!!busy}
                 className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-neutral-300 py-7 text-neutral-500 hover:border-neutral-400 hover:bg-neutral-50 disabled:opacity-50">
@@ -212,6 +223,10 @@ export default function ConciliarCartola({ moneda, onClose, onDone }: { moneda: 
                           ))}
                           {f.excedente ? <div className="text-amber-600">excedente {fmtMoney(f.excedente, moneda)}</div> : null}
                           {f.estado === 'sin_match' && f.motivo ? <div className="max-w-56 text-neutral-400" title={f.motivo}>{f.motivo}</div> : null}
+                          {f.estado === 'ya_aplicado' && f.firma ? (
+                            <button onClick={() => deshacer(f.firma!)} disabled={!!busy} title="Elimina los cobros registrados por este abono"
+                              className="rounded border border-neutral-300 px-1.5 py-0.5 text-[10px] text-neutral-500 hover:border-red-300 hover:bg-red-50 hover:text-red-600">deshacer</button>
+                          ) : null}
                         </td>
                         <td className="px-3 py-1.5">{chip(f)}</td>
                       </tr>

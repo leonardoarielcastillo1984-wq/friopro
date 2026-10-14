@@ -481,6 +481,35 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const resto = new Map(pend.map((f: any) => [f.id, f.saldo]));
     const getResto = (f: any) => resto.get(f.id) ?? f.saldo;
 
+    // Subconjunto de candidatas cuyo resto suma EXACTAMENTE el abono (±$2).
+    // Meet-in-the-middle O(2^(n/2)), n acotado a 24; prefiere menos facturas.
+    const contarBits = (x: number) => { let c = 0; while (x) { c += x & 1; x >>>= 1; } return c; };
+    const subconjuntoExacto = (cand: any[], target: number): any[] | null => {
+      const items = cand.slice(0, 24).map(f => ({ f, v: getResto(f) }));
+      const A = items.slice(0, 12), B = items.slice(12);
+      const sumsA: { s: number; m: number }[] = [];
+      for (let m = 1; m < (1 << A.length); m++) {
+        let s = 0;
+        for (let i = 0; i < A.length; i++) if (m & (1 << i)) s += A[i].v;
+        sumsA.push({ s, m });
+      }
+      sumsA.sort((a, b) => a.s - b.s);
+      let mejor: number | null = null;
+      for (let m = 0; m < (1 << B.length); m++) {
+        let s = 0;
+        for (let i = 0; i < B.length; i++) if (m & (1 << i)) s += B[i].v;
+        const need = target - s;
+        let lo = 0, hi = sumsA.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (sumsA[mid].s < need - 2) lo = mid + 1; else hi = mid; }
+        for (let k = lo; k < sumsA.length && sumsA[k].s <= need + 2; k++) {
+          const mask = sumsA[k].m | (m << A.length);
+          if (mejor === null || contarBits(mask) < contarBits(mejor)) mejor = mask;
+        }
+      }
+      if (mejor === null) return null;
+      return items.filter((_, i) => ((mejor as number) & (1 << i)) !== 0).map(x => x.f);
+    };
+
     const matchNombre = (desc: string, f: any) => {
       const tk = [...tokensDe(f.nombreNorm)];
       if (!tk.length) return false;
@@ -491,64 +520,55 @@ export default async function finanzasRoutes(app: FastifyInstance) {
 
     const resFilas: any[] = [];
     for (const [idx, fl] of filas.entries()) {
-      const base = { idx, fecha: fl.fecha, descripcion: fl.descripcion, monto: fl.monto, referencia: fl.referencia ?? null };
       const firma = firmaCobro(fl);
+      const base = { idx, fecha: fl.fecha, descripcion: fl.descripcion, monto: fl.monto, referencia: fl.referencia ?? null, firma };
       if (aplicadas.has(firma)) { resFilas.push({ ...base, estado: 'ya_aplicado', facturas: [] }); continue; }
 
-      // 1) candidatas por RUT en la descripción; 2) por nombre de cliente;
-      // 3) último recurso: monto único en todo el libro
+      // Candidatas por RUT en la descripción o por nombre de cliente.
+      // NUNCA se imputa a facturas emitidas DESPUÉS del abono: un pago no
+      // puede cubrir algo que todavía no existía.
+      const emitidaAntes = (f: any) => new Date(f.fechaEmision) <= new Date(`${fl.fecha}T23:59:59Z`);
       const ruts = new Set(rutEnTexto(`${fl.descripcion} ${fl.referencia || ''}`));
-      let cand = ruts.size ? pend.filter((f: any) => f.rut && ruts.has(f.rut)) : [];
+      let candTodas = ruts.size ? pend.filter((f: any) => f.rut && ruts.has(f.rut)) : [];
       let como = 'rut';
-      if (!cand.length) { cand = pend.filter((f: any) => matchNombre(fl.descripcion, f)); como = 'nombre'; }
+      if (!candTodas.length) { candTodas = pend.filter((f: any) => matchNombre(fl.descripcion, f)); como = 'nombre'; }
+      let cand = candTodas.filter(emitidaAntes);
 
+      // Se aplica SOLO cuando la deuda cuadra exacta: una factura igual al
+      // abono, un subconjunto que suma el abono, o el abono cubre TODA la
+      // deuda visible (el sobrante queda como excedente = anticipo o
+      // facturas aún no cargadas). Sin repartos parciales arbitrarios.
       let aplica: { f: any; aplicar: number }[] = [];
       let excedente = 0;
       if (cand.length) {
-        const exact = cand.filter((f: any) => Math.abs(getResto(f) - fl.monto) <= 2);
-        if (exact.length) aplica = [{ f: exact[0], aplicar: getResto(exact[0]) }];
-        else {
-          const suma = cand.reduce((s: number, f: any) => s + getResto(f), 0);
-          if (Math.abs(suma - fl.monto) <= 2) aplica = cand.map((f: any) => ({ f, aplicar: getResto(f) }));
-          else {
-            // un par de facturas que suman el abono
-            outer: for (let i = 0; i < cand.length; i++)
-              for (let j = i + 1; j < cand.length; j++)
-                if (Math.abs(getResto(cand[i]) + getResto(cand[j]) - fl.monto) <= 2) {
-                  aplica = [{ f: cand[i], aplicar: getResto(cand[i]) }, { f: cand[j], aplicar: getResto(cand[j]) }];
-                  break outer;
-                }
-            // FIFO sobre la deuda del cliente (el abono puede ser parcial)
-            if (!aplica.length && fl.monto <= suma + 2) {
-              let rest = fl.monto;
-              for (const f of cand) {
-                if (rest <= 0.5) break;
-                const ap = Math.min(getResto(f), rest);
-                if (ap > 0.5) { aplica.push({ f, aplicar: ap }); rest -= ap; }
-              }
-            }
-            // abono mayor a toda la deuda del cliente: cubre todo y sobra
-            if (!aplica.length) {
-              aplica = cand.map((f: any) => ({ f, aplicar: getResto(f) }));
-              excedente = fl.monto - aplica.reduce((s, a) => s + a.aplicar, 0);
-            }
-          }
+        const exact = cand.find((f: any) => Math.abs(getResto(f) - fl.monto) <= 2);
+        const suma = cand.reduce((s: number, f: any) => s + getResto(f), 0);
+        if (exact) aplica = [{ f: exact, aplicar: getResto(exact) }];
+        else if (Math.abs(suma - fl.monto) <= 2) aplica = cand.map((f: any) => ({ f, aplicar: getResto(f) }));
+        else if (suma < fl.monto - 2) {
+          aplica = cand.map((f: any) => ({ f, aplicar: getResto(f) }));
+          excedente = fl.monto - suma;
+        } else {
+          const sub = subconjuntoExacto(cand, fl.monto);
+          if (sub?.length) aplica = sub.map(f => ({ f, aplicar: getResto(f) }));
         }
       } else {
-        const unicos = pend.filter((f: any) => Math.abs(getResto(f) - fl.monto) <= 2);
-        if (unicos.length === 1) { cand = unicos; aplica = [{ f: unicos[0], aplicar: fl.monto }]; como = 'monto'; }
+        const unicos = pend.filter((f: any) => emitidaAntes(f) && Math.abs(getResto(f) - fl.monto) <= 2);
+        if (unicos.length === 1) { cand = unicos; candTodas = unicos; aplica = [{ f: unicos[0], aplicar: getResto(unicos[0]) }]; como = 'monto'; }
       }
 
       if (!aplica.length) {
         resFilas.push({
           ...base, estado: 'sin_match', facturas: [],
-          motivo: cand.length
-            ? `${cand[0].cliente}: el monto no cuadra con sus ${cand.length} factura(s) pendiente(s)`
-            : 'no encontré facturas pendientes de ese pagador',
+          motivo: !candTodas.length
+            ? 'no encontré facturas pendientes de ese pagador'
+            : !cand.length
+              ? `${candTodas[0].cliente}: sus pendientes fueron emitidas después del abono`
+              : `${cand[0].cliente}: ninguna combinación de sus ${cand.length} pendiente(s) suma el abono exacto`,
         });
         continue;
       }
-      const confianza = como === 'monto' ? 'baja' : aplica.some(a => Math.abs(getResto(a.f) - a.aplicar) > 2) ? 'media' : 'alta';
+      const confianza = como === 'monto' ? 'baja' : 'alta';
       for (const a of aplica) resto.set(a.f.id, Math.max(0, getResto(a.f) - a.aplicar));
       aplicadas.add(firma);
       resFilas.push({
@@ -595,6 +615,23 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     }
     for (const fid of tocadas) await syncFacturaEstado(app.prisma, fid);
     return reply.send({ creados, facturasAfectadas: tocadas.size, errores, filas: resFilas });
+  });
+
+  // POST /cartola-deshacer {referencia} — revierte un abono ya conciliado:
+  // borra sus cobros CARTOLA y las facturas vuelven a pendiente.
+  app.post('/cartola-deshacer', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const referencia = String((req.body as any)?.referencia || '');
+    if (!referencia.startsWith('CARTOLA:')) return reply.code(400).send({ error: 'referencia CARTOLA:* requerida' });
+    const cobros = await prisma().finanzaCobro.findMany({
+      where: { tenantId, referencia }, select: { id: true, facturaId: true },
+    });
+    if (!cobros.length) return reply.send({ eliminados: 0, facturas: 0 });
+    const fids = [...new Set(cobros.map((c: any) => c.facturaId))] as string[];
+    await prisma().finanzaCobro.deleteMany({ where: { tenantId, referencia } });
+    for (const fid of fids) await syncFacturaEstado(app.prisma, fid);
+    return reply.send({ eliminados: cobros.length, facturas: fids.length });
   });
 
   // ═══════════════════════════════════════════════════════════════
