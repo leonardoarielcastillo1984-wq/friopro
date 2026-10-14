@@ -501,12 +501,10 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
                   );
                 })}
               </div>
-              {f29Atrasados.length > 0 && (
+              {f29AtrasadosAnio.length > 0 && (
                 <p className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-700">
                   <AlertTriangle size={12} />
-                  {f29AtrasadosAnio.length > 0
-                    ? <span>{f29AtrasadosAnio.length === 1 ? 'Un período F29 vencido sin declarar' : `${f29AtrasadosAnio.length} períodos F29 vencidos sin declarar`} en {anio}: {f29AtrasadosAnio.map(p => MESES[Number(p.periodo) % 100 - 1]).join(', ')}{f29AtrasadosOtros > 0 ? ` · además ${f29AtrasadosOtros} de años anteriores` : ''}</span>
-                    : <span>{f29Atrasados.length === 1 ? 'Un período F29 vencido sin declarar' : `${f29Atrasados.length} períodos F29 vencidos sin declarar`} en años anteriores a {anio}</span>}
+                  {f29AtrasadosAnio.length === 1 ? 'Un período F29 vencido sin declarar' : `${f29AtrasadosAnio.length} períodos F29 vencidos sin declarar`} en {anio}: {f29AtrasadosAnio.map(p => MESES[Number(p.periodo) % 100 - 1]).join(', ')}
                 </p>
               )}
             </div>
