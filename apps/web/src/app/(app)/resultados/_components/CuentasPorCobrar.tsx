@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Loader2, Wallet, AlertTriangle, Clock, CalendarClock, Paperclip } from 'lucide-react';
+import { Loader2, Wallet, AlertTriangle, Clock, CalendarClock, Paperclip, Landmark } from 'lucide-react';
 import { fmtMoney, fmtFecha, fmtActualizado } from './fmt';
+import ConciliarCartola from './ConciliarCartola';
 
 type Cliente = {
   cliente: string; rut: string | null; facturado: number; cobrado: number; notasCredito: number; saldo: number;
@@ -24,12 +25,14 @@ export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: 
   const [data, setData] = useState<{ clientes: Cliente[]; totales: { saldo: number; vencido: number; d90: number }; actualizadoEn?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cartolaOpen, setCartolaOpen] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     setLoading(true); setError(null);
     apiFetch<any>(`/finanzas/cuentas-por-cobrar?moneda=${moneda}`)
       .then(setData).catch((e: any) => setError(e?.message || 'No se pudo cargar')).finally(() => setLoading(false));
-  }, [moneda]);
+  }, [moneda, reloadTick]);
 
   if (loading) return <div className="py-16 text-center text-neutral-400"><Loader2 className="inline animate-spin" size={18} /></div>;
   if (error || !data) return <div className="py-16 text-center text-neutral-400">{error}</div>;
@@ -37,7 +40,14 @@ export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: 
 
   return (
     <div className="space-y-4">
-      {data.actualizadoEn && <div className="-mb-1 text-right text-[10px] text-neutral-400">Datos actualizados {fmtActualizado(data.actualizadoEn)}</div>}
+      <div className="-mb-1 flex items-center justify-end gap-3">
+        <button onClick={() => setCartolaOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50">
+          <Landmark size={13} className="text-blue-600" /> Conciliar cartola
+        </button>
+        {data.actualizadoEn && <span className="text-[10px] text-neutral-400">Datos actualizados {fmtActualizado(data.actualizadoEn)}</span>}
+      </div>
+      {cartolaOpen && <ConciliarCartola moneda={moneda} onClose={() => setCartolaOpen(false)} onDone={() => setReloadTick(t => t + 1)} />}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
           <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-neutral-500"><Wallet size={13} className="text-blue-600" />Nos deben en total</div>

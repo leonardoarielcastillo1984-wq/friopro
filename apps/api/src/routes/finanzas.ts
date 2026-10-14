@@ -404,6 +404,183 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   });
 
   // ═══════════════════════════════════════════════════════════════
+  // CARTOLA BANCARIA — conciliación de abonos → cobros.
+  // commit=false: devuelve el match propuesto (preview).
+  // commit=true: crea los FinanzaCobro de las filas matcheadas.
+  // Dedup: cada abono se guarda con referencia "CARTOLA:fecha:monto:hash"
+  // — re-subir la misma cartola no duplica cobros.
+  // ═══════════════════════════════════════════════════════════════
+  const normRutKey = (s: string) => s.replace(/[.\s]/g, '').toUpperCase();
+  const rutEnTexto = (t: string): string[] => {
+    const out = new Set<string>();
+    for (const m of t.matchAll(/(\d{1,3}(?:\.\d{3})+|\d{7,9})\s*-\s*([0-9kK])/g))
+      out.add(normRutKey(m[1]) + m[2].toUpperCase());
+    return [...out];
+  };
+  const normTxt = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
+    .replace(/\b(SPA|LTDA|LIMITADA|S\.A|SA|EIRL|SOCIEDAD|COMERCIAL|DE|Y|LOS|LAS|EL|LA|EN|SPA\.)\b/g, ' ')
+    .replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const tokensDe = (s: string) => new Set(normTxt(s).split(' ').filter(t => t.length >= 3));
+  // Firma idempotente del abono (≤100 chars para columna referencia)
+  const firmaCobro = (f: { fecha: string; monto: number; descripcion: string }) => {
+    let h = 5381;
+    for (let i = 0; i < f.descripcion.length; i++) h = ((h << 5) + h + f.descripcion.charCodeAt(i)) >>> 0;
+    return `CARTOLA:${f.fecha}:${Math.round(f.monto)}:${h.toString(36)}`;
+  };
+
+  const cartolaSchema = z.object({
+    commit: z.boolean().default(false),
+    moneda: z.string().max(5).optional().nullable(),
+    filas: z.array(z.object({
+      fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}/, 'fecha YYYY-MM-DD'),
+      descripcion: z.string().max(400).default(''),
+      monto: z.number().positive(),
+      referencia: z.string().max(120).optional().nullable(),
+    })).min(1).max(3000),
+  });
+
+  app.post('/cartola-conciliar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const body = cartolaSchema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const { commit, moneda, filas } = body.data;
+    const user = await resolveUser(app.prisma, (req as any).auth?.userId);
+
+    // Cobros ya aplicados por cartola → dedup por firma
+    const prev = await prisma().finanzaCobro.findMany({
+      where: { tenantId, referencia: { startsWith: 'CARTOLA:' } }, select: { referencia: true },
+    });
+    const aplicadas = new Set(prev.map((c: any) => c.referencia));
+
+    // Facturas con saldo pendiente, más vencidas primero (orden FIFO de imputación)
+    const facts = await prisma().finanzaFactura.findMany({
+      where: {
+        tenantId, deletedAt: null, tipoComprobante: { not: 'NOTA_CREDITO' },
+        estado: { notIn: ['ANULADA', 'COBRADA'] }, ...(moneda ? { moneda } : {}),
+      },
+      include: { cobros: true },
+      orderBy: [{ fechaVencimiento: 'asc' }, { fechaEmision: 'asc' }],
+    });
+    const pend = facts.map((f: any) => ({
+      id: f.id, numero: [f.puntoVenta, f.numero].filter(Boolean).join('-') || null,
+      cliente: f.clienteNombre, rut: f.clienteRut ? normRutKey(f.clienteRut) : null,
+      nombreNorm: normTxt(f.clienteNombre), moneda: f.moneda,
+      fechaEmision: f.fechaEmision,
+      saldo: Math.max(0, num(f.total) - f.cobros.reduce((s: number, c: any) => s + num(c.importe), 0)),
+    })).filter((f: any) => f.saldo > 0.5);
+    const resto = new Map(pend.map((f: any) => [f.id, f.saldo]));
+    const getResto = (f: any) => resto.get(f.id) ?? f.saldo;
+
+    const matchNombre = (desc: string, f: any) => {
+      const tk = [...tokensDe(f.nombreNorm)];
+      if (!tk.length) return false;
+      const d = tokensDe(desc);
+      const hits = tk.filter(t => d.has(t)).length;
+      return hits === tk.length || (tk.length > 2 && hits / tk.length >= 0.7);
+    };
+
+    const resFilas: any[] = [];
+    for (const [idx, fl] of filas.entries()) {
+      const base = { idx, fecha: fl.fecha, descripcion: fl.descripcion, monto: fl.monto };
+      const firma = firmaCobro(fl);
+      if (aplicadas.has(firma)) { resFilas.push({ ...base, estado: 'ya_aplicado', facturas: [] }); continue; }
+
+      // 1) candidatas por RUT en la descripción; 2) por nombre de cliente;
+      // 3) último recurso: monto único en todo el libro
+      const ruts = new Set(rutEnTexto(`${fl.descripcion} ${fl.referencia || ''}`));
+      let cand = ruts.size ? pend.filter((f: any) => f.rut && ruts.has(f.rut)) : [];
+      let como = 'rut';
+      if (!cand.length) { cand = pend.filter((f: any) => matchNombre(fl.descripcion, f)); como = 'nombre'; }
+
+      let aplica: { f: any; aplicar: number }[] = [];
+      let excedente = 0;
+      if (cand.length) {
+        const exact = cand.filter((f: any) => Math.abs(getResto(f) - fl.monto) <= 2);
+        if (exact.length) aplica = [{ f: exact[0], aplicar: getResto(exact[0]) }];
+        else {
+          const suma = cand.reduce((s: number, f: any) => s + getResto(f), 0);
+          if (Math.abs(suma - fl.monto) <= 2) aplica = cand.map((f: any) => ({ f, aplicar: getResto(f) }));
+          else {
+            // un par de facturas que suman el abono
+            outer: for (let i = 0; i < cand.length; i++)
+              for (let j = i + 1; j < cand.length; j++)
+                if (Math.abs(getResto(cand[i]) + getResto(cand[j]) - fl.monto) <= 2) {
+                  aplica = [{ f: cand[i], aplicar: getResto(cand[i]) }, { f: cand[j], aplicar: getResto(cand[j]) }];
+                  break outer;
+                }
+            // FIFO sobre la deuda del cliente (el abono puede ser parcial)
+            if (!aplica.length && fl.monto <= suma + 2) {
+              let rest = fl.monto;
+              for (const f of cand) {
+                if (rest <= 0.5) break;
+                const ap = Math.min(getResto(f), rest);
+                if (ap > 0.5) { aplica.push({ f, aplicar: ap }); rest -= ap; }
+              }
+            }
+            // abono mayor a toda la deuda del cliente: cubre todo y sobra
+            if (!aplica.length) {
+              aplica = cand.map((f: any) => ({ f, aplicar: getResto(f) }));
+              excedente = fl.monto - aplica.reduce((s, a) => s + a.aplicar, 0);
+            }
+          }
+        }
+      } else {
+        const unicos = pend.filter((f: any) => Math.abs(getResto(f) - fl.monto) <= 2);
+        if (unicos.length === 1) { cand = unicos; aplica = [{ f: unicos[0], aplicar: fl.monto }]; como = 'monto'; }
+      }
+
+      if (!aplica.length) { resFilas.push({ ...base, estado: 'sin_match', facturas: [] }); continue; }
+      const confianza = como === 'monto' ? 'baja' : aplica.some(a => Math.abs(getResto(a.f) - a.aplicar) > 2) ? 'media' : 'alta';
+      for (const a of aplica) resto.set(a.f.id, Math.max(0, getResto(a.f) - a.aplicar));
+      aplicadas.add(firma);
+      resFilas.push({
+        ...base, estado: 'match', como, confianza,
+        ...(excedente > 0.5 ? { excedente } : {}),
+        facturas: aplica.map(a => ({
+          id: a.f.id, numero: a.f.numero, cliente: a.f.cliente, moneda: a.f.moneda,
+          fechaEmision: a.f.fechaEmision, saldoPrevio: getResto(a.f) + a.aplicar, aplicar: a.aplicar,
+        })),
+      });
+    }
+
+    if (!commit) {
+      const m = resFilas.filter(r => r.estado === 'match');
+      return reply.send({
+        filas: resFilas,
+        resumen: {
+          total: resFilas.length, matches: m.length, sinMatch: resFilas.filter(r => r.estado === 'sin_match').length,
+          yaAplicados: resFilas.filter(r => r.estado === 'ya_aplicado').length,
+          montoMatch: m.reduce((s, r) => s + r.facturas.reduce((x: number, f: any) => x + f.aplicar, 0), 0),
+        },
+      });
+    }
+
+    let creados = 0; const errores: string[] = [];
+    const tocadas = new Set<string>();
+    for (const r of resFilas.filter(x => x.estado === 'match')) {
+      for (const a of r.facturas) {
+        try {
+          await prisma().finanzaCobro.create({
+            data: {
+              tenantId, facturaId: a.id, fecha: new Date(`${r.fecha}T12:00:00Z`),
+              importe: a.aplicar, moneda: a.moneda || moneda || 'CLP',
+              referencia: firmaCobro(r), medioPago: 'TRANSFERENCIA',
+              notas: `Cartola: ${r.descripcion}`.slice(0, 500),
+              createdById: user.id, createdByNombre: user.nombre,
+            },
+          });
+          creados++; tocadas.add(a.id);
+        } catch (e: any) {
+          errores.push(`${r.fecha} $${r.monto}: ${e?.message?.slice(0, 120) || 'error'}`);
+        }
+      }
+    }
+    for (const fid of tocadas) await syncFacturaEstado(app.prisma, fid);
+    return reply.send({ creados, facturasAfectadas: tocadas.size, errores, filas: resFilas });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
   // PAGOS — espejo de cobros del lado de egresos (CxP).
   // Un gasto puede tener pagos parciales; sin pagos y sin vencimiento
   // se asume pagado en su fecha (comportamiento previo a CxP).
