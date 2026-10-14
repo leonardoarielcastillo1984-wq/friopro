@@ -422,9 +422,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     .replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
   const tokensDe = (s: string) => new Set(normTxt(s).split(' ').filter(t => t.length >= 3));
   // Firma idempotente del abono (≤100 chars para columna referencia)
-  const firmaCobro = (f: { fecha: string; monto: number; descripcion: string }) => {
+  const firmaCobro = (f: { fecha: string; monto: number; descripcion: string; referencia?: string | null }) => {
+    const s = `${f.descripcion}|${f.referencia || ''}`;
     let h = 5381;
-    for (let i = 0; i < f.descripcion.length; i++) h = ((h << 5) + h + f.descripcion.charCodeAt(i)) >>> 0;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
     return `CARTOLA:${f.fecha}:${Math.round(f.monto)}:${h.toString(36)}`;
   };
 
@@ -482,7 +483,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
 
     const resFilas: any[] = [];
     for (const [idx, fl] of filas.entries()) {
-      const base = { idx, fecha: fl.fecha, descripcion: fl.descripcion, monto: fl.monto };
+      const base = { idx, fecha: fl.fecha, descripcion: fl.descripcion, monto: fl.monto, referencia: fl.referencia ?? null };
       const firma = firmaCobro(fl);
       if (aplicadas.has(firma)) { resFilas.push({ ...base, estado: 'ya_aplicado', facturas: [] }); continue; }
 

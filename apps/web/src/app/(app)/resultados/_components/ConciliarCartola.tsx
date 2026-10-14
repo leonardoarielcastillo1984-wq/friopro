@@ -63,19 +63,31 @@ function filasDeTabla(rows: any[][]): Fila[] {
   }
   if (hIdx < 0) return [];
   const find = (...preds: ((x: string) => boolean)[]) => { for (const p of preds) { const i = h.findIndex(p); if (i >= 0) return i; } return -1; };
+  // Formato Santander: columna "CARGO/ABONO" con letra C/A (no es un monto) — el monto con signo va en MONTO
+  const flagCol = find(x => x.includes('cargo') && x.includes('abono'));
   const idx = {
     fecha: find(x => x === 'fecha' || x.startsWith('fecha')),
     desc: find(x => x.includes('descripcion') || x.includes('glosa') || x.includes('detalle') || x.includes('motivo') || x.includes('nombre') || x.includes('origen')),
-    abono: find(x => x.includes('abono') || x.includes('credito') || x.includes('haber') || x.includes('deposito')),
+    abono: find(x => (x.includes('abono') || x.includes('credito') || x.includes('haber') || x.includes('deposito')) && !(x.includes('cargo') && x.includes('abono'))),
     monto: find(x => x === 'monto' || x === 'valor'),
-    ref: find(x => x.includes('referencia') || x.includes('n doc') || x.includes('documento') || x.includes('comprobante')),
+    // "N° MOVIMIENTO" (único por operación) antes que "N° DOCUMENTO" (suele venir en ceros)
+    ref: find(x => x.startsWith('n') && x.includes('movimiento'), x => x.includes('referencia') || x.includes('documento') || x.includes('comprobante')),
   };
   if (idx.fecha < 0 || (idx.abono < 0 && idx.monto < 0)) return [];
   const out: Fila[] = [];
   for (const r of rows.slice(hIdx + 1)) {
     const fecha = parseFecha(r[idx.fecha]);
-    const monto = parseMonto(idx.abono >= 0 ? r[idx.abono] : r[idx.monto]);
-    if (!fecha || monto <= 0) continue;
+    if (!fecha) continue;
+    let monto = 0;
+    if (flagCol >= 0 && idx.monto >= 0) {
+      const f = String(r[flagCol] ?? '').trim().toUpperCase();
+      const v = parseMonto(r[idx.monto]);
+      if (f ? !f.startsWith('A') : v <= 0) continue;   // solo abonos
+      monto = Math.abs(v);
+    } else {
+      monto = parseMonto(idx.abono >= 0 ? r[idx.abono] : r[idx.monto]);
+    }
+    if (monto <= 0) continue;
     out.push({
       fecha, monto,
       descripcion: idx.desc >= 0 ? String(r[idx.desc] ?? '').slice(0, 300) : '',
