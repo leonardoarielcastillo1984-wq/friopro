@@ -8,7 +8,7 @@ import { fmtMoney, fmtFecha } from './fmt';
 type Fila = { fecha: string; descripcion: string; monto: number; referencia: string | null };
 type FilaResp = Fila & {
   idx: number; estado: 'match' | 'sin_match' | 'ya_aplicado'; como?: string; confianza?: 'alta' | 'media' | 'baja';
-  excedente?: number; facturas: { id: string; numero: string | null; cliente: string; aplicar: number; saldoPrevio: number }[];
+  excedente?: number; motivo?: string; facturas: { id: string; numero: string | null; cliente: string; aplicar: number; saldoPrevio: number }[];
 };
 
 // ── Parseo de cartola (CSV/TXT/Excel) ───────────────────────────────────────
@@ -211,6 +211,7 @@ export default function ConciliarCartola({ moneda, onClose, onDone }: { moneda: 
                             </div>
                           ))}
                           {f.excedente ? <div className="text-amber-600">excedente {fmtMoney(f.excedente, moneda)}</div> : null}
+                          {f.estado === 'sin_match' && f.motivo ? <div className="max-w-56 text-neutral-400" title={f.motivo}>{f.motivo}</div> : null}
                         </td>
                         <td className="px-3 py-1.5">{chip(f)}</td>
                       </tr>

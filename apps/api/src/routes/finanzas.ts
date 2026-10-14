@@ -410,11 +410,19 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   // Dedup: cada abono se guarda con referencia "CARTOLA:fecha:monto:hash"
   // — re-subir la misma cartola no duplica cobros.
   // ═══════════════════════════════════════════════════════════════
-  const normRutKey = (s: string) => s.replace(/[.\s]/g, '').toUpperCase();
+  // Normaliza a "<dígitos><dv>" sin puntos, guion ni ceros a la izquierda
+  const normRutKey = (s: string) => {
+    const t = s.replace(/[.\s-]/g, '').toUpperCase();
+    const m = t.match(/^0*(\d+)([0-9K])$/);
+    return m ? m[1] + m[2] : t;
+  };
   const rutEnTexto = (t: string): string[] => {
     const out = new Set<string>();
+    // con guion: 12.345.678-9 / 12345678-9
     for (const m of t.matchAll(/(\d{1,3}(?:\.\d{3})+|\d{7,9})\s*-\s*([0-9kK])/g))
-      out.add(normRutKey(m[1]) + m[2].toUpperCase());
+      out.add(normRutKey(m[1]) + m[2]);
+    // sin guion (formato Santander): 084687500K → 84687500-K ; 0221151666 → 22115166-6
+    for (const m of t.matchAll(/\b0?\d{7,8}[0-9kK]\b/g)) out.add(normRutKey(m[0]));
     return [...out];
   };
   const normTxt = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
@@ -531,7 +539,15 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         if (unicos.length === 1) { cand = unicos; aplica = [{ f: unicos[0], aplicar: fl.monto }]; como = 'monto'; }
       }
 
-      if (!aplica.length) { resFilas.push({ ...base, estado: 'sin_match', facturas: [] }); continue; }
+      if (!aplica.length) {
+        resFilas.push({
+          ...base, estado: 'sin_match', facturas: [],
+          motivo: cand.length
+            ? `${cand[0].cliente}: el monto no cuadra con sus ${cand.length} factura(s) pendiente(s)`
+            : 'no encontré facturas pendientes de ese pagador',
+        });
+        continue;
+      }
       const confianza = como === 'monto' ? 'baja' : aplica.some(a => Math.abs(getResto(a.f) - a.aplicar) > 2) ? 'media' : 'alta';
       for (const a of aplica) resto.set(a.f.id, Math.max(0, getResto(a.f) - a.aplicar));
       aplicadas.add(firma);
