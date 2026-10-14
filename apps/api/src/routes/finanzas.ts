@@ -2234,10 +2234,20 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const [dM, hM] = rango(prevMes.a, prevMes.m);
     const [dY, hY] = rango(anio - 1, mes);
 
+    // Like-for-like: mes en curso se compara contra la MISMA cantidad de días
+    // del mes anterior y del mismo mes del año pasado (1..N vs 1..N). Un mes a
+    // medias vs uno completo inventa caídas del ~100%.
+    const hoyC = new Date();
+    const esActual = hoyC >= dA && hoyC < hA;
+    const corteA = esActual ? hoyC : hA;
+    const diasT = Math.max(1, Math.round((corteA.getTime() - dA.getTime()) / 86400000));
+    const corteM = new Date(Math.min(dM.getTime() + diasT * 86400000, hM.getTime()));
+    const corteY = new Date(Math.min(dY.getTime() + diasT * 86400000, hY.getTime()));
+
     const [act, prev, yoy] = await Promise.all([
-      recolectarLineas(tenantId, dA, hA, moneda, cc),
-      recolectarLineas(tenantId, dM, hM, moneda, cc),
-      recolectarLineas(tenantId, dY, hY, moneda, cc),
+      recolectarLineas(tenantId, dA, corteA, moneda, cc),
+      recolectarLineas(tenantId, dM, corteM, moneda, cc),
+      recolectarLineas(tenantId, dY, corteY, moneda, cc),
     ]);
 
     const resumen = (ls: any[]) => {
@@ -2280,7 +2290,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
 
     const huboPrev = P.lineas > 0, huboYoy = Y.lineas > 0;
     return reply.send({
-      anio, mes, moneda,
+      anio, mes, moneda, esMesActual: esActual, diasTranscurridos: esActual ? diasT : null,
       actual: A,
       mesAnterior: { ...P, mesKey: `${prevMes.a}-${String(prevMes.m).padStart(2, '0')}`, hayDatos: huboPrev },
       mismoMesAnioAnterior: { ...Y, mesKey: `${anio - 1}-${String(mes).padStart(2, '0')}`, hayDatos: huboYoy },

@@ -257,7 +257,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
               {comp.mesAnterior.hayDatos && comp.vsMesAnterior.resultado.pct !== null && (
                 <> {' '}El resultado {comp.vsMesAnterior.resultado.abs >= 0 ? 'mejoró' : 'empeoró'}{' '}
                 <strong>{Math.abs(comp.vsMesAnterior.resultado.pct).toFixed(1)} %</strong> respecto de{' '}
-                {comp.mesAnterior.mesKey && MESES[Number(comp.mesAnterior.mesKey.slice(5)) - 1]}.</>
+                {comp.mesAnterior.mesKey && `${(comp as any).esMesActual ? `los primeros ${(comp as any).diasTranscurridos} días de ` : ''}${MESES[Number(comp.mesAnterior.mesKey.slice(5)) - 1]}`}.</>
               )}
               {comp.drivers.length > 0 && comp.drivers[0].variacion > 0 && (
                 <> El principal impulsor fue <strong>{driverLabel(comp.drivers[0]).toLowerCase()}</strong>.</>
@@ -281,7 +281,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
                 </thead>
                 <tbody>
                   <tr className="border-b border-neutral-100">
-                    <td className="px-3 py-1.5 font-medium">vs {MESES[Number(comp.mesAnterior.mesKey.slice(5)) - 1]} {comp.mesAnterior.mesKey.slice(0, 4)}</td>
+                    <td className="px-3 py-1.5 font-medium">vs {(comp as any).esMesActual ? `primeros ${(comp as any).diasTranscurridos}d ` : ''}{MESES[Number(comp.mesAnterior.mesKey.slice(5)) - 1]} {comp.mesAnterior.mesKey.slice(0, 4)}</td>
                     {[comp.vsMesAnterior.ventas, comp.vsMesAnterior.costos, comp.vsMesAnterior.resultado].map((d: any, i: number) => (
                       <td key={i} className={`px-3 py-1.5 text-right ${d.pct === null ? 'text-neutral-300' : d.pct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {d.pct === null ? '—' : `${d.pct >= 0 ? '+' : ''}${d.pct.toFixed(1)}%`}
@@ -292,7 +292,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
                     </td>
                   </tr>
                   <tr>
-                    <td className="px-3 py-1.5 font-medium">vs {MESES[mesSel - 1]} {anio - 1}</td>
+                    <td className="px-3 py-1.5 font-medium">vs {(comp as any).esMesActual ? `primeros ${(comp as any).diasTranscurridos}d ` : ''}{MESES[mesSel - 1]} {anio - 1}</td>
                     {comp.vsAnioAnterior ? [comp.vsAnioAnterior.ventas, comp.vsAnioAnterior.costos, comp.vsAnioAnterior.resultado].map((d: any, i: number) => (
                       <td key={i} className={`px-3 py-1.5 text-right ${d.pct === null ? 'text-neutral-300' : d.pct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {d.pct === null ? '—' : `${d.pct >= 0 ? '+' : ''}${d.pct.toFixed(1)}%`}
