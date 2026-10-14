@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
+import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
 import { existsSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
@@ -2299,6 +2300,136 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       drivers: drivers.slice(0, 8),
       actualizadoEn: await ultimaAct(tenantId, moneda),
     });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // ASISTENTE DE RESULTADOS — "¿Qué es este número?"
+  // Recibe la métrica clickeada en la UI, recolecta el contexto real
+  // del período (líneas que la componen + posición IVA) y lo resume
+  // con el LLM en lenguaje simple. Si la IA no está disponible,
+  // responde una explicación estática igualmente correcta.
+  // ═══════════════════════════════════════════════════════════════
+  const EXPLICA_ESTATICO: Record<string, string> = {
+    'kpi-ventas': 'Ventas del año: suma de facturas emitidas (a valor neto, sin IVA — el IVA no es ingreso) más los ingresos operativos cargados en Flota 360. Viene del RCV de ventas del SII, de facturas cargadas a mano y del módulo Flota 360.',
+    'kpi-costos': 'Costos del año: todo lo operativo (facturas de proveedores del RCV de compras, combustible, mantenimiento, neumáticos, multas, sueldos, cuotas de financiación) más gastos de estructura y gastos cargados a mano. El IVA recuperable se descuenta porque no es costo real.',
+    'kpi-resultado': 'Resultado = ventas (netas de IVA) − costos operativos − estructura. Es resultado devengado (cuando se emite la factura / se consume el gasto), no caja. El margen es resultado ÷ ventas.',
+    'kpi-cobrado': 'Cobrado = plata que efectivamente entró al banco: cobros registrados sobre facturas emitidas + ingresos de flota marcados como cobrados. Incluye IVA porque el cliente paga el total. Difiere de ventas porque facturar no es cobrar.',
+    'resumen-mes': 'El resumen cruza ventas, costos y resultado del mes seleccionado, y compara contra el mes anterior y el mismo mes del año pasado. Si el mes está en curso, compara solo los primeros N días en los tres períodos (comparación justa).',
+    'comparativa': 'Las variaciones comparan el mes seleccionado contra el mes anterior y el mismo mes del año pasado. Si el mes está en curso se cortan los tres períodos en el mismo día (1..N) para no inventar caídas del ~100%.',
+    drivers: 'Los drivers son los rubros que más movieron el resultado respecto del mes anterior: ingresos por fuente (facturación, ingresos de flota) y costos por rubro (combustible, sueldos, mantenimiento...). Verde = empujó el resultado arriba; rojo = lo tiró abajo.',
+    alertas: 'Las alertas se generan comparando ventas/resultado del mes contra el anterior y el promedio de los últimos 6 meses. Si el mes está en curso, la comparación es por igual cantidad de días. Umbral de atención 10 %, crítica 25 % (configurable).',
+    'iva-debito': 'IVA débito: el IVA que le cobraste a tus clientes en las facturas emitidas del mes (notas de crédito restan). Es plata que recaudás para el fisco, no ingreso. Sale del RCV de ventas del SII + facturas cargadas a mano.',
+    'iva-credito': 'IVA crédito: el IVA de tus compras y gastos marcado como recuperable (facturas del RCV de compras, facturas de flota, combustible con IVA desagregado). Se descuenta del débito en el F29.',
+    'iva-remanente': 'Remanente a favor: cuando el crédito del mes supera al débito, el excedente no se pierde — se arrastra y descuenta el débito del mes siguiente (lógica del F29, código 077).',
+    'iva-apagar': 'A pagar estimado = débito − (crédito del mes + remanente acumulado). Es una estimación del IVA del F29: no incluye PPM ni retenciones, que el contador liquida aparte.',
+    'iva-costo': 'IVA al costo: IVA de compras marcado como no recuperable — queda dentro del costo real del gasto y no descuenta débito.',
+    'iva-estimado': 'Estimado en combustible: cargas de combustible sin IVA desagregado en el ticket. El sistema estima el IVA suponiendo que el precio de surtidor lo incluye (tasa editable). Cargar el IVA real en Flota 360 → Combustible lo convierte en crédito evidenciado.',
+    'iva-cargas': 'Cargas sin IVA desagregado: cantidad de tickets de combustible donde no se cargó el IVA real — solo se puede estimar.',
+    'iva-mes': 'La tabla por meses muestra la posición IVA de todo el año: débito (ventas), crédito (compras recuperable), remanente que se arrastra y a pagar estimado por mes.',
+    f29: 'F29 real: la declaración efectivamente hecha en el SII para el período (folio, fecha y estado). El detalle compara lo declarado contra lo estimado por el sistema; diferencias típicas: documentos no válidos como crédito, PPM y retenciones que solo existen en el F29.',
+    movimientos: 'Movimientos del período: cada línea económica del mes con su módulo de origen (Resultados, Flota 360, Infraestructura). El ícono del lápiz edita; el enlace abre el documento de origen.',
+  };
+
+  app.post('/explicar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const body = z.object({
+      metrica: z.string().max(60),
+      titulo: z.string().max(140).optional().nullable(),
+      anio: z.number().int().min(2000).max(2100),
+      mes: z.number().int().min(1).max(12),
+      moneda: z.string().max(5).optional().nullable(),
+      centroCostoId: z.string().uuid().optional().nullable(),
+      datos: z.any().optional().nullable(),
+      texto: z.string().max(600).optional().nullable(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const { metrica, titulo, anio, mes, moneda, centroCostoId, datos, texto } = body.data;
+    const p = prisma();
+
+    // Ventana like-for-like: si el mes está en curso se corta en hoy.
+    const desde = new Date(Date.UTC(anio, mes - 1, 1));
+    const hasta = new Date(Date.UTC(anio, mes, 1));
+    const hoyX = new Date();
+    const enCurso = hoyX >= desde && hoyX < hasta;
+    const corte = enCurso ? hoyX : hasta;
+    const mesNombre = desde.toLocaleDateString('es-CL', { month: 'long', timeZone: 'UTC' });
+
+    const lineas = await recolectarLineas(tenantId, desde, corte, moneda || null, centroCostoId || null);
+    const sg = (g: string[]) => lineas.filter(l => g.includes(l.grupo)).reduce((s, l) => s + l.importe, 0);
+    const ventas = sg(['FACTURADO', 'INGRESO_OPERATIVO']);
+    const costosOp = sg(['COSTO_OP', 'GASTO_MANUAL']);
+    const estructura = sg(['ESTRUCTURA']);
+    const cobrado = sg(['COBRADO']);
+    const resultado = ventas - costosOp - estructura;
+    const porRubro: Record<string, number> = {};
+    for (const l of lineas) if (['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo)) porRubro[l.rubro] = (porRubro[l.rubro] || 0) + l.importe;
+
+    // Evidencia real: las líneas que componen la métrica clickeada.
+    const GRUPO_DE: Record<string, string[]> = {
+      'kpi-ventas': ['FACTURADO', 'INGRESO_OPERATIVO'],
+      'kpi-costos': ['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'],
+      'kpi-cobrado': ['COBRADO'],
+      'kpi-resultado': [],
+    };
+    let rel = lineas;
+    const g = GRUPO_DE[metrica];
+    if (g?.length) rel = lineas.filter(l => g.includes(l.grupo));
+    if (metrica === 'iva-credito') rel = lineas.filter(l => num(l.iva) > 0 && l.ivaRecuperable !== false);
+    if (metrica === 'iva-costo') rel = lineas.filter(l => num(l.iva) > 0 && l.ivaRecuperable === false);
+    if (metrica === 'iva-estimado' || metrica === 'iva-cargas') rel = lineas.filter(l => l.fuente === 'COMBUSTIBLE');
+    const evidencia = rel.slice().sort((a, b) => Math.abs(b.importe) - Math.abs(a.importe)).slice(0, 6)
+      .map(l => ({ fecha: new Date(l.fecha).toISOString().slice(0, 10), concepto: String(l.concepto).slice(0, 80), importe: Math.round(l.importe), fuente: l.fuente, modulo: l.modulo }));
+
+    // Débito IVA del mes: IVA de facturas emitidas (NC resta).
+    const facturasIva = await p.finanzaFactura.findMany({
+      where: { tenantId, deletedAt: null, fechaEmision: { gte: desde, lt: hasta }, ...(moneda ? { moneda } : {}) },
+      select: { iva: true, tipoComprobante: true },
+    }).catch(() => [] as any[]);
+    const ivaDebito = facturasIva.reduce((s: number, f: any) => s + (f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1) * num(f.iva), 0);
+    const ivaCredito = lineas.filter(l => num(l.iva) > 0 && l.ivaRecuperable !== false).reduce((s, l) => s + num(l.iva), 0);
+    const ivaNoRec = lineas.filter(l => num(l.iva) > 0 && l.ivaRecuperable === false).reduce((s, l) => s + num(l.iva), 0);
+
+    const contexto = {
+      periodo: `${mesNombre} ${anio}${enCurso ? ' (en curso)' : ''}`,
+      moneda: moneda || 'todas', centroCosto: centroCostoId ? 'filtrado' : 'todos',
+      resumen: {
+        ventasNetas: Math.round(ventas), costosOperativos: Math.round(costosOp), estructura: Math.round(estructura),
+        resultado: Math.round(resultado), cobradoConIva: Math.round(cobrado),
+        margenPct: ventas > 0 ? Math.round((resultado / ventas) * 1000) / 10 : null, movimientos: lineas.length,
+      },
+      costosPorRubro: Object.fromEntries(Object.entries(porRubro).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => [k, Math.round(v)])),
+      ivaMes: { debito: Math.round(ivaDebito), credito: Math.round(ivaCredito), alCostoNoRecuperado: Math.round(ivaNoRec) },
+      evidenciaPrincipales: evidencia,
+      numerosQueVeElUsuario: datos ?? undefined,
+      elementoClickeado: texto ?? undefined,
+    };
+
+    let explicacion: string | null = null;
+    let via = 'estatico';
+    try {
+      const llm = createGroqOnlyLLMProvider((req as any).tenant, p, tenantId, (req as any).auth?.userId ?? null, 'finanzas-asistente');
+      const prompt = `Sos el asistente financiero de una PyME de transporte/logística dentro de su ERP. El usuario hizo click sobre un indicador del módulo "Resultados de negocio" y quiere entenderlo para poder explicarlo a otros.
+
+Métrica clickeada: "${metrica}"${titulo ? ` (título en pantalla: "${titulo}")` : ''}.
+
+Contexto real del período (JSON):
+${JSON.stringify(contexto)}
+
+Reglas:
+- Explicá QUÉ es el número, CÓMO se compone (la fórmula en criollo) y DE DÓNDE salen los datos (qué módulo/fuente: RCV del SII, facturas manuales, Flota 360, Infraestructura, RRHH).
+- Citá 1-2 líneas de "evidenciaPrincipales" con su monto si ayudan a entenderlo.
+- Si el mes está en curso, aclaralo ("todavía se está cargando/va a subir").
+- Si hay "numerosQueVeElUsuario", usá esos valores exactos para referirte a lo que ve en pantalla.
+- Tono cercano, español rioplatense neutro, máximo ~110 palabras, sin markdown ni encabezados. Podés usar **negrita** solo para el número clave.
+- No inventes cifras que no estén en el contexto.`;
+      const ai = await llm.chat([{ role: 'user', content: prompt }], 700);
+      explicacion = (ai?.text || '').trim() || null;
+      if (explicacion) via = 'ia';
+    } catch { /* sin LLM → fallback estático */ }
+
+    if (!explicacion) explicacion = EXPLICA_ESTATICO[metrica] || `Este indicador forma parte del resultado de ${mesNombre} ${anio}: ventas netas ${Math.round(ventas)}, costos ${Math.round(costosOp + estructura)}, resultado ${Math.round(resultado)} (${moneda || ''}). Cada línea del detalle indica su módulo de origen.`;
+    return reply.send({ explicacion, via, periodo: `${mesNombre} ${anio}` });
   });
 
   // ═══════════════════════════════════════════════════════════════

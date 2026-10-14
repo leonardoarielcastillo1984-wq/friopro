@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { TrendingUp, TrendingDown, DollarSign, Wallet, Building2, ChevronRight, Loader2, X, AlertTriangle, MessageSquare, Sparkles, Send, Scale, Receipt } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Wallet, Building2, ChevronRight, Loader2, X, AlertTriangle, MessageSquare, Sparkles, Send, Scale, Receipt, MousePointerClick } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ReferenceLine, CartesianGrid, Legend } from 'recharts';
 import { fmtMoney, fmtPct, fmtFecha, fmtActualizado, MESES, GRUPO_LABEL, labelRubro } from './fmt';
 
@@ -83,6 +83,8 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const [iva, setIva] = useState<{ recuperado: number; noRecuperado: number; estimado: number; cargasSinDesagregar: number; tasaEstimada: number; debito: number; aPagar: number; remanente: number } | null>(null);
   const [ivaMeses, setIvaMeses] = useState<any[]>([]);
   const [ivaPorMeses, setIvaPorMeses] = useState(false);
+  const [asistente, setAsistente] = useState(false);
+  const [explica, setExplica] = useState<{ titulo: string; texto: string; via: string; loading: boolean } | null>(null);
   const [f29, setF29] = useState<{ configurado: boolean; declarado: boolean | null; vigente: { folio: string | null; fecha: string | null; estado: string | null } | null; declaraciones: any[]; periodo?: string; error?: string } | null>(null);
   const [f29Estados, setF29Estados] = useState<{ periodo: number; declarado: boolean; estado: string | null }[] | null>(null);
   const [f29Open, setF29Open] = useState(false);
@@ -188,6 +190,43 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
     if (d) { setIvaMeses(d.meses || []); const m = (d.meses || []).find((x: any) => x.mes === mesSel); if (m) setIva({ recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar, debito: m.debito ?? 0, aPagar: m.aPagar ?? 0, remanente: m.remanente ?? 0, tasaEstimada: d.tasaEstimada ?? v / 100 }); }
   };
 
+  // Asistente "¿Qué es esto?": números que la UI muestra por cada métrica,
+  // para que el backend los cite textualmente en la explicación.
+  const datosDe = (metrica: string, extra?: any): any => {
+    if (metrica.startsWith('iva-')) {
+      const m = extra?.mes ? ivaMeses.find((x: any) => x.mes === extra.mes) : null;
+      return { tarjeta: iva, mesTabla: m || undefined };
+    }
+    if (metrica === 'f29') return { f29, montos: f29Montos };
+    if (metrica === 'alertas') return alertas;
+    if (metrica === 'comparativa' || metrica === 'resumen-mes' || metrica === 'drivers') return comp;
+    return { totales, meses };
+  };
+
+  const pedirExplicacion = async (metrica: string, titulo: string, texto?: string, extra?: any) => {
+    setExplica({ titulo, texto: '', via: '', loading: true });
+    try {
+      const r = await apiFetch<{ explicacion: string; via: string; periodo: string }>('/finanzas/explicar', {
+        method: 'POST',
+        json: { metrica, titulo, anio, mes: extra?.mes || mesSel, moneda: moneda || null, centroCostoId: centroCostoId || null, datos: datosDe(metrica, extra), texto: texto?.slice(0, 600) || null },
+      });
+      setExplica({ titulo: `${r.periodo} — ${titulo}`, texto: r.explicacion, via: r.via, loading: false });
+    } catch (e: any) {
+      setExplica({ titulo, texto: e?.message || 'No se pudo generar la explicación.', via: 'error', loading: false });
+    }
+  };
+
+  // En modo asistente cualquier click sobre un [data-explica] pide la
+  // explicación en vez de ejecutar la acción normal del elemento.
+  const onAsistenteClick = (e: React.MouseEvent) => {
+    if (!asistente) return;
+    const el = (e.target as HTMLElement).closest('[data-explica]') as HTMLElement | null;
+    if (!el) return;
+    e.preventDefault();
+    e.stopPropagation();
+    pedirExplicacion(el.dataset.explica!, el.dataset.explicaTitulo || el.textContent?.slice(0, 80) || 'Indicador', el.dataset.explicaTexto || el.textContent || undefined, el.dataset.explicaMes ? { mes: Number(el.dataset.explicaMes) } : undefined);
+  };
+
   const enviarComentario = async () => {
     if (!nuevoComentario.trim()) return;
     setEnviandoComentario(true);
@@ -222,18 +261,41 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const tip = (v: any) => fmtMoney(Number(v), moneda);
 
   return (
-    <div className="space-y-4">
-      <div className="-mb-1 text-right text-[10px] text-neutral-400">Datos actualizados {fmtActualizado((data as any)?.actualizadoEn)}</div>
+    <div className={`space-y-4 ${asistente ? 'asist-on' : ''}`} onClickCapture={onAsistenteClick}>
+      {/* Modo asistente: resalta lo explicable al hover y cambia el cursor */}
+      {asistente && <style>{`.asist-on, .asist-on * { cursor: help !important; } .asist-on [data-explica] { outline: 1.5px dashed transparent; border-radius: 6px; transition: outline-color .15s; } .asist-on [data-explica]:hover { outline-color: #7c3aed; background: rgba(124,58,237,.05); }`}</style>}
+      <div className="-mb-1 flex items-center justify-between">
+        <button type="button" onClick={() => { setAsistente(a => !a); setExplica(null); }}
+          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors ${asistente ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-neutral-200 bg-white text-neutral-500 hover:border-purple-200 hover:text-purple-600'}`}>
+          <MousePointerClick size={12} />
+          {asistente ? 'Asistente activo — hacé click sobre cualquier número' : 'Asistente ¿qué es esto?'}
+        </button>
+        <span className="text-[10px] text-neutral-400">Datos actualizados {fmtActualizado((data as any)?.actualizadoEn)}</span>
+      </div>
+
+      {/* Panel de explicación del asistente */}
+      {explica && (
+        <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-4">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-purple-800"><Sparkles size={12} />{explica.titulo}</span>
+            <button onClick={() => setExplica(null)} className="text-purple-400 hover:text-purple-700"><X size={14} /></button>
+          </div>
+          {explica.loading
+            ? <p className="flex items-center gap-1.5 text-xs text-purple-600"><Loader2 size={12} className="animate-spin" />Analizando los datos del período…</p>
+            : <p className="whitespace-pre-line text-sm leading-relaxed text-neutral-800">{explica.texto}</p>}
+          {!explica.loading && explica.via === 'estatico' && <p className="mt-2 text-[10px] text-purple-400">Explicación de referencia (IA no configurada — GROQ_API_KEY)</p>}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         {[
-          { label: `Ventas ${anio}`, value: fmtMoney(totales.ventas, moneda), icon: DollarSign, color: 'text-blue-600', sub: 'sin IVA' },
-          { label: 'Costos', value: fmtMoney(totales.costos, moneda), icon: Building2, color: 'text-amber-600', sub: 'operativos + estructura' },
-          { label: 'Resultado', value: fmtMoney(totales.resultado, moneda), icon: totales.resultado >= 0 ? TrendingUp : TrendingDown, color: totales.resultado >= 0 ? 'text-green-600' : 'text-red-600', sub: `margen ${fmtPct(totales.margen)}` },
-          { label: 'Cobrado', value: fmtMoney(totales.cobrado, moneda), icon: Wallet, color: 'text-emerald-600', sub: 'entró al banco (con IVA)' },
-          { label: 'Meses en positivo', value: String(totales.mesesPositivos ?? 0), icon: TrendingUp, color: 'text-green-600', sub: mejor ? `mejor: ${MESES[mejor.mes - 1]} (${compact(mejor.resultado)})` : '' },
-          { label: 'Meses en negativo', value: String(totales.mesesNegativos ?? 0), icon: TrendingDown, color: 'text-red-600', sub: peor && peor.resultado < 0 ? `peor: ${MESES[peor.mes - 1]} (${compact(peor.resultado)})` : '' },
+          { label: `Ventas ${anio}`, value: fmtMoney(totales.ventas, moneda), icon: DollarSign, color: 'text-blue-600', sub: 'sin IVA', explica: 'kpi-ventas' },
+          { label: 'Costos', value: fmtMoney(totales.costos, moneda), icon: Building2, color: 'text-amber-600', sub: 'operativos + estructura', explica: 'kpi-costos' },
+          { label: 'Resultado', value: fmtMoney(totales.resultado, moneda), icon: totales.resultado >= 0 ? TrendingUp : TrendingDown, color: totales.resultado >= 0 ? 'text-green-600' : 'text-red-600', sub: `margen ${fmtPct(totales.margen)}`, explica: 'kpi-resultado' },
+          { label: 'Cobrado', value: fmtMoney(totales.cobrado, moneda), icon: Wallet, color: 'text-emerald-600', sub: 'entró al banco (con IVA)', explica: 'kpi-cobrado' },
+          { label: 'Meses en positivo', value: String(totales.mesesPositivos ?? 0), icon: TrendingUp, color: 'text-green-600', sub: mejor ? `mejor: ${MESES[mejor.mes - 1]} (${compact(mejor.resultado)})` : '', explica: 'kpi-resultado' },
+          { label: 'Meses en negativo', value: String(totales.mesesNegativos ?? 0), icon: TrendingDown, color: 'text-red-600', sub: peor && peor.resultado < 0 ? `peor: ${MESES[peor.mes - 1]} (${compact(peor.resultado)})` : '', explica: 'kpi-resultado' },
         ].map((k, i) => (
-          <div key={i} className="rounded-xl border border-neutral-200 bg-white p-4">
+          <div key={i} data-explica={k.explica} data-explica-titulo={k.label} data-explica-texto={`${k.label}: ${k.value}${k.sub ? ` (${k.sub})` : ''}`} className="rounded-xl border border-neutral-200 bg-white p-4">
             <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-neutral-500"><k.icon size={13} className={k.color} />{k.label}</div>
             <div className="mt-1 text-lg font-semibold text-neutral-900">{k.value}</div>
             {k.sub && <div className="text-[11px] text-neutral-400">{k.sub}</div>}
@@ -245,7 +307,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Resumen del período (determinístico) + comparativa */}
         {comp && comp.actual.lineas > 0 && (
-          <div className="rounded-xl border border-neutral-200 bg-white p-4">
+          <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="resumen-mes" data-explica-titulo={`Resumen — ${MESES[mesSel - 1]} ${anio}`}>
             <div className="mb-2 flex items-center justify-between">
               <span className="flex items-center gap-1.5 text-sm font-semibold text-neutral-900"><Sparkles size={14} className="text-purple-600" />Resumen — {MESES[mesSel - 1]} {anio}{comp.actualizadoEn && <span className="text-[10px] font-normal text-neutral-400">· act. {fmtActualizado(comp.actualizadoEn)}</span>}</span>
               <select value={mesSel} onChange={e => setMesSel(Number(e.target.value))} className="rounded-lg border border-neutral-200 px-2 py-1 text-xs">
@@ -270,7 +332,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
               )}
             </p>
             {/* Comparativa */}
-            <div className="mt-3 overflow-hidden rounded-lg border border-neutral-100">
+            <div className="mt-3 overflow-hidden rounded-lg border border-neutral-100" data-explica="comparativa" data-explica-titulo="Comparativa del mes" data-explica-texto="Variaciones vs mes anterior y vs el mismo mes del año pasado">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-neutral-50 text-left text-[10px] uppercase tracking-wide text-neutral-400">
@@ -312,7 +374,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
 
         {/* Alertas gerenciales */}
         {alertas.length > 0 && (
-          <div className="rounded-xl border border-neutral-200 bg-white p-4">
+          <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="alertas" data-explica-titulo={`Alertas — ${MESES[mesSel - 1]}`}>
             <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-neutral-900"><AlertTriangle size={14} className="text-amber-500" />Alertas — {MESES[mesSel - 1]}{alertasAct && <span className="text-[10px] font-normal text-neutral-400">· act. {fmtActualizado(alertasAct)}</span>}</div>
             <div className="space-y-1.5">
               {alertas.map((a, i) => (
@@ -331,7 +393,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
 
       {/* ¿Qué explica el resultado? — drivers determinísticos */}
       {comp && comp.drivers.length > 0 && (
-        <div className="rounded-xl border border-neutral-200 bg-white p-4">
+        <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="drivers" data-explica-titulo={`¿Qué explica el resultado de ${MESES[mesSel - 1]}?`}>
           <div className="mb-3 flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-sm font-semibold text-neutral-900"><Scale size={14} className="text-blue-600" />¿Qué explica el resultado de {MESES[mesSel - 1]}?</span>
             <span className="text-[11px] text-neutral-400">vs {MESES[Number(comp.mesAnterior.mesKey.slice(5)) - 1]} · variaciones sobre el resultado{comp.actualizadoEn && <> · act. {fmtActualizado(comp.actualizadoEn)}</>}</span>
@@ -376,26 +438,26 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
           </div>
           {/* Posición F29: débito − crédito = a pagar (o remanente a favor) */}
           <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div className="rounded-lg bg-blue-50 p-3">
+            <div className="rounded-lg bg-blue-50 p-3" data-explica="iva-debito" data-explica-titulo="IVA débito (ventas)" data-explica-texto={`IVA débito: ${fmtMoney(iva.debito, moneda)}`}>
               <div className="text-[11px] uppercase tracking-wide text-blue-700">IVA débito (ventas)</div>
               <div className="mt-1 font-semibold text-blue-800">{fmtMoney(iva.debito, moneda)}</div>
             </div>
-            <div className="rounded-lg bg-emerald-50 p-3">
+            <div className="rounded-lg bg-emerald-50 p-3" data-explica="iva-credito" data-explica-titulo="IVA crédito (compras)" data-explica-texto={`IVA crédito: ${fmtMoney(iva.recuperado, moneda)}`}>
               <div className="text-[11px] uppercase tracking-wide text-emerald-700">IVA crédito (compras)</div>
               <div className="mt-1 font-semibold text-emerald-800">{fmtMoney(iva.recuperado, moneda)}</div>
             </div>
-            <div className={`rounded-lg p-3 ${iva.remanente > 0 ? 'bg-teal-50' : 'bg-neutral-50'}`} title="Crédito acumulado de meses anteriores que aún no se usó">
+            <div className={`rounded-lg p-3 ${iva.remanente > 0 ? 'bg-teal-50' : 'bg-neutral-50'}`} title="Crédito acumulado de meses anteriores que aún no se usó" data-explica="iva-remanente" data-explica-titulo="Remanente a favor" data-explica-texto={`Remanente a favor: ${fmtMoney(iva.remanente, moneda)}`}>
               <div className={`text-[11px] uppercase tracking-wide ${iva.remanente > 0 ? 'text-teal-700' : 'text-neutral-500'}`}>Remanente a favor</div>
               <div className={`mt-1 font-semibold ${iva.remanente > 0 ? 'text-teal-800' : 'text-neutral-500'}`}>{fmtMoney(iva.remanente, moneda)}</div>
             </div>
-            <div className={`rounded-lg p-3 ${iva.aPagar > 0 ? 'bg-red-50' : 'bg-neutral-50'}`} title="Débito − (crédito del mes + remanente). No incluye PPM ni retenciones del F29 real.">
+            <div className={`rounded-lg p-3 ${iva.aPagar > 0 ? 'bg-red-50' : 'bg-neutral-50'}`} title="Débito − (crédito del mes + remanente). No incluye PPM ni retenciones del F29 real." data-explica="iva-apagar" data-explica-titulo="A pagar estimado (F29)" data-explica-texto={`A pagar estimado: ${fmtMoney(iva.aPagar, moneda)}`}>
               <div className={`text-[11px] uppercase tracking-wide ${iva.aPagar > 0 ? 'text-red-700' : 'text-neutral-500'}`}>A pagar estimado (F29)</div>
               <div className={`mt-1 font-semibold ${iva.aPagar > 0 ? 'text-red-800' : 'text-neutral-500'}`}>{fmtMoney(iva.aPagar, moneda)}</div>
             </div>
           </div>
           {/* F29 real (SII): lo que el contador efectivamente declaró */}
           {f29?.configurado && (
-            <div className={`mb-3 rounded-lg border text-xs ${f29.declarado ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+            <div data-explica="f29" data-explica-titulo="F29 real (SII)" className={`mb-3 rounded-lg border text-xs ${f29.declarado ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2">
                 {f29.declarado && f29.vigente ? (
                   <>
@@ -512,15 +574,15 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
             </div>
           )}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-            <div className={`rounded-lg p-3 ${iva.noRecuperado > 0 ? 'bg-amber-50' : 'bg-neutral-50'}`}>
+            <div className={`rounded-lg p-3 ${iva.noRecuperado > 0 ? 'bg-amber-50' : 'bg-neutral-50'}`} data-explica="iva-costo" data-explica-titulo="IVA al costo (no recuperado)" data-explica-texto={`IVA al costo: ${fmtMoney(iva.noRecuperado, moneda)}`}>
               <div className={`text-[11px] uppercase tracking-wide ${iva.noRecuperado > 0 ? 'text-amber-700' : 'text-neutral-500'}`}>IVA al costo (no recuperado)</div>
               <div className={`mt-1 font-semibold ${iva.noRecuperado > 0 ? 'text-amber-800' : 'text-neutral-500'}`}>{fmtMoney(iva.noRecuperado, moneda)}</div>
             </div>
-            <div className={`rounded-lg p-3 ${iva.estimado > 0 ? 'bg-amber-50' : 'bg-neutral-50'}`}>
+            <div className={`rounded-lg p-3 ${iva.estimado > 0 ? 'bg-amber-50' : 'bg-neutral-50'}`} data-explica="iva-estimado" data-explica-titulo="Estimado en combustible" data-explica-texto={`Estimado en combustible: ~${fmtMoney(iva.estimado, moneda)} al ${(iva.tasaEstimada * 100).toFixed(0)}%`}>
               <div className={`text-[11px] uppercase tracking-wide ${iva.estimado > 0 ? 'text-amber-700' : 'text-neutral-500'}`}>Estimado en combustible</div>
               <div className={`mt-1 font-semibold ${iva.estimado > 0 ? 'text-amber-800' : 'text-neutral-500'}`}>~{fmtMoney(iva.estimado, moneda)}</div>
             </div>
-            <div className={`rounded-lg p-3 ${iva.cargasSinDesagregar > 0 ? 'bg-red-50' : 'bg-neutral-50'}`}>
+            <div className={`rounded-lg p-3 ${iva.cargasSinDesagregar > 0 ? 'bg-red-50' : 'bg-neutral-50'}`} data-explica="iva-cargas" data-explica-titulo="Cargas sin IVA desagregado" data-explica-texto={`${iva.cargasSinDesagregar} cargas sin IVA desagregado`}>
               <div className={`text-[11px] uppercase tracking-wide ${iva.cargasSinDesagregar > 0 ? 'text-red-700' : 'text-neutral-500'}`}>Cargas sin IVA desagregado</div>
               <div className={`mt-1 font-semibold ${iva.cargasSinDesagregar > 0 ? 'text-red-800' : 'text-neutral-500'}`}>{iva.cargasSinDesagregar}</div>
             </div>
@@ -548,7 +610,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
                     </thead>
                     <tbody>
                       {ivaMeses.map((m: any) => (
-                        <tr key={m.mes} className={`border-t border-neutral-100 ${m.mes === mesSel ? 'bg-teal-50/60 font-medium' : ''}`}>
+                        <tr key={m.mes} data-explica="iva-mes" data-explica-titulo={`IVA ${MESES[m.mes - 1]}`} data-explica-mes={m.mes} className={`border-t border-neutral-100 ${m.mes === mesSel ? 'bg-teal-50/60 font-medium' : ''}`}>
                           <td className="px-3 py-1.5">{MESES[m.mes - 1]}{m.mes === mesSel && <span className="ml-1 text-[10px] text-teal-600">· viendo</span>}</td>
                           <td className="px-3 py-1.5 text-right text-blue-700">{m.debito > 0 ? fmtMoney(m.debito, moneda) : '—'}</td>
                           <td className="px-3 py-1.5 text-right text-emerald-700">{m.recuperado > 0 ? fmtMoney(m.recuperado, moneda) : '—'}</td>
