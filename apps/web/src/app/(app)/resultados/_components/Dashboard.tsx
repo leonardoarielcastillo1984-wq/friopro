@@ -174,6 +174,8 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const f29EstadoDe = (yyyymm: number) => f29Estados?.find(p => Number(p.periodo) === yyyymm) || null;
   const f29YmActual = hoy.getUTCFullYear() * 100 + hoy.getUTCMonth() + 1;
   const f29Atrasados = (f29Estados || []).filter(p => !p.declarado && Number(p.periodo) < f29YmActual && f29Vencido(Number(p.periodo)));
+  const f29AtrasadosAnio = f29Atrasados.filter(p => Math.floor(Number(p.periodo) / 100) === anio);
+  const f29AtrasadosOtros = f29Atrasados.length - f29AtrasadosAnio.length;
 
   const guardarTasaIva = async () => {
     const v = Number(ivaTasaEdit);
@@ -502,7 +504,9 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
               {f29Atrasados.length > 0 && (
                 <p className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-700">
                   <AlertTriangle size={12} />
-                  {f29Atrasados.length === 1 ? 'Un período F29 vencido sin declarar' : `${f29Atrasados.length} períodos F29 vencidos sin declarar`}: {f29Atrasados.map(p => `${MESES[Number(p.periodo) % 100 - 1]} ${Math.floor(Number(p.periodo) / 100)}`).join(', ')}
+                  {f29AtrasadosAnio.length > 0
+                    ? <span>{f29AtrasadosAnio.length === 1 ? 'Un período F29 vencido sin declarar' : `${f29AtrasadosAnio.length} períodos F29 vencidos sin declarar`} en {anio}: {f29AtrasadosAnio.map(p => MESES[Number(p.periodo) % 100 - 1]).join(', ')}{f29AtrasadosOtros > 0 ? ` · además ${f29AtrasadosOtros} de años anteriores` : ''}</span>
+                    : <span>{f29Atrasados.length === 1 ? 'Un período F29 vencido sin declarar' : `${f29Atrasados.length} períodos F29 vencidos sin declarar`} en años anteriores a {anio}</span>}
                 </p>
               )}
             </div>

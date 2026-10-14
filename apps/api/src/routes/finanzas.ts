@@ -2531,20 +2531,26 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   // con puntos de miles). Se mapean los códigos conocidos y se devuelve el
   // resto crudo para inspección.
   const F29_CODES: Record<string, string> = {
-    '502': 'Ventas y/o servicios netos', '538': 'IVA débito fiscal',
-    '511': 'IVA crédito fiscal', '077': 'Remanente crédito mes anterior',
-    '062': 'PPM neto determinado', '089': 'Total a pagar',
-    '151': 'Retención honorarios', '563': 'Base imponible retenida',
+    '502': 'Débitos facturas emitidas', '538': 'Total débitos',
+    '511': 'Crédito IVA dctos. electrónicos', '537': 'Total créditos',
+    '077': 'Remanente crédito mes anterior', '062': 'PPM neto determinado',
+    '089': 'IVA determinado', '091': 'Total a pagar', '547': 'Total determinado',
+    '151': 'Retención honorarios', '048': 'Retención imp. único trab.',
+    '563': 'Base imponible retenida',
   };
   function parseF29PdfText(text: string): Record<string, { descripcion: string; valor: number }> {
     const codigos: Record<string, { descripcion: string; valor: number }> = {};
     for (const raw of (text || '').split(/\r?\n/)) {
       const line = raw.trim();
       if (!line) continue;
-      // "538 Débito fiscal ......... 14.569.148" o "[538] ... $ 14.569.148"
-      const m = line.match(/^\[?\s*(\d{2,4})\s*\]?\s+(.+?)\s+\$?\s*(-?\d{1,3}(?:\.\d{3})+|-?\d+)\s*$/);
-      if (m) {
-        const valor = parseInt(m[3].replace(/\./g, ''), 10);
+      // pdf-parse entrega las columnas PEGADAS: "502DÉBITOS FACTURAS EMITIDAS12.280.547".
+      // código (2-4 díg) + glosa (lazy, puede contener dígitos) + valor trailing.
+      // El lazy + ancla $ hace que la glosa crezca solo hasta que el resto sea numérico.
+      const m = line.match(/^\[?(\d{2,4})\]?(.*?)(\d[\d.]*)$/);
+      if (m && m[2]) {
+        // "0.125" (cero inicial) = tasa decimal; "77.582.200" = miles con puntos
+        const numStr = m[3].replace(/\.$/, '');
+        const valor = /^0\.\d+$/.test(numStr) ? parseFloat(numStr) : parseInt(numStr.replace(/\./g, ''), 10);
         if (Number.isFinite(valor) && !codigos[m[1]]) {
           const desc = m[2].replace(/[.\s]{3,}/g, ' ').trim();
           codigos[m[1]] = { descripcion: desc || F29_CODES[m[1]] || '', valor };
@@ -2580,8 +2586,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
           periodo: q.periodo,
           folio: lst.vigente.folio,
           principales: {
-            baseVentas: cod('502'), debito: cod('538'), credito: cod('511'),
-            remanente: cod('077'), ppm: cod('062'), retencion: cod('151'), totalPagar: cod('089'),
+            baseVentas: cod('502'), debito: cod('538'), credito: cod('537') ?? cod('511'),
+            remanente: cod('077'), ppm: cod('062'), retencion: cod('151') ?? cod('048'), totalPagar: cod('091') ?? cod('547'),
           },
           codigos,
           nCodigos: n,
