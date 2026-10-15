@@ -29,6 +29,22 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://logismart.ar/recursos</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://logismart.ar/recursos/software-iso-9001-pymes</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://logismart.ar/recursos/core-tools-iatf-16949</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://logismart.ar/recursos/sgi-vs-excel</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://logismart.ar/login</loc>
     <priority>0.4</priority>
   </url>

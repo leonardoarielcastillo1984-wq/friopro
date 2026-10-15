@@ -75,6 +75,43 @@ const jsonLd = {
       url: 'https://logismart.ar',
       inLanguage: 'es',
     },
+    {
+      '@type': 'FAQPage',
+      mainEntity: [
+        {
+          '@type': 'Question',
+          name: '¿Qué normas cubre SGI360?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'SGI360 soporta ISO 9001 (calidad), ISO 14001 (ambiente) e ISO 45001 (seguridad y salud laboral), además de IATF 16949 para la industria automotriz — incluyendo las core tools: APQP, PPAP, FMEA/AMFE, MSA, SPC y plan de control.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: '¿SGI360 sirve para pymes?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Está pensado para pymes y empresas medianas de Latinoamérica: implementación en días, sin infraestructura propia ni consultores permanentes.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: '¿SGI360 incluye gestión de flota?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Sí, el módulo Flota 360 cubre vehículos, mantenimiento, inspecciones QR, neumáticos, combustible, conductores con control pre-servicio y costos con TCO.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: '¿SGI360 se conecta con el SII de Chile?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Sí: importa automáticamente el Registro de Compras y Ventas del SII para el módulo de Resultados de Negocio.',
+          },
+        },
+      ],
+    },
   ],
 };
 

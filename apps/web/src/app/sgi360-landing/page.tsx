@@ -96,6 +96,52 @@ export default function SGI360Landing() {
         </div>
       </section>
 
+      {/* FAQ — contenido visible que acompaña al FAQPage schema del layout */}
+      <section className="py-24 bg-white">
+        <div className="max-w-3xl mx-auto px-6">
+          <div className="text-center mb-12">
+            <span className="text-xs font-bold text-green-600 uppercase tracking-widest">Preguntas frecuentes</span>
+            <h2 className="mt-3 text-4xl font-bold text-slate-900">Lo que más nos preguntan</h2>
+          </div>
+          <div className="space-y-4">
+            {[
+              {
+                q: '¿Qué normas cubre SGI360?',
+                a: 'SGI360 soporta ISO 9001 (calidad), ISO 14001 (ambiente) e ISO 45001 (seguridad y salud laboral), además de IATF 16949 para la industria automotriz — incluyendo las core tools: APQP, PPAP, FMEA/AMFE, MSA, SPC y plan de control.',
+              },
+              {
+                q: '¿Sirve para una pyme o es solo para empresas grandes?',
+                a: 'Está pensado para pymes y empresas medianas de Latinoamérica. La implementación se mide en días, no requiere infraestructura propia ni consultores permanentes, y el precio no castiga por usuario.',
+              },
+              {
+                q: '¿Qué diferencia a SGI360 de usar Excel y carpetas?',
+                a: 'Trazabilidad automática: un único documento vigente, no conformidades con responsable y vencimiento, alertas de indicadores fuera de meta y evidencia exportable para auditoría sin armarla a mano.',
+              },
+              {
+                q: '¿Incluye gestión de flota y mantenimiento?',
+                a: 'Sí. El módulo Flota 360 cubre vehículos, semirremolques, órdenes de trabajo, planes de mantenimiento, inspecciones por QR, neumáticos, combustible, conductores (con control pre-servicio vía QR) y costos con TCO.',
+              },
+              {
+                q: '¿Los datos financieros se conectan con el SII?',
+                a: 'En Chile, SGI360 importa automáticamente el Registro de Compras y Ventas del SII para el módulo de Resultados de Negocio — ventas, gastos, flujo de caja, balance gerencial y proyección.',
+              },
+              {
+                q: '¿Tiene inteligencia artificial?',
+                a: 'Sí: un asistente contextual por módulo que responde preguntas sobre tus datos reales, generación de planes de acción e implementación de mapas de procesos asistida por IA.',
+              },
+            ].map((f, i) => (
+              <details key={i} className="group rounded-2xl border border-slate-100 bg-slate-50/50 p-5 open:bg-white open:border-green-100 open:shadow-sm transition-all">
+                <summary className="flex cursor-pointer items-center justify-between font-semibold text-slate-900 list-none">
+                  {f.q}
+                  <span className="ml-4 text-green-600 transition-transform group-open:rotate-45 text-xl leading-none">+</span>
+                </summary>
+                <p className="mt-3 text-sm leading-relaxed text-slate-600">{f.a}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* CTA */}
       <section className="py-24 bg-gradient-to-r from-green-600 to-emerald-500">
         <div className="max-w-4xl mx-auto px-6 text-center">
@@ -122,7 +168,17 @@ export default function SGI360Landing() {
             <span className="font-bold text-sm">SGI360</span>
             <span className="text-slate-500 text-xs ml-2">by LOGISMART</span>
           </div>
-          <p className="text-xs text-slate-500">© {new Date().getFullYear()} LOGISMART. Todos los derechos reservados.</p>
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <nav aria-label="Enlaces legales" className="flex items-center gap-3">
+              <Link href="/legal/aviso" className="text-xs text-slate-500 hover:text-white transition-colors">Aviso Legal</Link>
+              <Link href="/legal/privacidad" className="text-xs text-slate-500 hover:text-white transition-colors">Privacidad</Link>
+              <Link href="/legal/terminos" className="text-xs text-slate-500 hover:text-white transition-colors">Términos</Link>
+              <Link href="/legal/cookies" className="text-xs text-slate-500 hover:text-white transition-colors">Cookies</Link>
+              <Link href="/legal/reembolsos" className="text-xs text-slate-500 hover:text-white transition-colors">Reembolsos</Link>
+              <Link href="/legal/ia" className="text-xs text-slate-500 hover:text-white transition-colors">Uso de IA</Link>
+            </nav>
+            <p className="text-xs text-slate-500">© {new Date().getFullYear()} LOGISMART. Todos los derechos reservados.</p>
+          </div>
         </div>
       </footer>
     </div>
