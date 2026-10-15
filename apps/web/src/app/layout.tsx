@@ -48,6 +48,16 @@ export const metadata = {
     title: 'SGI360 — Sistema de Gestión Integrado',
     description:
       'Centralizá calidad, seguridad y medio ambiente en una sola plataforma con IA integrada.',
+    images: [
+      { url: '/og-cover.jpg', width: 1200, height: 630, alt: 'SGI360 — Sistema de Gestión Integrado con core tools IATF, gestión de flota y riesgos' },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'SGI360 — Sistema de Gestión Integrado',
+    description:
+      'SGI/QHSE para ISO 9001, 14001, 45001 e IATF 16949: core tools, flota, riesgos e IA.',
+    images: ['/og-cover.jpg'],
   },
   robots: {
     index: true,

@@ -14,13 +14,21 @@ export const metadata: Metadata = {
     'mantenimiento de vehículos', 'software Chile', 'software Argentina',
   ],
   openGraph: {
-    title: 'SGI360 — Sistema de Gestión Integrado',
+    title: 'SGI360 — SGI con IATF 16949, Core Tools, Flota y Gestión de Riesgos',
     description:
-      'Centralizá ISO 9001, 14001 y 45001 en una sola plataforma con IA integrada: riesgos, auditorías, indicadores y documentación.',
+      'Plataforma SGI/QHSE para Latinoamérica: ISO 9001/14001/45001, IATF 16949 con core tools, gestión de flota, riesgos y resultados con IA.',
     url: 'https://logismart.ar/sgi360-landing',
     siteName: 'LOGISMART',
     locale: 'es_LA',
     type: 'website',
+    images: [
+      { url: 'https://logismart.ar/og-cover.jpg', width: 1200, height: 630, alt: 'SGI360 — SGI con core tools IATF 16949, flota y riesgos' },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'SGI360 — SGI con IATF 16949, Core Tools, Flota y Riesgos',
+    images: ['https://logismart.ar/og-cover.jpg'],
   },
   robots: { index: true, follow: true },
   alternates: { canonical: 'https://logismart.ar/sgi360-landing' },

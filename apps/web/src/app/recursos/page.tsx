@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight, BookOpen, Car, FileSpreadsheet } from 'lucide-react';
+import { ArrowRight, BookOpen, Car, FileSpreadsheet, Globe, Truck } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Recursos — Guías sobre SGI, ISO 9001, IATF 16949 y core tools | SGI360',
@@ -33,6 +33,22 @@ const ARTICULOS = [
     title: 'SGI con Excel vs software dedicado: comparación honesta',
     desc: 'Cuándo las planillas alcanzan, cuándo se convierten en riesgo y cómo medir el costo real de cada opción.',
     tiempo: '7 min',
+  },
+  {
+    href: '/recursos/sgi-transporte-logistica',
+    icon: Truck,
+    tag: 'Transporte',
+    title: 'SGI para transporte y logística: ISO, flota y seguridad en un solo sistema',
+    desc: 'Cómo gestionar calidad, mantenimiento de flota, control de conductores y resultados sin sistemas separados.',
+    tiempo: '8 min',
+  },
+  {
+    href: '/recursos/software-calidad-latam',
+    icon: Globe,
+    tag: 'Panorama',
+    title: 'Software de gestión de calidad en Latinoamérica: opciones y cómo compararlas',
+    desc: 'Suites enterprise, planillas, herramientas genéricas y SaaS regionales — qué evaluar según el tamaño de tu operación.',
+    tiempo: '9 min',
   },
 ];
 

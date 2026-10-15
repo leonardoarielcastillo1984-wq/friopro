@@ -6,11 +6,11 @@ Software Advice y directorios locales. Estas plataformas son de donde los LLMs
 
 ## Pasos por directorio
 
-1. **Capterra** (capterra.com.ar / capterra.cl / capterra.com): vendors.capterra.com → crear cuenta de vendor → "Add a product". Gratis.
-2. **G2** (g2.com): sell.g2.com → claim/create product profile. Gratis (el perfil básico).
-3. **GetApp / Software Advice**: pertenecen a Gartner Digital Markets igual que Capterra — un alta en Capterra suele propagarse, pero conviene verificar.
-4. **Product Hunt**: opcional, sirve para lanzamiento y backlinks.
-5. **Google Business Profile**: si no existe, crearlo — es gratis y alimenta el knowledge graph.
+1. **Capterra + GetApp + Software Advice** (un solo alta): https://www.gartner.com/en/digital-markets/claim-profile — portal unificado de Gartner Digital Markets. Primero buscar "SGI360" por si ya existe listado (reclamar es más rápido que crear). Usar email corporativo, no Gmail. Gratis.
+2. **G2** (g2.com): https://sell.g2.com → "List my product" o https://www.g2.com/products/new. Perfil básico gratis; verifican que representás al vendor.
+3. **Product Hunt**: https://www.producthunt.com/posts/new — opcional, sirve para lanzamiento y backlinks.
+4. **Google Business Profile**: https://business.google.com — si no existe, crearlo; alimenta el knowledge graph de Gemini.
+5. **SourceForge**: https://sourceforge.net/software/vendors/ — directorio de software con buen ranking SEO.
 
 ## Ficha corta (para campos "short description", ~150 caracteres)
 
@@ -71,6 +71,15 @@ Usar las imágenes ya generadas en `apps/web/public/help/` (39 capturas reales
 de la app) — son las mismas que sirven como screenshots de producto en los
 directorios. Elegir: dashboard, mapa de procesos, indicadores, no conformidades,
 documentos, flota.
+
+## Checklist de indexación y presencia (acciones manuales)
+
+1. **Bing Webmaster Tools** (bing.com/webmasters): registrar logismart.ar y enviar el sitemap. CRÍTICO para IA — ChatGPT Search, Copilot y muchos motores de respuesta usan el índice de Bing. Ya hay key IndexNow servida en /8f3a2b1c9d4e5f6a7b8c9d0e1f2a3b4c.txt para indexación instantánea vía api.indexnow.org.
+2. **Google Search Console** (search.google.com/search-console): registrar propiedad + enviar sitemap.xml + pedir indexación manual de /sgi360-landing y /recursos.
+3. **Wikidata**: crear item para SGI360/LOGISMART si hay suficiente cobertura pública (los LLMs consultan Wikidata para entidades). Requiere notabilidad — hacerlo después de las altas en directorios.
+4. **LinkedIn**: página de empresa de LOGISMART + posts semanales (ya hay pipeline de contenido en output/publicidad-linkedin/).
+5. **Crunchbase** (opcional): ficha de empresa — los LLMs la usan para "empresas de software argentinas".
+6. **Directorios locales**: Turnos/app de Argentina, directorios de PyMEs, cámaras de comercio con sección de software.
 
 ## Palabras clave que los directorios indexan (y los LLMs leen)
 

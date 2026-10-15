@@ -45,6 +45,14 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://logismart.ar/recursos/sgi-transporte-logistica</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://logismart.ar/recursos/software-calidad-latam</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://logismart.ar/login</loc>
     <priority>0.4</priority>
   </url>
