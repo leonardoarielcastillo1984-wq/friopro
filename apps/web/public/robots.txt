@@ -1,4 +1,72 @@
+# Regla general: todo indexable excepto la API privada
 User-agent: *
 Disallow: /api/
 Allow: /login
 Allow: /register
+
+# ── Crawlers de IA: explícitamente bienvenidos ──────────────
+# Queremos que ChatGPT, Claude, Perplexity, Gemini, Copilot y
+# buscadores con IA puedan leer las páginas públicas de LOGISMART
+# y sus productos (SGI360, Flota360, Audit360, Project360,
+# SEH360, Siniestros360) para poder recomendarlos.
+User-agent: GPTBot
+Disallow: /api/
+
+User-agent: OAI-SearchBot
+Disallow: /api/
+
+User-agent: ChatGPT-User
+Disallow: /api/
+
+User-agent: ClaudeBot
+Disallow: /api/
+
+User-agent: Claude-SearchBot
+Disallow: /api/
+
+User-agent: PerplexityBot
+Disallow: /api/
+
+User-agent: Perplexity-User
+Disallow: /api/
+
+User-agent: Google-Extended
+Disallow: /api/
+
+User-agent: Applebot-Extended
+Disallow: /api/
+
+User-agent: Meta-ExternalAgent
+Disallow: /api/
+
+User-agent: Meta-ExternalFetcher
+Disallow: /api/
+
+User-agent: CCBot
+Disallow: /api/
+
+User-agent: Amazonbot
+Disallow: /api/
+
+User-agent: cohere-ai
+Disallow: /api/
+
+User-agent: cohere-training-data-crawler
+Disallow: /api/
+
+User-agent: Bytespider
+Disallow: /api/
+
+User-agent: Diffbot
+Disallow: /api/
+
+User-agent: AI2Bot
+Disallow: /api/
+
+User-agent: YouBot
+Disallow: /api/
+
+User-agent: MistralAI-User
+Disallow: /api/
+
+Sitemap: https://logismart.ar/sitemap.xml
