@@ -967,6 +967,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       tiposCambio: (conf.tiposCambio as any) || {},
       periodosCerrados: (conf.periodosCerrados as string[] | undefined) || [],
       informeEmail: (conf.informeEmail as any) || null,
+      // Balance anual: patrimonio compuesto, PPM y provisión laboral.
+      patrimonio: (conf.patrimonio as any) || {},
+      ppmTasa: conf.ppmTasa != null ? Number(conf.ppmTasa) : null,
+      provisionLaboral: conf.provisionLaboral != null ? Number(conf.provisionLaboral) : null,
     };
   };
 
@@ -1028,11 +1032,19 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         activo: z.boolean().optional(),
         emails: z.array(z.string().email()).max(10).optional(),
       }).nullable().optional(),
+      // Balance anual: patrimonio compuesto, tasa PPM y provisión laboral.
+      patrimonio: z.object({
+        capital: z.number().optional(),
+        utilidadesRetenidas: z.number().optional(),
+        retiros: z.number().optional(),
+      }).optional(),
+      ppmTasa: z.number().min(0).max(0.2).nullable().optional(),
+      provisionLaboral: z.number().min(0).nullable().optional(),
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
     const data: any = {};
     if (body.data.monedaDefault !== undefined) data.monedaResultados = body.data.monedaDefault;
-    if (body.data.saldoInicial || body.data.claseCosto || body.data.alertas || body.data.ivaTasa || body.data.presupuesto || body.data.metas || body.data.tiposCambio || body.data.periodosCerrados || body.data.informeEmail !== undefined) {
+    if (body.data.saldoInicial || body.data.claseCosto || body.data.alertas || body.data.ivaTasa || body.data.presupuesto || body.data.metas || body.data.tiposCambio || body.data.periodosCerrados || body.data.informeEmail !== undefined || body.data.patrimonio || body.data.ppmTasa !== undefined || body.data.provisionLaboral !== undefined) {
       const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } });
       const conf = ((t?.resultadosConfig as any) || {}) as any;
       if (body.data.saldoInicial) conf.saldoInicial = body.data.saldoInicial;
@@ -1059,6 +1071,13 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       if (body.data.informeEmail !== undefined) {
         if (body.data.informeEmail === null) delete conf.informeEmail;
         else conf.informeEmail = { ...(conf.informeEmail || {}), ...body.data.informeEmail };
+      }
+      if (body.data.patrimonio) conf.patrimonio = { ...(conf.patrimonio || {}), ...body.data.patrimonio };
+      if (body.data.ppmTasa !== undefined) {
+        if (body.data.ppmTasa === null) delete conf.ppmTasa; else conf.ppmTasa = body.data.ppmTasa;
+      }
+      if (body.data.provisionLaboral !== undefined) {
+        if (body.data.provisionLaboral === null) delete conf.provisionLaboral; else conf.provisionLaboral = body.data.provisionLaboral;
       }
       data.resultadosConfig = conf;
     }
@@ -2246,9 +2265,14 @@ export default async function finanzasRoutes(app: FastifyInstance) {
 
   // ═══════════════════════════════════════════════════════════════
   // BALANCE — estado de situación patrimonial estimado a fin de mes.
-  // No es contable formal: estima activo (caja + CxC + flota a valor de
-  // compra), pasivo (CxP + IVA a pagar estimado) y patrimonio por
-  // diferencia. Útil como brújula, con supuestos explícitos.
+  // Mix gerencial/contable: activo (caja + CxC + remanente IVA + PPM +
+  // flota depreciada), pasivo corriente (CxP + IVA + provisión laboral +
+  // deuda financiera <12m) y no corriente (cuotas de leasing/préstamo
+  // de flota >12m), patrimonio compuesto (capital + utilidades +
+  // resultado del ejercicio − retiros) cruzado contra el implícito
+  // (activo − pasivo) como control de calidad del dato.
+  // No es contable formal: sigue siendo una brújula con supuestos
+  // explícitos, pensada para el ejercicio anual al 31/12.
   // ═══════════════════════════════════════════════════════════════
   app.get('/balance', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
@@ -2274,9 +2298,9 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       p.flotaIngreso.findMany({ where: { tenantId, ...(moneda ? { moneda } : {}), cobradoAt: { gte: inicioAnio, lt: corte } }, select: { monto: true } }).catch(() => [] as any[]),
       p.finanzaGasto.findMany({ where: { tenantId, deletedAt: null, esRecurrente: false, esAmortizable: false, fecha: { gte: inicioAnio, lt: corte }, ...(moneda ? { moneda } : {}), pagos: { none: {} } }, select: { total: true, tipoComprobante: true } }).catch(() => [] as any[]),
       p.flotaFactura.findMany({ where: { tenantId, tipoComprobante: { notIn: ['PRESUPUESTO', 'NOTA_CREDITO'] }, ...(moneda ? { moneda } : {}), pagadaAt: { gte: inicioAnio, lt: corte } }, select: { total: true } }).catch(() => [] as any[]),
-      p.vehiculo.findMany({ where: { tenantId, deletedAt: null }, select: { precioCompra: true, dominio: true, tipo: true, anio: true } }).catch(() => [] as any[]),
+      p.vehiculo.findMany({ where: { tenantId, deletedAt: null }, select: { precioCompra: true, dominio: true, tipo: true, anio: true, cuotaMensual: true, cuotasTotales: true, primerCuotaAt: true, anticipoCompra: true } }).catch(() => []),
       p.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } }).catch(() => null),
-      p.finanzaFactura.findMany({ where: { tenantId, deletedAt: null, fechaEmision: { gte: new Date(Date.UTC(anio, mes - 1, 1)), lt: corte }, ...(moneda ? { moneda } : {}) }, select: { iva: true, tipoComprobante: true } }).catch(() => [] as any[]),
+      p.finanzaFactura.findMany({ where: { tenantId, deletedAt: null, fechaEmision: { gte: inicioAnio, lt: corte } }, select: { iva: true, tipoComprobante: true, fechaEmision: true } }).catch(() => []),
     ]);
 
     // ── CxC al corte: total emitido − cobrado hasta el corte.
@@ -2314,43 +2338,110 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       flotaDetalle.push({ dominio: v.dominio, tipo: v.tipo, anio: v.anio, precioCompra: Math.round(compra), valorEstimado: valor });
     }
 
-    // ── IVA a pagar estimado del mes (débito − crédito evidenciado).
-    const lineasMes = await recolectarLineas(tenantId, new Date(Date.UTC(anio, mes - 1, 1)), corte, moneda, null).catch(() => [] as any[]);
-    const ivaDebito = facturasMes.reduce((s: number, f: any) => s + (f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1) * num(f.iva), 0);
-    const ivaCredito = lineasMes.filter(l => num(l.iva) > 0 && l.ivaRecuperable !== false).reduce((s, l) => s + num(l.iva), 0);
-    const ivaPagar = Math.max(0, ivaDebito - ivaCredito);
+    // ── IVA: remanente de crédito fiscal acumulado mes a mes (regla
+    // chilena: el crédito que excede el débito arrastra al mes siguiente).
+    // Una sola recolectada anual; las líneas traen su mes en `fecha`.
+    const lineasAnio = await recolectarLineas(tenantId, inicioAnio, corte, moneda, null).catch(() => [] as any[]);
+    const debitoPorMes = new Map<number, number>(), creditoPorMes = new Map<number, number>();
+    for (const f of facturasMes) {
+      const m = new Date(f.fechaEmision).getUTCMonth() + 1;
+      debitoPorMes.set(m, (debitoPorMes.get(m) || 0) + (f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1) * num(f.iva));
+    }
+    let ventasNetasYtd = 0, resultadoEjercicio = 0;
+    for (const l of lineasAnio) {
+      const m = new Date(l.fecha).getUTCMonth() + 1;
+      if (num(l.iva) > 0 && l.ivaRecuperable !== false) creditoPorMes.set(m, (creditoPorMes.get(m) || 0) + num(l.iva));
+      if (['FACTURADO', 'INGRESO_OPERATIVO'].includes(l.grupo)) ventasNetasYtd += num(l.importe);
+      else if (['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo)) ventasNetasYtd -= 0;
+      resultadoEjercicio += ['FACTURADO', 'INGRESO_OPERATIVO'].includes(l.grupo) ? num(l.importe) : ['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo) ? -num(l.importe) : 0;
+    }
+    let remanente = 0, ivaPagar = 0;
+    for (let m = 1; m <= mes; m++) {
+      const neto = (debitoPorMes.get(m) || 0) - (creditoPorMes.get(m) || 0) - remanente;
+      if (neto > 0) { ivaPagar = neto; remanente = 0; }
+      else { remanente += -neto; ivaPagar = 0; }
+    }
+    // El remanente es un ACTIVO (crédito fiscal a recuperar en F29 futuros);
+    // el débito neto del último mes es el IVA a pagar pendiente.
 
-    const activoCorriente = caja + cxc;
+    // ── PPM anticipados (activo: pagos provisionales mensuales a cuenta
+    // del impuesto anual). ppmTasa configurable (ej. 0.003 = 0,3 %).
+    const ppmTasa = num(conf?.ppmTasa);
+    const ppmAnticipos = ppmTasa > 0 ? Math.round(ventasNetasYtd * ppmTasa) : 0;
+
+    // ── Provisión laboral: sueldos + leyes sociales devengados del mes,
+    // aún no pagados al corte (configuración plana, típica pyme).
+    const provisionLaboral = Math.max(0, num(conf?.provisionLaboral));
+
+    // ── Deuda financiera de flota (leasing/préstamo): cuotas restantes a
+    // partir del corte, partidas en <12m (corriente) y >12m (no corriente).
+    // Las cuotas ya vencidas/pagadas no son pasivo; las futuras sí.
+    let finCorriente = 0, finNoCorriente = 0;
+    const finDetalle: any[] = [];
+    for (const v of vehiculos) {
+      const cuota = num(v.cuotaMensual), tot = Math.floor(num(v.cuotasTotales));
+      if (cuota <= 0 || tot <= 0 || !v.primerCuotaAt) continue;
+      const t0 = new Date(v.primerCuotaAt).getTime();
+      const vencidas = Math.max(0, Math.min(tot, Math.floor((corte.getTime() - t0) / (30.44 * 86400000))));
+      const restantes = tot - vencidas;
+      if (restantes <= 0) continue;
+      const cor = Math.min(12, restantes) * cuota;
+      const ncor = Math.max(0, restantes - 12) * cuota;
+      finCorriente += cor; finNoCorriente += ncor;
+      finDetalle.push({ dominio: v.dominio, cuotaMensual: Math.round(cuota), cuotasRestantes: restantes, deudaCorriente: Math.round(cor), deudaNoCorriente: Math.round(ncor) });
+    }
+
+    // ── Patrimonio compuesto: capital + utilidades retenidas + resultado
+    // del ejercicio (devengado YTD) − retiros. Se cruza con el implícito
+    // (activo − pasivo): la diferencia marca datos faltantes.
+    const pat = conf?.patrimonio || {};
+    const capital = num(pat.capital), utilidades = num(pat.utilidadesRetenidas), retiros = num(pat.retiros);
+    const patrimonioCompuesto = capital + utilidades + resultadoEjercicio - retiros;
+
+    const activoCorriente = caja + cxc + remanente + ppmAnticipos;
     const activoNoCorriente = flotaValor;
     const activo = activoCorriente + activoNoCorriente;
-    const pasivoCorriente = cxpSaldo + ivaPagar;
-    const pasivo = pasivoCorriente;
-    const patrimonio = activo - pasivo;
+    const pasivoCorriente = cxpSaldo + ivaPagar + provisionLaboral + finCorriente;
+    const pasivoNoCorriente = finNoCorriente;
+    const pasivo = pasivoCorriente + pasivoNoCorriente;
+    const patrimonioImplicito = activo - pasivo;
 
     return reply.send({
       anio, mes, moneda, alCorteDe: corte.toISOString().slice(0, 10),
       activo: {
-        corriente: { caja: Math.round(caja), cuentasPorCobrar: Math.round(cxc), total: Math.round(activoCorriente) },
+        corriente: { caja: Math.round(caja), cuentasPorCobrar: Math.round(cxc), remanenteIva: Math.round(remanente), ppmAnticipos, total: Math.round(activoCorriente) },
         noCorriente: { flotaValorEstimado: Math.round(flotaValor), total: Math.round(activoNoCorriente), unidades: vehiculos.length },
         total: Math.round(activo),
       },
       pasivo: {
-        corriente: { cuentasPorPagar: Math.round(cxpSaldo), cxpVencido: Math.round(cxpVencido), ivaAPagarEstimado: Math.round(ivaPagar), total: Math.round(pasivoCorriente) },
+        corriente: { cuentasPorPagar: Math.round(cxpSaldo), cxpVencido: Math.round(cxpVencido), ivaAPagarEstimado: Math.round(ivaPagar), provisionLaboral: Math.round(provisionLaboral), financiacionCorriente: Math.round(finCorriente), total: Math.round(pasivoCorriente) },
+        noCorriente: { financiacionFlota: Math.round(finNoCorriente), total: Math.round(pasivoNoCorriente) },
         total: Math.round(pasivo),
       },
-      patrimonio: { estimado: Math.round(patrimonio), nota: 'Patrimonio = activo − pasivo. Es una estimación gerencial, no el balance contable.' },
+      patrimonio: {
+        capital: Math.round(capital), utilidadesRetenidas: Math.round(utilidades),
+        resultadoEjercicio: Math.round(resultadoEjercicio), retiros: Math.round(retiros),
+        compuesto: Math.round(patrimonioCompuesto), implicito: Math.round(patrimonioImplicito),
+        diferencia: Math.round(patrimonioImplicito - patrimonioCompuesto),
+        nota: 'Compuesto = capital + utilidades + resultado del ejercicio − retiros (configurado). Implícito = activo − pasivo. Una diferencia grande indica movimientos no registrados en el sistema.',
+      },
       ratios: {
         liquidez: pasivoCorriente > 0 ? Math.round((activoCorriente / pasivoCorriente) * 100) / 100 : null,
         endeudamiento: activo > 0 ? Math.round((pasivo / activo) * 1000) / 10 : null,
         cxcSobreVentas: null as number | null,
       },
       flotaDetalle: flotaDetalle.sort((a, b) => b.valorEstimado - a.valorEstimado).slice(0, 30),
+      financiacionDetalle: finDetalle.sort((a, b) => (b.deudaCorriente + b.deudaNoCorriente) - (a.deudaCorriente + a.deudaNoCorriente)),
       supuestos: [
         'Caja = saldo inicial configurado + cobros − pagos del año hasta el corte.',
         'CxC = facturas emitidas menos cobros registrados hasta el corte.',
-        'CxP = saldo actual de cuentas por pagar (aproxima pasivo corriente).',
+        'CxP = saldo actual de cuentas por pagar.',
         'Flota = precio de compra con depreciación lineal a 10 años (valor residual mínimo 10 %).',
-        'IVA a pagar = débito del mes − crédito evidenciado del mes (sin remanente ni PPM).',
+        'IVA: remanente de crédito fiscal arrastrado mes a mes; el débito neto del último mes es el F29 a pagar.',
+        'PPM = tasa configurada × ventas netas del año (anticipo de impuesto anual).',
+        'Deuda financiera = cuotas de leasing/préstamo de flota restantes al corte (<12m corriente, >12m no corriente).',
+        'Provisión laboral = monto fijo configurado (sueldos + leyes sociales del mes por pagar).',
+        'Patrimonio compuesto cruza contra el implícito: diferencia = datos no registrados.',
       ],
       actualizadoEn: await ultimaAct(tenantId, moneda),
     });

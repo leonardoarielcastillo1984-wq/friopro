@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { X, Loader2, Plus, Trash2, Check, Target, ArrowLeftRight, Lock, Mail, Info } from 'lucide-react';
+import { X, Loader2, Plus, Trash2, Check, Target, ArrowLeftRight, Lock, Mail, Info, Landmark } from 'lucide-react';
 import { MESES } from './fmt';
 import { useAsistente } from './useAsistente';
 
@@ -19,6 +19,9 @@ type Config = {
   informeEmail: { activo?: boolean; emails?: string[]; ultimoEnvio?: string } | null;
   presupuesto: Record<string, number>;
   alertas: { atencion?: number; critica?: number };
+  patrimonio: { capital?: number; utilidadesRetenidas?: number; retiros?: number };
+  ppmTasa: number | null;
+  provisionLaboral: number | null;
 };
 
 export default function ConfigResultados({ monedas, canEdit, onClose }: { monedas: string[]; canEdit: boolean; onClose: () => void }) {
@@ -95,6 +98,18 @@ export default function ConfigResultados({ monedas, canEdit, onClose }: { moneda
   useEffect(() => {
     if (cfg) { setInfActivo(!!cfg.informeEmail?.activo); setInfEmails((cfg.informeEmail?.emails || []).join(', ')); }
   }, [cfg?.informeEmail]);
+
+  // ── Patrimonio e impuestos (balance anual) ──
+  const [pat, setPat] = useState({ capital: '', utilidadesRetenidas: '', retiros: '', ppmTasa: '', provisionLaboral: '' });
+  useEffect(() => {
+    if (cfg) setPat({
+      capital: cfg.patrimonio?.capital != null ? String(cfg.patrimonio.capital) : '',
+      utilidadesRetenidas: cfg.patrimonio?.utilidadesRetenidas != null ? String(cfg.patrimonio.utilidadesRetenidas) : '',
+      retiros: cfg.patrimonio?.retiros != null ? String(cfg.patrimonio.retiros) : '',
+      ppmTasa: cfg.ppmTasa != null ? String(cfg.ppmTasa * 100) : '',
+      provisionLaboral: cfg.provisionLaboral != null ? String(cfg.provisionLaboral) : '',
+    });
+  }, [cfg?.patrimonio, cfg?.ppmTasa, cfg?.provisionLaboral]);
 
   const monedasExtra = monedas.filter(m => m !== (cfg?.monedaDefault || cfg?.monedaLocal || ''));
   const selCls = 'rounded-lg border border-neutral-200 px-2 py-1 text-xs';
@@ -191,6 +206,38 @@ export default function ConfigResultados({ monedas, canEdit, onClose }: { moneda
                   {saving?.startsWith('pc-') ? <Loader2 size={12} className="animate-spin" /> : <Lock size={11} />}Cerrar período
                 </button>
               </div>
+            </section>
+
+            {/* ═══ Patrimonio e impuestos (balance anual) ═══ */}
+            <section className="rounded-xl border border-neutral-200 p-4" data-explica="balance-patrimonio" data-explica-titulo="Patrimonio e impuestos del ejercicio">
+              <h3 className="mb-1 flex items-center gap-1.5 text-sm font-semibold"><Landmark size={14} className="text-indigo-600" />Patrimonio e impuestos {ok === 'pat' && <Check size={13} className="text-green-600" />}</h3>
+              <p className="mb-3 text-[11px] text-neutral-400">
+                Composición del patrimonio para el Balance: <b>capital + utilidades retenidas + resultado del ejercicio − retiros</b>. El resultado se calcula solo; el resto se carga acá. PPM y provisión laboral también alimentan el balance.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  ['capital', 'Capital aportado'], ['utilidadesRetenidas', 'Utilidades retenidas'],
+                  ['retiros', 'Retiros del año'], ['provisionLaboral', 'Sueldos + leyes por pagar (mes)'],
+                ].map(([k, lbl]) => (
+                  <label key={k} className="block">
+                    <span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-neutral-500">{lbl}</span>
+                    <input type="number" value={(pat as any)[k]} onChange={e => setPat(v => ({ ...v, [k]: e.target.value }))} className={inputCls} disabled={!canEdit} placeholder="0" />
+                  </label>
+                ))}
+                <label className="block col-span-2">
+                  <span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-neutral-500">Tasa PPM (% sobre ventas netas — típico 0,1–1 %)</span>
+                  <input type="number" step="0.01" value={pat.ppmTasa} onChange={e => setPat(v => ({ ...v, ppmTasa: e.target.value }))} className={inputCls} disabled={!canEdit} placeholder="0.3" />
+                </label>
+              </div>
+              <button onClick={() => put({
+                patrimonio: { capital: numOrNull(pat.capital) ?? 0, utilidadesRetenidas: numOrNull(pat.utilidadesRetenidas) ?? 0, retiros: numOrNull(pat.retiros) ?? 0 },
+                ppmTasa: pat.ppmTasa.trim() === '' ? null : Number(pat.ppmTasa) / 100,
+                provisionLaboral: numOrNull(pat.provisionLaboral),
+              }, 'pat')}
+                disabled={!canEdit || saving === 'pat'}
+                className="mt-3 flex items-center gap-1 rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-800 disabled:opacity-50">
+                {saving === 'pat' ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}Guardar patrimonio e impuestos
+              </button>
             </section>
 
             {/* ═══ Informe por email ═══ */}
