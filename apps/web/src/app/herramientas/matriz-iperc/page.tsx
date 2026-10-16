@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { LeadMagnetLanding } from '@/components/marketing/LeadMagnetLanding';
-import { ShieldAlert } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Plantilla Matriz IPERC gratis (Excel) — ISO 45001 | SGI360',
@@ -20,7 +19,7 @@ export default function MatrizIpercPage() {
         recursoTitulo: 'Plantilla Matriz IPERC (Excel)',
         fuente: 'matriz-iperc',
         downloadUrl: '/descargas/plantilla-matriz-iperc.xlsx',
-        icono: ShieldAlert,
+        icono: 'shield',
         incluye: [
           'Identificación de peligros por tarea/proceso con clasificación de tipo',
           'Evaluación probabilidad × impacto (escala 1-5) con nivel de riesgo automático',

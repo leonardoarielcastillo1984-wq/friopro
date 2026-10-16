@@ -1,12 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { CheckCircle2, MessageCircle, Shield, Zap, type LucideIcon } from 'lucide-react';
+import { CheckCircle2, FileText, Lock, MessageCircle, Shield, ShieldAlert, Zap } from 'lucide-react';
 import { BUSINESS } from '@/lib/legal';
 import { LeadCapture } from '@/components/marketing/LeadCapture';
 
 export interface LeadMagnetLandingData {
-  norma: string;            // ej: 'ISO 45001' o 'ISO 22301' — se usa en el texto del WhatsApp
+  norma: string;            // ej: 'ISO 45001' — se usa en el texto del WhatsApp
   tag: string;              // badge superior
   h1: string;
   sub: string;
@@ -15,11 +15,14 @@ export interface LeadMagnetLandingData {
   fuente: string;           // source tag para /leads
   downloadUrl?: string;     // link directo post-form
   cierre?: string;
-  icono: LucideIcon;
+  /** key del icono (las páginas son Server Components — no pueden pasar funciones a un client component) */
+  icono: 'shield' | 'doc' | 'lock';
 }
 
+const ICONOS = { shield: ShieldAlert, doc: FileText, lock: Lock };
+
 export function LeadMagnetLanding({ d }: { d: LeadMagnetLandingData }) {
-  const Icono = d.icono;
+  const Icono = ICONOS[d.icono];
   const waLink = `https://wa.me/${BUSINESS.whatsappIntl}?text=${encodeURIComponent(
     `Hola, descargué ${d.recursoTitulo} y quiero ver cómo SGI360 lo gestiona para ${d.norma}.`,
   )}`;

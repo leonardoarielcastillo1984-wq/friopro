@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { LeadMagnetLanding } from '@/components/marketing/LeadMagnetLanding';
-import { Lock } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'SoA ISO 27001 gratis (Excel) — Declaración de Aplicabilidad | SGI360',
@@ -20,7 +19,7 @@ export default function SoaIso27001Page() {
         recursoTitulo: 'SoA ISO 27001:2022 — Declaración de Aplicabilidad (Excel)',
         fuente: 'soa-iso-27001',
         downloadUrl: '/descargas/soa-iso-27001.xlsx',
-        icono: Lock,
+        icono: 'lock',
         incluye: [
           'Los 93 controles del Anexo A de ISO/IEC 27001:2022 ya listados',
           'Organizados por tema: organizacionales (37), personas (8), físicos (14), tecnológicos (34)',

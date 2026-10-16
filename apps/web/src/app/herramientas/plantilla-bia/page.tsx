@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { LeadMagnetLanding } from '@/components/marketing/LeadMagnetLanding';
-import { FileText } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Plantilla BIA gratis (Excel) — Análisis de Impacto al Negocio ISO 22301 | SGI360',
@@ -20,7 +19,7 @@ export default function PlantillaBiaPage() {
         recursoTitulo: 'Plantilla BIA — Análisis de Impacto al Negocio (Excel)',
         fuente: 'plantilla-bia',
         downloadUrl: '/descargas/plantilla-bia.xlsx',
-        icono: FileText,
+        icono: 'doc',
         incluye: [
           'Listado de procesos con responsable y criticidad',
           'Impacto financiero, operativo, legal y reputacional (escala 1-5)',
