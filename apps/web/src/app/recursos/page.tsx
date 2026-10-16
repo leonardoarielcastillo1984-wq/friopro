@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight, BookOpen, Car, FileSpreadsheet, Globe, HardHat, Landmark, Truck } from 'lucide-react';
+import { ArrowRight, BookOpen, Car, FileSpreadsheet, Globe, HardHat, Landmark, Scale, Truck } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Recursos — Guías sobre SGI, ISO 9001, IATF 16949 y core tools | SGI360',
@@ -65,6 +65,14 @@ const ARTICULOS = [
     title: 'SG-SST en Colombia: cumplir la Resolución 0312 con software',
     desc: 'Estándares mínimos del SG-SST, matriz IPVR, capacitaciones y evidencia para la ARL y el Ministerio de Trabajo.',
     tiempo: '8 min',
+  },
+  {
+    href: '/recursos/alternativas-isotools',
+    icon: Scale,
+    tag: 'Comparativa',
+    title: 'Alternativas a Isotools: cómo comparar software de gestión ISO',
+    desc: 'Precio por empresa vs por usuario, IATF con core tools, flota, IA real y soporte regional — la guía para evaluar.',
+    tiempo: '9 min',
   },
 ];
 

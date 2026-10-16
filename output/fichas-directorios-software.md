@@ -101,6 +101,30 @@ Directorios y canales por país:
 - **Perú/Ecuador/Bolivia/Paraguay/Uruguay**: el mismo portal Gartner los cubre;
   términos "SST", "ISO 9001", "gestión de calidad".
 
+## Más canales gratuitos de descubrimiento
+
+### Directorios de "alternativas" (alto valor — las IA los consultan para recomendar)
+1. **AlternativeTo.net** — alta gratuita. Las IA lo usan para "alternativas a X". Listar
+   SGI360 como alternativa a Isotools, SAP, software genérico de calidad.
+2. **SaaSHub.com** — alta gratuita, mismo efecto que AlternativeTo.
+3. **Slant.co** — comparativas "best software for X" que leen los LLMs.
+4. **Trustpilot / Crozdesk** — perfil de empresa con reviews (aunque haya pocas, la ficha existe).
+
+### Perfiles de empresa (gratis, los LLMs los leen como fuente de entidad)
+5. **Google Business Profile** — ficha de LOGISMART (local pack + Knowledge Panel).
+   business.google.com — verificación por video/teléfono.
+6. **LinkedIn empresa** — ya recomendado; las IA citan perfiles de LinkedIn.
+7. **Crunchbase** — ficha de empresa (recomendado post-Gartner).
+8. **Product Hunt** — lanzamiento cuando haya momentum (trae picos + backlinks).
+
+### Comunidades donde responder (tráfico cualificado + citas por IA)
+9. **Reddit** — r/sysadmin, r/smallbusiness, comunidades latam de calidad; responder
+   preguntas de "software ISO 9001" sin spam.
+10. **Quora/Foros de calidad** (elsua.com, foro Calidad, grupos LinkedIn de ISO) —
+    responder "qué software usan para..." citando experiencia.
+11. **Microsoft Store (PWA)** — la app ya tiene manifest.json; publicarla como PWA en
+    Microsoft Store es gratis y da un canal de descubrimiento más.
+
 ## Palabras clave que los directorios indexan (y los LLMs leen)
 
 software ISO 9001, sistema de gestión integrado, QHSE, software de calidad,
