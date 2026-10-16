@@ -58,7 +58,7 @@ export default function SGI360Landing() {
             moduleKey="sgi360"
             title="La calidad no es un departamento, es una cultura"
             subtitle="Sistema de Gestión Integrado"
-            description="Centralizá ISO 9001, 14001 y 45001 en una sola plataforma. SGI360 te da control total sobre riesgos, auditorías, indicadores y documentación con inteligencia artificial integrada."
+            description="Centralizá ISO 9001, 14001, 45001, 27001, 22301, 28000, 9004 e IATF 16949 en una sola plataforma. Aplicá el pack de la norma y SGI360 genera cláusulas, mapa de procesos, objetivos y riesgos automáticamente."
             badges={[]}
             colorFrom="from-green-600"
             colorTo="to-emerald-500"
@@ -107,7 +107,7 @@ export default function SGI360Landing() {
             {[
               {
                 q: '¿Qué normas cubre SGI360?',
-                a: 'SGI360 soporta ISO 9001 (calidad), ISO 14001 (ambiente) e ISO 45001 (seguridad y salud laboral), además de IATF 16949 para la industria automotriz — incluyendo las core tools: APQP, PPAP, FMEA/AMFE, MSA, SPC y plan de control.',
+                a: 'SGI360 incluye packs precargados de ISO 9001 (calidad), ISO 14001 (ambiente), ISO 45001 (seguridad y salud laboral), ISO 27001 (seguridad de la información), ISO 22301 (continuidad del negocio), ISO 28000 (seguridad en la cadena de suministro), ISO 9004 (excelencia) e IATF 16949 automotriz con core tools (APQP, PPAP, FMEA/AMFE, MSA, SPC y plan de control). Al aplicar un pack, la plataforma genera automáticamente las cláusulas, el mapa de procesos, los objetivos y los riesgos sugeridos.',
               },
               {
                 q: '¿Sirve para una pyme o es solo para empresas grandes?',
@@ -146,7 +146,7 @@ export default function SGI360Landing() {
       <section className="py-24 bg-gradient-to-r from-green-600 to-emerald-500">
         <div className="max-w-4xl mx-auto px-6 text-center">
           <h2 className="text-4xl font-bold text-white">¿Listo para gestionar la calidad sin fricción?</h2>
-          <p className="mt-4 text-green-100 text-lg">Implementá tu SGI digital en días. Cumplí ISO 9001, 14001 y 45001 con trazabilidad total.</p>
+          <p className="mt-4 text-green-100 text-lg">Implementá tu SGI digital en días. Aplicá el pack de tu norma y arrancá con cláusulas, procesos, objetivos y riesgos ya armados.</p>
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link href="/dashboard" className="px-8 py-4 bg-white text-green-700 rounded-2xl font-bold text-sm hover:shadow-xl transition-all">
               Ingresar a SGI360

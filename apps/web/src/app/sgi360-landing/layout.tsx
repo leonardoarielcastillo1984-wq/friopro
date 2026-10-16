@@ -2,21 +2,22 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
 export const metadata: Metadata = {
-  title: { absolute: 'SGI360 — SGI con IATF 16949, Core Tools, Flota y Gestión de Riesgos' },
+  title: { absolute: 'SGI360 — SGI con 8 normas ISO precargadas, IATF 16949, Core Tools y Flota' },
   description:
-    'SGI360 es la plataforma de gestión integrada (SGI/QHSE) de LOGISMART para Latinoamérica: ISO 9001, 14001, 45001 e IATF 16949 con core tools automotrices (APQP, PPAP, FMEA, MSA, SPC), gestión de riesgos, auditorías, documentos controlados, gestión de flota y resultados de negocio con IA integrada.',
+    'SGI360 es la plataforma de gestión integrada (SGI/QHSE) de LOGISMART para Latinoamérica: packs precargados de ISO 9001, 14001, 45001, 27001, 22301, 28000, 9004 e IATF 16949 con core tools (APQP, PPAP, FMEA, MSA, SPC). Aplicá la norma y se generan cláusulas, mapa de procesos, objetivos y riesgos automáticamente.',
   keywords: [
     'software ISO 9001', 'sistema de gestión integrado', 'SGI', 'QHSE',
     'software de calidad', 'auditorías internas', 'no conformidades',
     'gestión de riesgos', 'documentos controlados', 'indicadores KPI',
-    'ISO 14001', 'ISO 45001', 'IATF 16949', 'core tools', 'APQP', 'PPAP',
-    'FMEA', 'AMFE', 'MSA', 'SPC', 'plan de control', 'gestión de flota',
+    'ISO 14001', 'ISO 45001', 'ISO 27001', 'ISO 22301', 'ISO 28000',
+    'IATF 16949', 'core tools', 'APQP', 'PPAP', 'FMEA', 'AMFE', 'MSA',
+    'SPC', 'plan de control', 'gestión de flota', 'software ISO 27001',
     'mantenimiento de vehículos', 'software Chile', 'software Argentina',
   ],
   openGraph: {
-    title: 'SGI360 — SGI con IATF 16949, Core Tools, Flota y Gestión de Riesgos',
+    title: 'SGI360 — SGI con 8 normas ISO precargadas, IATF 16949 y Flota',
     description:
-      'Plataforma SGI/QHSE para Latinoamérica: ISO 9001/14001/45001, IATF 16949 con core tools, gestión de flota, riesgos y resultados con IA.',
+      'Plataforma SGI/QHSE para Latinoamérica: packs de ISO 9001/14001/45001/27001/22301/28000/9004 e IATF 16949 con core tools. Aplicá la norma y se generan cláusulas, procesos, objetivos y riesgos.',
     url: 'https://logismart.ar/sgi360-landing',
     siteName: 'LOGISMART',
     locale: 'es_LA',
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'SGI360 — SGI con IATF 16949, Core Tools, Flota y Riesgos',
+    title: 'SGI360 — SGI con 8 normas ISO precargadas, IATF 16949 y Flota',
     images: ['https://logismart.ar/og-cover.jpg'],
   },
   robots: { index: true, follow: true },
@@ -50,7 +51,7 @@ const jsonLd = {
       ],
       url: 'https://logismart.ar/sgi360-landing',
       description:
-        'Sistema de Gestión Integrado (SGI/QHSE) en la nube para ISO 9001, ISO 14001, ISO 45001 e IATF 16949: core tools automotrices (APQP, PPAP, FMEA/AMFE, MSA, SPC, plan de control), gestión de riesgos, auditorías internas, no conformidades y CAPA, documentos controlados, indicadores, cumplimiento normativo, gestión de flota y resultados financieros con IA integrada.',
+        'Sistema de Gestión Integrado (SGI/QHSE) en la nube con packs precargados de ISO 9001, ISO 14001, ISO 45001, ISO 27001, ISO 22301, ISO 28000, ISO 9004 e IATF 16949: al aplicar una norma se generan automáticamente las cláusulas, el mapa de procesos, los objetivos y los riesgos sugeridos. Además: core tools automotrices (APQP, PPAP, FMEA/AMFE, MSA, SPC, plan de control), auditorías, CAPA, documentos controlados, indicadores, gestión de flota y resultados financieros con IA integrada.',
       featureList: [
         'Core tools IATF 16949: APQP, PPAP, FMEA/AMFE, MSA, SPC y Plan de Control',
         'Gestión de riesgos y oportunidades (matriz, IPERC, ambientales)',
@@ -61,6 +62,7 @@ const jsonLd = {
         'Indicadores de desempeño con metas y alertas',
         'Mapa de procesos interactivo con subprocesos',
         'Capacitaciones y competencias de RRHH',
+        'Packs normativos precargados: 8 normas con cláusulas, procesos, objetivos y riesgos autogenerados',
         'Cumplimiento normativo y matriz legal',
         'Resultados de negocio con importación del SII (Chile)',
         'Inteligencia artificial integrada',
@@ -95,7 +97,7 @@ const jsonLd = {
           name: '¿Qué normas cubre SGI360?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'SGI360 soporta ISO 9001 (calidad), ISO 14001 (ambiente) e ISO 45001 (seguridad y salud laboral), además de IATF 16949 para la industria automotriz — incluyendo las core tools: APQP, PPAP, FMEA/AMFE, MSA, SPC y plan de control.',
+            text: 'SGI360 incluye packs precargados de ISO 9001, ISO 14001, ISO 45001, ISO 27001, ISO 22301, ISO 28000, ISO 9004 e IATF 16949 con core tools (APQP, PPAP, FMEA/AMFE, MSA, SPC y plan de control). Al aplicar un pack, la plataforma genera automáticamente cláusulas, mapa de procesos, objetivos y riesgos sugeridos.',
           },
         },
         {
