@@ -1591,7 +1591,15 @@ export default function MapaProcesosContent() {
         {!selected ? (
           <div className="flex flex-col items-center justify-center py-20 text-neutral-400">
             <Layers className="h-10 w-10 mb-3 opacity-30" />
-            <p className="text-sm">Seleccioná o creá un mapa de procesos</p>
+            <p className="text-sm mb-4">Seleccioná o creá un mapa de procesos</p>
+            <div className="flex items-center gap-2" data-pdf-ignore="true">
+              <button onClick={() => setShowWizard(true)} className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700">
+                <Layers className="h-4 w-4" /> Crear desde plantilla
+              </button>
+              <button onClick={() => setShowAIWizard(true)} className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100">
+                <BrainCircuit className="h-4 w-4" /> Implementación con IA
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
