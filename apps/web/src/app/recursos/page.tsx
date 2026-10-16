@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight, BookOpen, Car, FileSpreadsheet, Globe, Truck } from 'lucide-react';
+import { ArrowRight, BookOpen, Car, FileSpreadsheet, Globe, HardHat, Landmark, Truck } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Recursos — Guías sobre SGI, ISO 9001, IATF 16949 y core tools | SGI360',
@@ -49,6 +49,22 @@ const ARTICULOS = [
     title: 'Software de gestión de calidad en Latinoamérica: opciones y cómo compararlas',
     desc: 'Suites enterprise, planillas, herramientas genéricas y SaaS regionales — qué evaluar según el tamaño de tu operación.',
     tiempo: '9 min',
+  },
+  {
+    href: '/recursos/iso-45001-prl-espana',
+    icon: HardHat,
+    tag: 'España',
+    title: 'Software para PRL e ISO 45001 en España: digitalizar la prevención',
+    desc: 'Ley 31/1995, evaluación de riesgos, EPIs, vigilancia de la salud y auditorías — todo con evidencia exportable.',
+    tiempo: '8 min',
+  },
+  {
+    href: '/recursos/sg-sst-colombia',
+    icon: Landmark,
+    tag: 'Colombia',
+    title: 'SG-SST en Colombia: cumplir la Resolución 0312 con software',
+    desc: 'Estándares mínimos del SG-SST, matriz IPVR, capacitaciones y evidencia para la ARL y el Ministerio de Trabajo.',
+    tiempo: '8 min',
   },
 ];
 

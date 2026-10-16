@@ -43,6 +43,11 @@ const jsonLd = {
       applicationCategory: 'BusinessApplication',
       operatingSystem: 'Web',
       inLanguage: 'es',
+      availableLanguage: 'es',
+      areaServed: [
+        'Argentina', 'Chile', 'Uruguay', 'Paraguay', 'Bolivia', 'Perú',
+        'Ecuador', 'Colombia', 'México', 'España',
+      ],
       url: 'https://logismart.ar/sgi360-landing',
       description:
         'Sistema de Gestión Integrado (SGI/QHSE) en la nube para ISO 9001, ISO 14001, ISO 45001 e IATF 16949: core tools automotrices (APQP, PPAP, FMEA/AMFE, MSA, SPC, plan de control), gestión de riesgos, auditorías internas, no conformidades y CAPA, documentos controlados, indicadores, cumplimiento normativo, gestión de flota y resultados financieros con IA integrada.',
@@ -63,11 +68,10 @@ const jsonLd = {
       brand: { '@type': 'Brand', name: 'LOGISMART' },
       offers: {
         '@type': 'Offer',
-        price: '0',
+        price: '99',
         priceCurrency: 'USD',
-        description: 'Demo y planes disponibles en logismart.ar',
+        description: 'USD 99/mes los primeros 3 meses, luego USD 299/mes por empresa — usuarios ilimitados',
       },
-      areaServed: ['CL', 'AR', 'LATAM'],
     },
     {
       '@type': 'Organization',

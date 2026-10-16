@@ -81,6 +81,26 @@ documentos, flota.
 5. **Crunchbase** (opcional): ficha de empresa — los LLMs la usan para "empresas de software argentinas".
 6. **Directorios locales**: Turnos/app de Argentina, directorios de PyMEs, cámaras de comercio con sección de software.
 
+## Expansión regional — Sudamérica y España
+
+El alta en Gartner Digital Markets ya cubre capterra.com.es y getapp.es para España,
+y capterra.com.mx / capterra.com.co para México y Colombia — revisar que la ficha
+esté categorizada en todos los portales regionales (es el mismo portal, pero cada
+país tiene su propio marketplace visible).
+
+Directorios y canales por país:
+- **España**: capterra.com.es, getapp.es, softwareadvice.es, softdoit.com, Softonic
+  empresas. Búsquedas clave: "software PRL", "software ISO 9001", "prevención de riesgos laborales".
+- **México**: capterra.com.mx, getapp.mx. Clave: "software SG-SST" no aplica (es Colombia),
+  en MX el término es "seguridad e higiene STPS" y "NOM-STPS".
+- **Colombia**: capterra.com.co. Término fuerte: "SG-SST", "Resolución 0312", "SST",
+  "ARL" — ya hay artículo en /recursos/sg-sst-colombia.
+- **Chile**: capterra.cl. Término local fuerte: "SII", "registro de compras y ventas",
+  "mutualidad", "Ley Karin" (acoso laboral, vigente 2024+).
+- **Argentina**: capterra.com.ar. Término local: "ART", "Ley 19587", "riesgos del trabajo".
+- **Perú/Ecuador/Bolivia/Paraguay/Uruguay**: el mismo portal Gartner los cubre;
+  términos "SST", "ISO 9001", "gestión de calidad".
+
 ## Palabras clave que los directorios indexan (y los LLMs leen)
 
 software ISO 9001, sistema de gestión integrado, QHSE, software de calidad,
