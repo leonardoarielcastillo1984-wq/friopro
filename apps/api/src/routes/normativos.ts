@@ -6,6 +6,9 @@ import { checkStorageQuota, incrementStorageUsed, decrementStorageUsed } from '.
 import { getNormativeQueue } from '../jobs/queue.js';
 import { requiresTenantContext, isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { calculateClauseCompliance } from './compliance-evidences.js';
+import { NORM_TEMPLATES, parentNumberOf } from '../data/normClauseLibraries.js';
+import { PROCESS_TEMPLATE_CATALOG } from '../data/processTemplates.js';
+import { createMapFromTemplatesTx } from './processTemplates.js';
 
 const FEATURE_KEY = 'normativos_compliance';
 const MAX_PDF_SIZE = parseInt(process.env.MAX_PDF_SIZE_MB || '50', 10) * 1024 * 1024;
@@ -119,6 +122,124 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
       console.error('[COMPLIANCE-SUMMARY ERROR]', error?.message, error?.stack);
       return reply.code(500).send({ error: error?.message || 'Error al calcular el resumen de cumplimiento.' });
     }
+  });
+
+  // ── GET /normativos/templates — Packs de normas precargadas ──
+  // Catálogo de normas aplicables sin subir PDF: devuelve cuántas cláusulas y
+  // procesos de mapa trae cada pack y si ya está aplicada en el tenant.
+  app.get('/templates', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma).catch(() => null);
+    const existing = tenantId
+      ? await app.prisma.normativeStandard.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { code: true },
+        })
+      : [];
+    const applied = new Set(existing.map((e: any) => String(e.code).toUpperCase()));
+    const templates = Object.values(NORM_TEMPLATES).map((t) => ({
+      code: t.meta.code,
+      name: t.meta.name,
+      version: t.meta.version,
+      description: t.meta.description,
+      clauseCount: t.clauses.length,
+      processCount: PROCESS_TEMPLATE_CATALOG.filter((p) => p.norm === t.meta.code).length,
+      applied: applied.has(t.meta.code.toUpperCase()),
+    }));
+    return reply.send({ templates });
+  });
+
+  // ── POST /normativos/from-template — Crear norma desde plantilla ──
+  // Registra la norma en el tenant con su árbol de cláusulas ya estructurado
+  // (status READY, sin PDF) y, si se pide, genera el mapa de procesos del pack.
+  app.post('/from-template', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+
+    const bodySchema = z.object({
+      code: z.string().min(2),
+      createProcessMap: z.boolean().optional().default(false),
+      industry: z.string().optional().default('GENERIC'),
+    });
+    let body;
+    try {
+      body = bodySchema.parse(req.body);
+    } catch (e: any) {
+      return reply.code(400).send({ error: 'Validación fallida', details: e.errors || e.message });
+    }
+
+    const tpl = NORM_TEMPLATES[body.code];
+    if (!tpl) return reply.code(400).send({ error: 'Plantilla de norma no encontrada' });
+
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const userId = (req as any).auth?.userId ?? null;
+
+    const dup = await app.prisma.normativeStandard.findFirst({
+      where: { tenantId, code: tpl.meta.code, deletedAt: null },
+      select: { id: true },
+    });
+    if (dup) {
+      return reply.code(409).send({ error: `Ya existe una norma activa con el código "${tpl.meta.code}"` });
+    }
+
+    const result = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+      const normative = await tx.normativeStandard.create({
+        data: {
+          tenantId,
+          name: tpl.meta.name,
+          code: tpl.meta.code,
+          version: tpl.meta.version,
+          description: tpl.meta.description,
+          // Placeholders de archivo (plantilla integrada, sin PDF)
+          originalFileName: 'plantilla-integrada',
+          fileSize: 0,
+          filePath: '',
+          fileHash: `template:${tpl.meta.code}`,
+          status: 'READY',
+          totalClauses: tpl.clauses.length,
+          extractedAt: new Date(),
+          createdById: userId,
+          updatedById: userId,
+        },
+      });
+
+      // Cláusulas con jerarquía: primero nivel 0 (capítulos/anexos), luego nivel 1
+      const numbers = new Set(tpl.clauses.map((c) => c.number));
+      const idByNumber = new Map<string, string>();
+      let order = 0;
+      for (const level of [0, 1]) {
+        for (const c of tpl.clauses.filter((cc) => cc.level === level)) {
+          const parentNum = level === 0 ? null : parentNumberOf(c.number, numbers);
+          const row = await tx.normativeClause.create({
+            data: {
+              normativeId: normative.id,
+              clauseNumber: c.number,
+              title: c.title,
+              content: c.content,
+              parentClauseId: parentNum ? idByNumber.get(parentNum) ?? null : null,
+              level: c.level,
+              extractionOrder: order++,
+              keywords: c.keywords ?? [],
+            },
+          });
+          idByNumber.set(c.number, row.id);
+        }
+      }
+
+      // Cascada opcional: generar mapa de procesos del pack de la norma
+      let processMap: any = null;
+      if (body.createProcessMap) {
+        processMap = await createMapFromTemplatesTx(tx, {
+          tenantId,
+          norm: tpl.meta.code,
+          industry: body.industry,
+          userId,
+        });
+      }
+
+      return { normative, clausesCreated: tpl.clauses.length, processMap };
+    });
+
+    return reply.code(201).send(result);
   });
 
   // ── GET /normativos/:id — Detalle de una norma ──

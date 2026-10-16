@@ -66,6 +66,14 @@ export default function NormativosPage() {
   const [uploadingRevision, setUploadingRevision] = useState(false);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [suggestionsData, setSuggestionsData] = useState<any>(null);
+
+  // Plantillas de normas (aplicar pack precargado sin PDF)
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [normTemplates, setNormTemplates] = useState<{ code: string; name: string; version: string; description: string; clauseCount: number; processCount: number; applied: boolean }[]>([]);
+  const [tplSelected, setTplSelected] = useState('');
+  const [tplWithMap, setTplWithMap] = useState(true);
+  const [applyingTpl, setApplyingTpl] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -157,6 +165,36 @@ export default function NormativosPage() {
       setError(err?.message ?? 'Error al subir');
     } finally {
       setUploading(false);
+    }
+  }
+
+  // Abre el modal de plantillas y carga los packs disponibles del catálogo
+  async function openTemplates() {
+    setShowTemplates(true);
+    setTplSelected('');
+    setTplWithMap(true);
+    try {
+      const r = await apiFetch<{ templates: any[] }>('/normativos/templates');
+      setNormTemplates(r?.templates || []);
+    } catch { setNormTemplates([]); }
+  }
+
+  // Aplica el pack: crea la norma con cláusulas (status READY) y opcionalmente el mapa de procesos
+  async function applyTemplate() {
+    if (!tplSelected) return;
+    setApplyingTpl(true);
+    setError(null);
+    try {
+      await apiFetch('/normativos/from-template', {
+        method: 'POST',
+        json: { code: tplSelected, createProcessMap: tplWithMap },
+      });
+      setShowTemplates(false);
+      await load();
+    } catch (err: any) {
+      setError(err?.message ?? 'Error al aplicar la plantilla');
+    } finally {
+      setApplyingTpl(false);
     }
   }
 
@@ -341,6 +379,13 @@ export default function NormativosPage() {
         </div>
         <div className="flex items-center gap-2">
           <DocCodeBadge outputKey="cumplimiento.normativos" title="Normativos" module="cumplimiento" subModule="normativos" outputType="LIST" />
+          <button
+            onClick={openTemplates}
+            title="Aplicar una norma del catálogo con sus cláusulas ya estructuradas (sin PDF)"
+            className="flex items-center gap-2 rounded-lg border border-brand-300 bg-white px-4 py-2.5 text-sm font-medium text-brand-700 shadow-sm hover:bg-brand-50 transition-colors"
+          >
+            <BookOpen className="h-4 w-4" /> Desde plantilla
+          </button>
           <button
             onClick={() => setShowUpload(!showUpload)}
             className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
@@ -772,6 +817,70 @@ export default function NormativosPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: aplicar norma desde plantilla (packs precargados) */}
+      {showTemplates && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <BookOpen className="h-5 w-5 text-brand-600" />
+                <h2 className="text-lg font-semibold text-neutral-900">Aplicar plantilla de norma</h2>
+              </div>
+              <button onClick={() => setShowTemplates(false)} className="rounded-lg p-1 hover:bg-neutral-100">
+                <X className="h-5 w-5 text-neutral-500" />
+              </button>
+            </div>
+            <p className="text-sm text-neutral-500 mb-4">
+              Registrá la norma en tu SGI con su estructura de cláusulas ya armada — sin subir PDF.
+              Después mapeás documentos a cada cláusula para el nivel de cumplimiento.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {normTemplates.map(t => (
+                <button
+                  key={t.code}
+                  disabled={t.applied}
+                  onClick={() => setTplSelected(t.code)}
+                  className={`text-left p-4 rounded-xl border-2 transition-all ${t.applied ? 'opacity-50 cursor-not-allowed border-neutral-200' : tplSelected === t.code ? 'border-brand-400 bg-brand-50 ring-2 ring-brand-100' : 'border-neutral-200 hover:border-brand-300 hover:bg-neutral-50'}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-neutral-900 text-sm">{t.name}</span>
+                    {(t.applied || tplSelected === t.code) && <CheckCircle2 className={`h-4 w-4 flex-shrink-0 ${t.applied ? 'text-green-600' : 'text-brand-600'}`} />}
+                  </div>
+                  <p className="text-xs text-neutral-500 mt-1">
+                    {t.version} · {t.clauseCount} cláusulas{t.processCount > 0 ? ` · ${t.processCount} procesos` : ''}
+                  </p>
+                  {t.applied && <p className="text-[11px] text-green-700 mt-1 font-medium">Ya aplicada en tu SGI</p>}
+                </button>
+              ))}
+            </div>
+            {normTemplates.length === 0 && (
+              <p className="text-sm text-neutral-400 text-center py-6">Cargando plantillas...</p>
+            )}
+            <label className="mt-4 flex items-start gap-2.5 text-sm text-neutral-700 cursor-pointer">
+              <input type="checkbox" checked={tplWithMap} onChange={e => setTplWithMap(e.target.checked)} className="mt-0.5" />
+              <span>
+                Generar también el <strong>mapa de procesos</strong> de la norma
+                (Contexto SGI → Mapa de Procesos), con riesgos, indicadores y documentos sugeridos.
+              </span>
+            </label>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setShowTemplates(false)} className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
+                Cancelar
+              </button>
+              <button
+                onClick={applyTemplate}
+                disabled={!tplSelected || applyingTpl}
+                className="rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:bg-neutral-300 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {applyingTpl
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Aplicando...</>
+                  : <><CheckCircle2 className="h-4 w-4" /> Aplicar norma</>}
+              </button>
+            </div>
           </div>
         </div>
       )}

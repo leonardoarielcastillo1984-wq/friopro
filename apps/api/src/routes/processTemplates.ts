@@ -107,6 +107,103 @@ const importSchema = z.object({
   mapScope: z.string().optional(),
 });
 
+// ── Reutilizable: crear (o completar) un mapa de procesos desde plantillas ──
+// Usado por POST /process-templates/import y por POST /normativos/from-template
+// (cascada "aplicar norma → generar mapa"). Corre dentro de un tx existente.
+export async function createMapFromTemplatesTx(
+  tx: any,
+  opts: {
+    tenantId: string;
+    norm: string;
+    industry: string;
+    processNames?: string[];
+    mapId?: string;
+    mapName?: string;
+    mapDescription?: string;
+    mapScope?: string;
+    userId?: string | null;
+  },
+): Promise<{ map: any; created: number; skipped: number } | null> {
+  const where: any = {
+    active: true,
+    norm: opts.norm,
+    industry: opts.industry,
+    OR: [{ tenantId: null }, { tenantId: opts.tenantId }],
+  };
+  if (opts.processNames && opts.processNames.length > 0) {
+    where.name = { in: opts.processNames };
+  }
+  let templates = await tx.processTemplate.findMany({
+    where,
+    orderBy: [{ order: 'asc' }, { name: 'asc' }],
+  });
+  // Fallback a catálogo genérico de la norma si la industria no tiene pack
+  if (templates.length === 0 && opts.industry !== 'GENERIC') {
+    where.industry = 'GENERIC';
+    templates = await tx.processTemplate.findMany({
+      where,
+      orderBy: [{ order: 'asc' }, { name: 'asc' }],
+    });
+  }
+  if (templates.length === 0) return null;
+
+  // Resolver mapa destino
+  let map;
+  if (opts.mapId) {
+    map = await tx.processMap.findFirst({ where: { id: opts.mapId, tenantId: opts.tenantId, deletedAt: null } });
+    if (!map) throw new Error('Mapa destino no encontrado');
+  } else {
+    const normLabel = NORMS.find((n) => n.code === opts.norm)?.label ?? opts.norm;
+    map = await tx.processMap.create({
+      data: {
+        tenantId: opts.tenantId,
+        name: opts.mapName || `Mapa ${normLabel}`,
+        description: opts.mapDescription || `Mapa de procesos generado desde plantilla ${normLabel}`,
+        scope: opts.mapScope || undefined,
+        norm: opts.norm,
+        createdById: opts.userId ?? null,
+      },
+    });
+  }
+
+  // Nombres ya existentes en el mapa (para no duplicar)
+  const existing = await tx.process.findMany({
+    where: { processMapId: map.id, deletedAt: null },
+    select: { name: true },
+  });
+  const existingNames = new Set(existing.map((p: any) => p.name.trim().toLowerCase()));
+
+  let created = 0;
+  let skipped = 0;
+  for (const t of templates) {
+    if (existingNames.has(t.name.trim().toLowerCase())) { skipped++; continue; }
+    await tx.process.create({
+      data: {
+        tenantId: opts.tenantId,
+        processMapId: map.id,
+        layer: t.layer,
+        name: t.name,
+        status: 'active',
+        description: composeDescription(t),
+        inputs: asArray(t.inputs).join('\n') || undefined,
+        outputs: asArray(t.outputs).join('\n') || undefined,
+        indicators: indicatorsToString(t.indicators) || undefined,
+        documents: asArray(t.documents).join(', ') || undefined,
+        risks: asArray(t.risks).join(', ') || undefined,
+        sites: [],
+        order: t.order ?? 0,
+      },
+    });
+    created++;
+  }
+
+  const full = await tx.processMap.findUnique({
+    where: { id: map.id },
+    include: { processes: { where: { deletedAt: null }, orderBy: [{ layer: 'asc' }, { order: 'asc' }] } },
+  });
+  return { map: full, created, skipped };
+}
+
 export const processTemplatesRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /process-templates/norms ─────────────────────────────────────────
   app.get('/norms', async (_req: FastifyRequest, reply: FastifyReply) => {
@@ -207,61 +304,21 @@ export const processTemplatesRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const result = await app.runWithDbContext(req, async (tx: any) => {
-      // 1. Resolver mapa destino
-      let map;
-      if (body.mapId) {
-        map = await tx.processMap.findFirst({ where: { id: body.mapId, tenantId, deletedAt: null } });
-        if (!map) throw new Error('Mapa destino no encontrado');
-      } else {
-        const normLabel = NORMS.find((n) => n.code === body.norm)?.label ?? body.norm;
-        map = await tx.processMap.create({
-          data: {
-            tenantId,
-            name: body.mapName || `Mapa ${normLabel}`,
-            description: body.mapDescription || `Mapa de procesos generado desde plantilla ${normLabel}`,
-            scope: body.mapScope || undefined,
-            createdById: (req as any).auth?.userId ?? null,
-          },
-        });
-      }
-
-      // 2. Nombres ya existentes en el mapa (para no duplicar)
-      const existing = await tx.process.findMany({
-        where: { processMapId: map.id, deletedAt: null },
-        select: { name: true },
+      // Usar las plantillas ya resueltas (norma + industria, con fallback)
+      const names = templates.map((t: any) => t.name);
+      const created = await createMapFromTemplatesTx(tx, {
+        tenantId,
+        norm: body.norm,
+        industry: templates[0]?.industry ?? body.industry,
+        processNames: names,
+        mapId: body.mapId,
+        mapName: body.mapName,
+        mapDescription: body.mapDescription,
+        mapScope: body.mapScope,
+        userId: (req as any).auth?.userId ?? null,
       });
-      const existingNames = new Set(existing.map((p: any) => p.name.trim().toLowerCase()));
-
-      // 3. Crear procesos desde las plantillas (mapeo a campos del Process existente)
-      let created = 0;
-      let skipped = 0;
-      for (const t of templates) {
-        if (existingNames.has(t.name.trim().toLowerCase())) { skipped++; continue; }
-        await tx.process.create({
-          data: {
-            tenantId,
-            processMapId: map.id,
-            layer: t.layer,
-            name: t.name,
-            status: 'active',
-            description: composeDescription(t),
-            inputs: asArray(t.inputs).join('\n') || undefined,
-            outputs: asArray(t.outputs).join('\n') || undefined,
-            indicators: indicatorsToString(t.indicators) || undefined,
-            documents: asArray(t.documents).join(', ') || undefined,
-            risks: asArray(t.risks).join(', ') || undefined,
-            sites: [],
-            order: t.order ?? 0,
-          },
-        });
-        created++;
-      }
-
-      const full = await tx.processMap.findUnique({
-        where: { id: map.id },
-        include: { processes: { where: { deletedAt: null }, orderBy: [{ layer: 'asc' }, { order: 'asc' }] } },
-      });
-      return { map: full, created, skipped };
+      if (!created) throw new Error('No se encontraron plantillas para importar');
+      return created;
     });
 
     return reply.code(201).send(result);
