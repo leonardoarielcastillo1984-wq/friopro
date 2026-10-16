@@ -18,10 +18,15 @@ let seedChecked = false;
 async function ensureCatalogSeeded(prisma: any) {
   if (seedChecked) return;
   try {
-    const count = await prisma.processTemplate.count({ where: { tenantId: null } });
-    if (count === 0) {
+    const existing = await prisma.processTemplate.findMany({
+      where: { tenantId: null },
+      select: { norm: true, industry: true, name: true },
+    });
+    const have = new Set(existing.map((t: any) => `${t.norm}|${t.industry}|${t.name}`));
+    const missing = PROCESS_TEMPLATE_CATALOG.filter((t) => !have.has(`${t.norm}|${t.industry}|${t.name}`));
+    if (missing.length > 0) {
       await prisma.processTemplate.createMany({
-        data: PROCESS_TEMPLATE_CATALOG.map((t: ProcessTemplateSeed) => ({
+        data: missing.map((t: ProcessTemplateSeed) => ({
           tenantId: null,
           norm: t.norm,
           industry: t.industry,
@@ -48,7 +53,7 @@ async function ensureCatalogSeeded(prisma: any) {
         })),
         skipDuplicates: true,
       });
-      console.log(`[processTemplates] Auto-seed: ${PROCESS_TEMPLATE_CATALOG.length} plantillas cargadas`);
+      console.log(`[processTemplates] Auto-seed: ${missing.length} plantillas nuevas (total catálogo ${PROCESS_TEMPLATE_CATALOG.length})`);
     }
     seedChecked = true;
   } catch (e: any) {
@@ -127,10 +132,19 @@ export const processTemplatesRoutes: FastifyPluginAsync = async (app) => {
     if (norm) where.norm = norm;
     if (industry) where.industry = industry;
 
-    const templates = await (app.prisma as any).processTemplate.findMany({
+    let templates = await (app.prisma as any).processTemplate.findMany({
       where,
       orderBy: [{ order: 'asc' }, { name: 'asc' }],
     });
+
+    // Fallback: si la industria no tiene plantilla específica, usar el catálogo genérico de la norma
+    if (templates.length === 0 && norm && industry && industry !== 'GENERIC') {
+      where.industry = 'GENERIC';
+      templates = await (app.prisma as any).processTemplate.findMany({
+        where,
+        orderBy: [{ order: 'asc' }, { name: 'asc' }],
+      });
+    }
 
     const days = templates.length * IMPLEMENTATION_DAYS_PER_PROCESS;
     const summary = {
@@ -177,10 +191,17 @@ export const processTemplatesRoutes: FastifyPluginAsync = async (app) => {
     if (body.processNames && body.processNames.length > 0) {
       where.name = { in: body.processNames };
     }
-    const templates = await (app.prisma as any).processTemplate.findMany({
+    let templates = await (app.prisma as any).processTemplate.findMany({
       where,
       orderBy: [{ order: 'asc' }, { name: 'asc' }],
     });
+    if (templates.length === 0 && body.industry !== 'GENERIC') {
+      where.industry = 'GENERIC';
+      templates = await (app.prisma as any).processTemplate.findMany({
+        where,
+        orderBy: [{ order: 'asc' }, { name: 'asc' }],
+      });
+    }
     if (templates.length === 0) {
       return reply.code(400).send({ error: 'No se encontraron plantillas para importar con los criterios dados' });
     }
