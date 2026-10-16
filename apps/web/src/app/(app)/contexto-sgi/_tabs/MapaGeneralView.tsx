@@ -175,6 +175,7 @@ export default function MapaGeneralView({
   onMoveMap,
   onToggleLink,
   onAssignCode,
+  onNewFromTemplate,
   normLock,
 }: {
   maps: GenMap[];
@@ -209,6 +210,8 @@ export default function MapaGeneralView({
   onToggleLink: (fromProcId: string, toProcId: string) => void;
   // Abre el modal "Asignar código documental" del mapa (codificación SGI)
   onAssignCode?: (m: GenMap) => void;
+  // Abre el wizard "Crear desde plantilla" (packs por norma: ISO 27001/22301/28000/9004...)
+  onNewFromTemplate?: () => void;
   // Cuando viene seteado, la vista muestra SOLO mapas de esa norma (pestañas ISO/IATF)
   // y se oculta el selector interno de norma.
   normLock?: 'ISO9001' | 'IATF16949' | null;
@@ -1451,6 +1454,16 @@ export default function MapaGeneralView({
               : <PanelRightOpen className="h-3.5 w-3.5" aria-hidden />}
             Detalle
           </button>
+          {onNewFromTemplate && (
+            <button
+              type="button"
+              onClick={onNewFromTemplate}
+              title="Generar mapa de procesos desde plantilla de norma (ISO 27001, 22301, 28000, 9004...)"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 border border-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              <Layers className="h-3.5 w-3.5" aria-hidden /> Desde plantilla
+            </button>
+          )}
           {/* Código documental del diagrama (salida documental del módulo), como en otros módulos */}
           <DocCodeBadge
             outputKey={`contexto-sgi.mapa-general${normLock ? `.${normLock.toLowerCase()}` : ''}`}
@@ -1466,9 +1479,16 @@ export default function MapaGeneralView({
             <Layers className="h-10 w-10 text-neutral-300 mb-3" aria-hidden />
             <p className="text-sm font-medium text-neutral-500">Todavía no hay mapas de procesos</p>
             <p className="text-xs text-neutral-400 mt-1 mb-4">Creá mapas para ver el mapa general de la organización.</p>
-            <button type="button" onClick={() => onNewMap()} className="px-4 py-2 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">
-              Crear primer mapa
-            </button>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => onNewMap()} className="px-4 py-2 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">
+                Crear primer mapa
+              </button>
+              {onNewFromTemplate && (
+                <button type="button" onClick={onNewFromTemplate} className="px-4 py-2 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100">
+                  Crear desde plantilla
+                </button>
+              )}
+            </div>
           </div>
         ) : filteredEmpty && (!normLock || q || site) ? (
           <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-neutral-200 rounded-xl py-16 text-center">

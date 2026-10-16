@@ -1538,6 +1538,7 @@ export default function MapaProcesosContent() {
           onMoveMap={(m, band) => moveMapToBand(m.id, band)}
           onToggleLink={(fromId, toId) => { toggleInteractionPair(fromId, toId); }}
           onAssignCode={m => { openAssignCode(m.id); }}
+          onNewFromTemplate={() => setShowWizard(true)}
           normLock={maps.some(m => m.norm) ? (generalNormTab || null) : null}
         />
         </>
