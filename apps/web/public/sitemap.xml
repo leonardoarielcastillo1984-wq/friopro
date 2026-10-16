@@ -85,6 +85,14 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://logismart.ar/iso-27001</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://logismart.ar/iso-22301</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://logismart.ar/herramientas/checklist-iso-9001</loc>
     <priority>0.7</priority>
   </url>
