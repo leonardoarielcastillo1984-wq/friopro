@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import * as argon2 from 'argon2';
 import { PrismaClient } from '@prisma/client';
-import { sendEmail, notificationEmail, welcomeTenantEmail } from '../services/email.js';
+import { sendEmail, notificationEmail, welcomeTenantEmail, leadMagnetEmail } from '../services/email.js';
 
 const prismaDirect = new PrismaClient();
 
@@ -163,6 +163,147 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(500).send({ error: 'Error al procesar la solicitud' });
     }
   });
+
+  // ── POST /leads — Captura pública de leads (lead magnets) ──
+  const leadSchema = z.object({
+    email: z.string().email().max(160),
+    nombre: z.string().max(120).optional(),
+    empresa: z.string().max(160).optional(),
+    telefono: z.string().max(40).optional(),
+    source: z.string().min(1).max(60),
+    meta: z.record(z.any()).optional(),
+    website: z.string().max(200).optional(), // honeypot — si viene con contenido es bot
+    utmSource: z.string().max(100).optional(),
+    utmMedium: z.string().max(100).optional(),
+    utmCampaign: z.string().max(100).optional(),
+  });
+
+  const LEAD_RESOURCES: Record<string, { titulo: string; downloadUrl?: string }> = {
+    'checklist-iso-9001': { titulo: 'Checklist ISO 9001 — Autodiagnóstico', downloadUrl: 'https://logismart.ar/herramientas/checklist-iso-9001' },
+    'matriz-iperc': { titulo: 'Plantilla Matriz IPERC (Excel)', downloadUrl: 'https://logismart.ar/descargas/plantilla-matriz-iperc.xlsx' },
+    'plantilla-bia': { titulo: 'Plantilla BIA — Análisis de Impacto al Negocio (Excel)', downloadUrl: 'https://logismart.ar/descargas/plantilla-bia.xlsx' },
+    'soa-iso-27001': { titulo: 'Declaración de Aplicabilidad ISO 27001:2022 (Excel)', downloadUrl: 'https://logismart.ar/descargas/soa-iso-27001.xlsx' },
+  };
+
+  const handleLead = async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const parsed = leadSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'Datos inválidos', issues: parsed.error.issues });
+      }
+      const data = parsed.data;
+
+      // Honeypot: campo invisible "website" — los bots lo completan. Respondemos éxito sin guardar.
+      if (data.website && data.website.trim().length > 0) {
+        app.log.info(`[LEADS] Honeypot activado — descartado (email=${data.email})`);
+        return reply.send({ success: true });
+      }
+
+      const recurso = LEAD_RESOURCES[data.source] || { titulo: 'Recurso gratuito' };
+      const appUrl = process.env.CORS_ORIGIN?.split(',')[0]?.trim() || 'https://logismart.ar';
+
+      // Dedup: mismo email + misma fuente → actualizar datos en lugar de duplicar
+      const existing = await prismaDirect.marketingLead.findFirst({
+        where: { email: data.email, source: data.source },
+      });
+      let lead;
+      if (existing) {
+        lead = await prismaDirect.marketingLead.update({
+          where: { id: existing.id },
+          data: {
+            nombre: data.nombre || existing.nombre,
+            empresa: data.empresa || existing.empresa,
+            telefono: data.telefono || existing.telefono,
+            meta: data.meta ?? existing.meta ?? undefined,
+            utmSource: data.utmSource || existing.utmSource,
+            utmMedium: data.utmMedium || existing.utmMedium,
+            utmCampaign: data.utmCampaign || existing.utmCampaign,
+            ip: req.ip,
+          },
+        });
+      } else {
+        lead = await prismaDirect.marketingLead.create({
+          data: {
+            email: data.email,
+            nombre: data.nombre,
+            empresa: data.empresa,
+            telefono: data.telefono,
+            source: data.source,
+            meta: data.meta,
+            ip: req.ip,
+            utmSource: data.utmSource,
+            utmMedium: data.utmMedium,
+            utmCampaign: data.utmCampaign,
+          },
+        });
+      }
+      app.log.info(`[LEADS] Lead ${existing ? 'actualizado' : 'creado'}: ${lead.id} source=${data.source}`);
+
+      // Email al lead con el recurso (no bloquea la respuesta)
+      const extraHtml = data.meta?.score != null
+        ? `<p style="color:#4B5563;font-size:14px;line-height:1.6;margin:8px 0 0;">Tu diagnóstico arrojó <strong>${data.meta.score}%</strong> de cumplimiento${data.meta.total ? ` (${data.meta.done}/${data.meta.total} ítems)` : ''}.</p>`
+        : '';
+      sendEmail(leadMagnetEmail({
+        to: data.email,
+        nombre: data.nombre,
+        recursoTitulo: recurso.titulo,
+        downloadUrl: recurso.downloadUrl,
+        extraHtml,
+      })).catch((e: any) => app.log.error(`[LEADS] Error enviando recurso: ${e.message}`));
+
+      // Notificación interna
+      for (const adminEmail of ['soporte@logismart.ar', 'leonardoarielcastillo@hotmail.com']) {
+        sendEmail(notificationEmail({
+          userEmail: adminEmail,
+          title: `🧲 Nuevo lead — ${recurso.titulo}`,
+          message: `<strong>Email:</strong> ${data.email}<br><strong>Nombre:</strong> ${data.nombre || '—'}<br><strong>Empresa:</strong> ${data.empresa || '—'}<br><strong>Teléfono:</strong> ${data.telefono || '—'}<br><strong>Fuente:</strong> ${data.source}<br><strong>UTM:</strong> ${[data.utmSource, data.utmMedium, data.utmCampaign].filter(Boolean).join(' / ') || '—'}${data.meta?.score != null ? `<br><strong>Score checklist:</strong> ${data.meta.score}%` : ''}`,
+          actionLabel: 'Ver landing',
+          actionUrl: appUrl,
+          type: 'success',
+        })).catch(() => {});
+      }
+
+      return reply.send({ success: true, downloadUrl: recurso.downloadUrl });
+    } catch (error: any) {
+      app.log.error({ err: error?.message || String(error) }, '[LEADS] Error');
+      return reply.code(500).send({ error: 'Error al procesar la solicitud' });
+    }
+  };
+
+  app.post('/leads', handleLead);
+  app.post('/api/leads', handleLead); // alias por si el proxy no strippea /api
+
+  // ── GET /leads — Listado (solo SUPER_ADMIN, ?format=csv para exportar) ──
+  const handleListLeads = async (req: FastifyRequest, reply: FastifyReply) => {
+    const auth = (req as any).auth;
+    if (!auth || auth.globalRole !== 'SUPER_ADMIN') {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+    const q = (req.query as any) || {};
+    const where: any = {};
+    if (q.source) where.source = String(q.source);
+
+    const leads = await prismaDirect.marketingLead.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(parseInt(q.limit || '500', 10) || 500, 2000),
+    });
+
+    if (q.format === 'csv') {
+      const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const rows = [
+        'email,nombre,empresa,telefono,source,utm_source,utm_medium,utm_campaign,created_at',
+        ...leads.map(l => [l.email, l.nombre, l.empresa, l.telefono, l.source, l.utmSource, l.utmMedium, l.utmCampaign, l.createdAt.toISOString()].map(esc).join(',')),
+      ];
+      reply.header('Content-Type', 'text/csv; charset=utf-8');
+      reply.header('Content-Disposition', 'attachment; filename="leads.csv"');
+      return reply.send(rows.join('\n'));
+    }
+    return reply.send({ count: leads.length, leads });
+  };
+
+  app.get('/leads', handleListLeads);
+  app.get('/api/leads', handleListLeads);
 
   // ── GET /mercadopago-config/public — Obtener configuración pública de MercadoPago ──
   app.get('/mercadopago-config/public', async (req: FastifyRequest, reply: FastifyReply) => {

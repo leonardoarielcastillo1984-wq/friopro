@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { CheckCircle2, MessageCircle, Shield, Zap } from 'lucide-react';
 import { BUSINESS } from '@/lib/legal';
+import { LeadCapture } from '@/components/marketing/LeadCapture';
 
 const CLAUSULAS: { titulo: string; items: string[] }[] = [
   {
@@ -194,6 +195,17 @@ export function ChecklistIso9001() {
             <p className="mt-4 text-xs text-slate-400">
               Autodiagnóstico orientativo — no reemplaza una auditoría formal.
             </p>
+          </div>
+
+          {/* Captura de lead: diagnóstico + checklist por email */}
+          <div className="mt-8">
+            <LeadCapture
+              source="checklist-iso-9001"
+              titulo="Recibí tu diagnóstico + el checklist completo por email"
+              descripcion={`Te enviamos tu resultado (${pct}%), el listado de los ${total} ítems por cláusula y una guía de cómo cerrar las brechas — gratis.`}
+              buttonLabel="Enviarme mi diagnóstico"
+              meta={{ score: pct, done, total }}
+            />
           </div>
         </div>
       </section>

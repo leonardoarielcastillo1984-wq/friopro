@@ -13496,3 +13496,26 @@ model FinanzaComentarioPeriodo {
   @@index([tenantId, mesKey])
   @@map("finanza_comentarios_periodo")
 }
+
+// ── Marketing: leads capturados desde landings públicas (lead magnets) ──
+model MarketingLead {
+  id       String @id @default(uuid()) @db.Uuid
+  email    String
+  nombre   String?
+  empresa  String?
+  telefono String?
+  source   String // 'checklist-iso-9001', 'matriz-iperc', 'plantilla-bia', 'soa-iso-27001', etc.
+  meta     Json?  // datos extra (ej: score del checklist)
+  ip       String?
+
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([email])
+  @@index([source])
+  @@index([createdAt])
+  @@map("marketing_leads")
+}

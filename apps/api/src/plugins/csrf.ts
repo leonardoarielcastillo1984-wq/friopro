@@ -40,6 +40,7 @@ function shouldSkip(req: FastifyRequest) {
   if (url.startsWith('/maintenance')) return true; // Maintenance routes
   if (url.startsWith('/project360')) return true; // Project360 routes
   if (url.startsWith('/register-company')) return true; // Public route: company registration
+  if (url.startsWith('/api/leads') || url.startsWith('/leads')) return true; // Public route: lead magnets
   if (url.startsWith('/company-registrations')) return true; // Public route: get registrations
   if (url.startsWith('/mercadopago-config')) return true; // Public route: MercadoPago config
   if (url.startsWith('/license/activate')) return true; // Testing activation

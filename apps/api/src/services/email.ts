@@ -348,6 +348,58 @@ export function paymentConfirmationEmail(options: {
   };
 }
 
+// ── Lead magnet: entrega de recurso + CTA a demo ─────────────
+export function leadMagnetEmail(options: {
+  to: string;
+  nombre?: string;
+  recursoTitulo: string;
+  downloadUrl?: string;
+  extraHtml?: string;
+}): EmailPayload {
+  const { to, nombre, recursoTitulo, downloadUrl, extraHtml } = options;
+  const greeting = nombre ? `Hola, ${nombre}` : 'Hola';
+  const downloadBlock = downloadUrl
+    ? `<div style="text-align:center;margin:24px 0;">
+         <a href="${downloadUrl}" style="display:inline-block;background:#16A34A;color:#FFFFFF;font-weight:700;font-size:14px;padding:13px 36px;border-radius:8px;text-decoration:none;">
+           Descargar ${recursoTitulo}
+         </a>
+       </div>
+       <p style="color:#9CA3AF;font-size:12px;text-align:center;margin:0 0 16px;">Si el botón no funciona, copiá este link: ${downloadUrl}</p>`
+    : '';
+  return {
+    to,
+    subject: `Tu recurso gratuito: ${recursoTitulo} — LOGISMART`,
+    text: [
+      `${greeting},`,
+      ``,
+      `Gracias por tu interés. Acá está tu recurso gratuito: ${recursoTitulo}.`,
+      ...(downloadUrl ? [``, `Descargalo en: ${downloadUrl}`] : []),
+      ``,
+      `Y si querés ver cómo SGI360 resuelve esto adentro de un sistema (sin planillas),`,
+      `pedí una demo: https://logismart.ar/sgi360-landing`,
+      ``,
+      `— Equipo LOGISMART`,
+    ].join('\n'),
+    html: EMAIL_TEMPLATE_BASE(`
+      <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;padding:32px;">
+        <h2 style="color:#111827;font-size:18px;margin:0 0 16px;">${greeting} 👋</h2>
+        <p style="color:#4B5563;font-size:14px;line-height:1.6;margin:0 0 8px;">
+          Gracias por tu interés. Acá está tu recurso gratuito: <strong>${recursoTitulo}</strong>.
+        </p>
+        ${extraHtml || ''}
+        ${downloadBlock}
+        <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:16px;margin-top:8px;">
+          <p style="color:#166534;font-size:13px;line-height:1.6;margin:0;">
+            💡 <strong>Tip:</strong> todo esto SGI360 lo hace adentro del sistema — con responsables,
+            vencimientos, alertas y evidencia trazada. Si querés verlo en 15 minutos, pedí una demo en
+            <a href="https://logismart.ar/sgi360-landing" style="color:#15803D;">logismart.ar/sgi360-landing</a>.
+          </p>
+        </div>
+      </div>
+    `).trim(),
+  };
+}
+
 // ── Notification Email Templates ──────────────────────────────
 
 export interface NotificationEmailOptions {

@@ -19,6 +19,8 @@ const ALWAYS_ALLOWED_PATHS = [
   '/mercadopago-config',
   '/company-registrations',
   '/register-company',
+  '/leads', // Lead magnets públicos (sin auth ni tenant)
+  '/api/leads', // Alias con prefijo /api
   '/clima', // Temporal: permitir acceso a clima para pruebas
   '/inspecciones/public', // Página pública QR inspecciones (sin auth)
   '/maintenance-interventions/public', // Página pública QR intervenciones (sin auth)

@@ -11,7 +11,7 @@ declare module 'fastify' {
       tenantId?: string;
       userId?: string;
       isAuditorMode: boolean;
-    } | null;
+    };
   }
 
   interface FastifyInstance {
@@ -36,6 +36,8 @@ function isTenantScopedRequest(req: FastifyRequest): boolean {
   if (path.startsWith('/health')) return false;
   if (path.startsWith('/landing')) return false;
   if (path.startsWith('/register-company')) return false;
+  if (path.startsWith('/leads')) return false;
+  if (path.startsWith('/api/leads')) return false;
   if (path.startsWith('/plans')) return false;
   if (path.startsWith('/webhooks')) return false;
   if (path.startsWith('/license/webhook')) return false;

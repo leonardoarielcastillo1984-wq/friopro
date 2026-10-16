@@ -20,6 +20,8 @@ export async function tenantContext(app: FastifyInstance) {
       '/auth/me',
       '/plans',
       '/register-company',
+      '/leads',
+      '/api/leads',
       '/landing',
       '/webhooks/mercadopago',
       '/license/webhook/mercadopago',
