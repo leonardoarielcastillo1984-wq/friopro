@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight, BookOpen, Car, FileSpreadsheet, Globe, HardHat, Landmark, Scale, Truck } from 'lucide-react';
+import { ArrowRight, BookOpen, Car, ClipboardCheck, FileSpreadsheet, FileText, Globe, HardHat, Landmark, Lock, Scale, ShieldAlert, Truck, Wrench } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Recursos — Guías sobre SGI, ISO 9001, IATF 16949 y core tools | SGI360',
@@ -8,6 +8,37 @@ export const metadata: Metadata = {
     'Guías prácticas para empresas que buscan implementar o mantener un Sistema de Gestión Integrado: ISO 9001 en pymes, core tools de IATF 16949, y cuándo pasar de Excel a un software dedicado.',
   alternates: { canonical: 'https://logismart.ar/recursos' },
 };
+
+const HERRAMIENTAS = [
+  {
+    href: '/herramientas/checklist-iso-9001',
+    icon: ClipboardCheck,
+    tag: 'ISO 9001',
+    title: 'Checklist ISO 9001 — Autodiagnóstico interactivo',
+    desc: 'Evaluá el estado de tu SGC en 10 minutos, gratis y sin registro.',
+  },
+  {
+    href: '/herramientas/matriz-iperc',
+    icon: ShieldAlert,
+    tag: 'ISO 45001',
+    title: 'Plantilla Matriz IPERC (Excel)',
+    desc: 'Identificación de peligros y evaluación de riesgos 5×5 con plan de acción.',
+  },
+  {
+    href: '/herramientas/plantilla-bia',
+    icon: FileText,
+    tag: 'ISO 22301',
+    title: 'Plantilla BIA — Análisis de Impacto (Excel)',
+    desc: 'Procesos críticos, RTO/RPO/MTPD y dependencias para continuidad del negocio.',
+  },
+  {
+    href: '/herramientas/soa-iso-27001',
+    icon: Lock,
+    tag: 'ISO 27001',
+    title: 'SoA — Declaración de Aplicabilidad (Excel)',
+    desc: 'Los 93 controles del Anexo A listados y listos para completar.',
+  },
+];
 
 const ARTICULOS = [
   {
@@ -88,7 +119,41 @@ export default function RecursosPage() {
         digitalización de procesos — basado en lo que vemos implementando SGI360 en empresas reales.
       </p>
 
-      <div className="mt-12 grid gap-6">
+      {/* Herramientas gratuitas */}
+      <div className="mt-12">
+        <div className="flex items-center gap-2">
+          <Wrench className="h-5 w-5 text-green-600" />
+          <h2 className="text-xl font-bold text-slate-900">Herramientas gratuitas</h2>
+        </div>
+        <p className="mt-1 text-sm text-slate-500">
+          Checklists y plantillas listas para usar — gratis.{' '}
+          <Link href="/herramientas" className="font-semibold text-green-700 hover:underline">Ver todas →</Link>
+        </p>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          {HERRAMIENTAS.map((h) => {
+            const Icon = h.icon;
+            return (
+              <Link
+                key={h.href}
+                href={h.href}
+                className="group flex items-start gap-4 rounded-2xl border border-slate-100 bg-slate-50/60 p-5 transition-all hover:border-green-200 hover:bg-white hover:shadow-md"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-100">
+                  <Icon className="h-5 w-5 text-green-700" />
+                </div>
+                <div className="flex-1">
+                  <span className="rounded-full bg-green-50 px-2.5 py-0.5 text-[11px] font-semibold text-green-700">{h.tag}</span>
+                  <h3 className="mt-1.5 text-[15px] font-bold text-slate-900 group-hover:text-green-700">{h.title}</h3>
+                  <p className="mt-1 text-[13px] leading-relaxed text-slate-500">{h.desc}</p>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+
+      <h2 className="mt-14 text-xl font-bold text-slate-900">Guías y comparativas</h2>
+      <div className="mt-6 grid gap-6">
         {ARTICULOS.map((a) => {
           const Icon = a.icon;
           return (

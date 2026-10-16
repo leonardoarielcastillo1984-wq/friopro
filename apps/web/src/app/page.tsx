@@ -239,6 +239,7 @@ export default function Home() {
             <a href="#modulos" className="text-sm font-medium text-slate-600 hover:text-orange-600 transition-colors">Módulos</a>
             <a href="#planes" className="text-sm font-medium text-slate-600 hover:text-orange-600 transition-colors">Planes</a>
             <a href="#tecnologia" className="text-sm font-medium text-slate-600 hover:text-orange-600 transition-colors">Tecnología</a>
+            <Link href="/recursos" className="text-sm font-medium text-slate-600 hover:text-orange-600 transition-colors">Recursos</Link>
             <a href="#contacto" className="text-sm font-medium text-slate-600 hover:text-orange-600 transition-colors">Contacto</a>
           </nav>
 
@@ -261,6 +262,7 @@ export default function Home() {
           <div className="lg:hidden bg-white border-t border-slate-100 p-4 space-y-3">
             <a href="#modulos" className="block text-sm font-medium text-slate-700 py-2">Módulos</a>
             <a href="#planes" className="block text-sm font-medium text-slate-700 py-2">Planes</a>
+            <Link href="/recursos" className="block text-sm font-medium text-slate-700 py-2">Recursos</Link>
             <a href="#contacto" className="block text-sm font-medium text-slate-700 py-2">Contacto</a>
 
           </div>
@@ -758,6 +760,8 @@ export default function Home() {
                 <Link href="/audit360-landing" className="block hover:text-white transition-colors">AUDIT360</Link>
                 <Link href="/flota360-landing" className="block hover:text-white transition-colors">FLOTA360</Link>
                 <Link href="/siniestros360-landing" className="block hover:text-white transition-colors">SINIESTROS360</Link>
+                <Link href="/recursos" className="block pt-2 hover:text-white transition-colors">Recursos</Link>
+                <Link href="/herramientas" className="block hover:text-white transition-colors">Herramientas gratis</Link>
               </div>
             </div>
 
