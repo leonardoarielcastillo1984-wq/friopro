@@ -188,7 +188,7 @@ export function ChecklistIso9001() {
                 href="/precios"
                 className="rounded-2xl border-2 border-slate-200 px-7 py-3.5 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
               >
-                Ver precio (USD 99/mes)
+                Ver precio (USD 99/mes × 3 meses promo)
               </Link>
             </div>
             <p className="mt-4 text-xs text-slate-400">

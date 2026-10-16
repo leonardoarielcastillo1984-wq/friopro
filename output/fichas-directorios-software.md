@@ -60,7 +60,7 @@ sin infraestructura propia y sin consultores permanentes.
 - **Email**: soporte@logismart.ar
 - **País**: Argentina
 - **Idiomas**: Español
-- **Modelo de precio**: Suscripción SaaS (mensual/anual) — demo disponible
+- **Modelo de precio**: Suscripción SaaS — USD 99/mes los primeros 3 meses (promo de implementación), luego USD 299/mes por empresa; usuarios ilimitados; mensual o anual con descuento
 - **Deployment**: Cloud / SaaS / Web
 - **Público**: pymes y empresas medianas (transporte, logística, autopartes,
   manufactura, industria, servicios)

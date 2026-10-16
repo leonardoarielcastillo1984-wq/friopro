@@ -120,7 +120,7 @@ export function NormLanding({ d }: { d: NormLandingData }) {
           <h2 className="text-2xl font-bold">Por qué SGI360</h2>
           <ul className="mt-6 space-y-3">
             {[
-              'Plan único USD 99/mes con todos los módulos incluidos — sin sorpresas ni cobro por usuario.',
+              'Precio promocional USD 99/mes los primeros 3 meses (luego USD 299/mes) — todos los módulos incluidos, sin cobro por usuario.',
               'Implementación en días: empezás a operar sin proyecto de consultoría.',
               'Trazabilidad completa para auditoría: documentos vigentes, aprobaciones y evidencia con fecha y responsable.',
               'IA integrada: asistente por módulo que responde sobre tus datos reales.',
@@ -141,7 +141,7 @@ export function NormLanding({ d }: { d: NormLandingData }) {
         <div className="mx-auto max-w-3xl px-6 text-center">
           <h2 className="text-3xl font-bold text-white">Implementá {d.norma} sin fricción</h2>
           <p className="mt-3 text-green-100">
-            USD 99/mes · todos los módulos · usuarios ilimitados · cancelás cuando quieras.
+            USD 99/mes los primeros 3 meses · luego USD 299/mes · todos los módulos · usuarios ilimitados.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <a

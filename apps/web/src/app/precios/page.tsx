@@ -4,9 +4,9 @@ import { Check, MessageCircle, Shield, Zap } from 'lucide-react';
 import { BUSINESS } from '@/lib/legal';
 
 export const metadata: Metadata = {
-  title: 'Precios — SGI360, USD 99/mes todo incluido | LOGISMART',
+  title: 'Precios — SGI360, USD 99/mes los primeros 3 meses | LOGISMART',
   description:
-    'SGI360: un solo plan a USD 99/mes con todos los módulos — ISO 9001/14001/45001, IATF 16949 con core tools, gestión de flota, riesgos y resultados. Usuarios ilimitados, sin cobro por asiento.',
+    'SGI360: USD 99/mes los primeros 3 meses (luego USD 299/mes) con todos los módulos — ISO 9001/14001/45001, IATF 16949 con core tools, gestión de flota, riesgos y resultados. Usuarios ilimitados.',
   alternates: { canonical: 'https://logismart.ar/precios' },
 };
 
@@ -73,7 +73,15 @@ export default function PreciosPage() {
                 <span className="text-5xl font-bold">USD 99</span>
                 <span className="text-slate-400">/mes</span>
               </div>
-              <p className="mt-2 text-sm text-slate-500">por empresa · usuarios ilimitados · cancelás cuando quieras</p>
+              <div className="mt-3 rounded-xl bg-green-50 px-4 py-2.5">
+                <p className="text-sm font-semibold text-green-700">
+                  Precio promocional los primeros 3 meses
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Desde el cuarto mes: <span className="font-bold text-slate-700">USD 299/mes</span> — el valor real del sistema.
+                </p>
+              </div>
+              <p className="mt-3 text-sm text-slate-500">por empresa · usuarios ilimitados · cancelás cuando quieras</p>
             </div>
             <ul className="mt-8 space-y-3">
               {INCLUYE.map((f, i) => (
@@ -111,7 +119,11 @@ export default function PreciosPage() {
             {[
               {
                 q: '¿De verdad usuarios ilimitados?',
-                a: 'Sí. Cobramos USD 99/mes por empresa — podés dar acceso a toda la operación sin pagar por asiento. Un SGI solo funciona si todos participan.',
+                a: 'Sí. Cobramos por empresa, no por asiento — podés dar acceso a toda la operación. Un SGI solo funciona si todos participan.',
+              },
+              {
+                q: '¿Cómo funciona el precio promocional?',
+                a: 'Pagás USD 99/mes los primeros 3 meses para implementar y cargar tu sistema. Desde el cuarto mes, el valor es USD 299/mes — que sigue siendo menos que un consultor por día. La promo es válida una sola vez por empresa (no aplica crear una cuenta nueva para repetirla).',
               },
               {
                 q: '¿Hay costos de implementación ocultos?',
@@ -119,7 +131,7 @@ export default function PreciosPage() {
               },
               {
                 q: '¿Puedo probar antes de pagar?',
-                a: 'Sí — creá la cuenta gratis y recorré la plataforma, o pedí una demo guiada por WhatsApp.',
+                a: 'Sí — creá la cuenta gratis y recorré la plataforma, o pedí una demo guiada por WhatsApp. Los 3 meses a USD 99 son la forma más barata de implementar con datos reales.',
               },
               {
                 q: '¿Cómo se paga y en qué moneda?',
