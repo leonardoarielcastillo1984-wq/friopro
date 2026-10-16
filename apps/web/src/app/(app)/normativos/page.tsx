@@ -72,6 +72,9 @@ export default function NormativosPage() {
   const [normTemplates, setNormTemplates] = useState<{ code: string; name: string; version: string; description: string; clauseCount: number; processCount: number; applied: boolean }[]>([]);
   const [tplSelected, setTplSelected] = useState('');
   const [tplWithMap, setTplWithMap] = useState(true);
+  const [tplWithObjectives, setTplWithObjectives] = useState(true);
+  const [tplWithRisks, setTplWithRisks] = useState(true);
+  const [tplResult, setTplResult] = useState<string | null>(null);
   const [applyingTpl, setApplyingTpl] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -173,6 +176,9 @@ export default function NormativosPage() {
     setShowTemplates(true);
     setTplSelected('');
     setTplWithMap(true);
+    setTplWithObjectives(true);
+    setTplWithRisks(true);
+    setTplResult(null);
     try {
       const r = await apiFetch<{ templates: any[] }>('/normativos/templates');
       setNormTemplates(r?.templates || []);
@@ -185,11 +191,16 @@ export default function NormativosPage() {
     setApplyingTpl(true);
     setError(null);
     try {
-      await apiFetch('/normativos/from-template', {
+      const r = await apiFetch<{ assets?: { risks: { created: number }; objectives: { created: number } }; processMap?: { created: number } }>('/normativos/from-template', {
         method: 'POST',
-        json: { code: tplSelected, createProcessMap: tplWithMap },
+        json: { code: tplSelected, createProcessMap: tplWithMap, createObjectives: tplWithObjectives, createRisks: tplWithRisks },
       });
       setShowTemplates(false);
+      const parts: string[] = ['Norma registrada con sus cláusulas'];
+      if (r?.processMap) parts.push(`${r.processMap.created} procesos en el mapa`);
+      if (r?.assets?.objectives?.created) parts.push(`${r.assets.objectives.created} objetivos`);
+      if (r?.assets?.risks?.created) parts.push(`${r.assets.risks.created} riesgos/oportunidades`);
+      setTplResult(parts.join(' · '));
       await load();
     } catch (err: any) {
       setError(err?.message ?? 'Error al aplicar la plantilla');
@@ -480,6 +491,13 @@ export default function NormativosPage() {
       {error && (
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <AlertCircle className="h-4 w-4 flex-shrink-0" /> {error}
+        </div>
+      )}
+
+      {tplResult && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 flex-shrink-0" /> {tplResult}</span>
+          <button onClick={() => setTplResult(null)} className="rounded p-1 hover:bg-green-100"><X className="h-4 w-4" /></button>
         </div>
       )}
 
@@ -860,13 +878,28 @@ export default function NormativosPage() {
             {normTemplates.length === 0 && (
               <p className="text-sm text-neutral-400 text-center py-6">Cargando plantillas...</p>
             )}
-            <label className="mt-4 flex items-start gap-2.5 text-sm text-neutral-700 cursor-pointer">
-              <input type="checkbox" checked={tplWithMap} onChange={e => setTplWithMap(e.target.checked)} className="mt-0.5" />
-              <span>
-                Generar también el <strong>mapa de procesos</strong> de la norma
-                (Contexto SGI → Mapa de Procesos), con riesgos, indicadores y documentos sugeridos.
-              </span>
-            </label>
+            <p className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Generar además (opcional):</p>
+            <div className="space-y-2.5">
+              <label className="flex items-start gap-2.5 text-sm text-neutral-700 cursor-pointer">
+                <input type="checkbox" checked={tplWithMap} onChange={e => setTplWithMap(e.target.checked)} className="mt-0.5" />
+                <span>
+                  El <strong>mapa de procesos</strong> de la norma
+                  (Contexto SGI → Mapa de Procesos), con indicadores y documentos sugeridos.
+                </span>
+              </label>
+              <label className="flex items-start gap-2.5 text-sm text-neutral-700 cursor-pointer">
+                <input type="checkbox" checked={tplWithObjectives} onChange={e => setTplWithObjectives(e.target.checked)} className="mt-0.5" />
+                <span>
+                  <strong>Objetivos</strong> sugeridos por proceso (Objetivos del SGI), vinculados al proceso y trazados a la norma.
+                </span>
+              </label>
+              <label className="flex items-start gap-2.5 text-sm text-neutral-700 cursor-pointer">
+                <input type="checkbox" checked={tplWithRisks} onChange={e => setTplWithRisks(e.target.checked)} className="mt-0.5" />
+                <span>
+                  <strong>Riesgos y oportunidades</strong> sugeridos por proceso (Matriz de Riesgos), con probabilidad/impacto inicial 3×3 para revisar.
+                </span>
+              </label>
+            </div>
             <div className="mt-5 flex justify-end gap-3">
               <button onClick={() => setShowTemplates(false)} className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
                 Cancelar

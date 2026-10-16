@@ -68,7 +68,7 @@ const updateSchema = z.object({
   effectiveness: z.number().int().min(0).max(100).optional(),
 });
 
-async function generateRiskCode(tx: any, tenantId: string): Promise<string> {
+export async function generateRiskCode(tx: any, tenantId: string): Promise<string> {
   const year = new Date().getFullYear();
   const count = await tx.risk.count({
     where: { tenantId, code: { startsWith: `RSK-${year}-` } },

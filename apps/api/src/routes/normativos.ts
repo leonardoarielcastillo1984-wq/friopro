@@ -8,7 +8,7 @@ import { requiresTenantContext, isSuperAdmin, getEffectiveTenantId } from '../ut
 import { calculateClauseCompliance } from './compliance-evidences.js';
 import { NORM_TEMPLATES, parentNumberOf } from '../data/normClauseLibraries.js';
 import { PROCESS_TEMPLATE_CATALOG } from '../data/processTemplates.js';
-import { createMapFromTemplatesTx } from './processTemplates.js';
+import { createMapFromTemplatesTx, createSuggestedAssetsTx } from './processTemplates.js';
 
 const FEATURE_KEY = 'normativos_compliance';
 const MAX_PDF_SIZE = parseInt(process.env.MAX_PDF_SIZE_MB || '50', 10) * 1024 * 1024;
@@ -157,6 +157,8 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     const bodySchema = z.object({
       code: z.string().min(2),
       createProcessMap: z.boolean().optional().default(false),
+      createObjectives: z.boolean().optional().default(false),
+      createRisks: z.boolean().optional().default(false),
       industry: z.string().optional().default('GENERIC'),
     });
     let body;
@@ -236,7 +238,23 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
-      return { normative, clausesCreated: tpl.clauses.length, processMap };
+      // Cascada opcional: riesgos/oportunidades y objetivos sugeridos del pack
+      let assets: any = null;
+      if (body.createRisks || body.createObjectives) {
+        const standardLabel = `${tpl.meta.name.split(' - ')[0]}:${tpl.meta.version}`;
+        assets = await createSuggestedAssetsTx(tx, {
+          tenantId,
+          norm: tpl.meta.code,
+          industry: body.industry,
+          standardLabel,
+          processMap: processMap?.map ?? null,
+          createRisks: body.createRisks,
+          createObjectives: body.createObjectives,
+          userId,
+        });
+      }
+
+      return { normative, clausesCreated: tpl.clauses.length, processMap, assets };
     });
 
     return reply.code(201).send(result);

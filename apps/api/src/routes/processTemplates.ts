@@ -110,20 +110,11 @@ const importSchema = z.object({
 // ── Reutilizable: crear (o completar) un mapa de procesos desde plantillas ──
 // Usado por POST /process-templates/import y por POST /normativos/from-template
 // (cascada "aplicar norma → generar mapa"). Corre dentro de un tx existente.
-export async function createMapFromTemplatesTx(
+// Resuelve las plantillas del pack (norma + industria, con fallback a GENERIC).
+async function resolvePackTemplates(
   tx: any,
-  opts: {
-    tenantId: string;
-    norm: string;
-    industry: string;
-    processNames?: string[];
-    mapId?: string;
-    mapName?: string;
-    mapDescription?: string;
-    mapScope?: string;
-    userId?: string | null;
-  },
-): Promise<{ map: any; created: number; skipped: number } | null> {
+  opts: { tenantId: string; norm: string; industry: string; processNames?: string[] },
+): Promise<any[]> {
   const where: any = {
     active: true,
     norm: opts.norm,
@@ -145,6 +136,24 @@ export async function createMapFromTemplatesTx(
       orderBy: [{ order: 'asc' }, { name: 'asc' }],
     });
   }
+  return templates;
+}
+
+export async function createMapFromTemplatesTx(
+  tx: any,
+  opts: {
+    tenantId: string;
+    norm: string;
+    industry: string;
+    processNames?: string[];
+    mapId?: string;
+    mapName?: string;
+    mapDescription?: string;
+    mapScope?: string;
+    userId?: string | null;
+  },
+): Promise<{ map: any; created: number; skipped: number } | null> {
+  const templates = await resolvePackTemplates(tx, opts);
   if (templates.length === 0) return null;
 
   // Resolver mapa destino
@@ -202,6 +211,138 @@ export async function createMapFromTemplatesTx(
     include: { processes: { where: { deletedAt: null }, orderBy: [{ layer: 'asc' }, { order: 'asc' }] } },
   });
   return { map: full, created, skipped };
+}
+
+// Categoría sugerida de riesgo según la norma del pack.
+const RISK_CATEGORY_BY_NORM: Record<string, string> = {
+  ISO9001: 'Calidad', IATF16949: 'Calidad', ISO9004: 'Calidad',
+  ISO14001: 'Ambiental',
+  ISO45001: 'Seguridad y Salud',
+  ISO27001: 'Seguridad de la Información',
+  ISO22301: 'Continuidad del Negocio',
+  ISO28000: 'Seguridad Cadena de Suministro',
+};
+
+// ── Reutilizable: generar riesgos/oportunidades/objetivos sugeridos del pack ──
+// Usado por POST /normativos/from-template. Corre dentro de un tx existente.
+// Dedup por título para no duplicar si el tenant ya cargó registros similares.
+export async function createSuggestedAssetsTx(
+  tx: any,
+  opts: {
+    tenantId: string;
+    norm: string;
+    industry: string;
+    standardLabel: string; // ej: "ISO 27001:2022"
+    processMap?: any;      // si se generó mapa, vincula objectives.processId por nombre
+    createRisks?: boolean;
+    createObjectives?: boolean;
+    userId?: string | null;
+  },
+): Promise<{ risks: { created: number; skipped: number }; objectives: { created: number; skipped: number } }> {
+  const { generateRiskCode } = await import('./risks.js');
+  const templates = await resolvePackTemplates(tx, opts);
+  const normLabel = NORMS.find((n) => n.code === opts.norm)?.label ?? opts.norm;
+  const category = RISK_CATEGORY_BY_NORM[opts.norm] ?? 'Operacional';
+  const year = new Date().getFullYear();
+  const result = {
+    risks: { created: 0, skipped: 0 },
+    objectives: { created: 0, skipped: 0 },
+  };
+
+  // ── Riesgos y oportunidades (de los campos risks[]/opportunities[] del pack) ──
+  if (opts.createRisks) {
+    const existing = await tx.risk.findMany({
+      where: { tenantId: opts.tenantId, deletedAt: null },
+      select: { title: true },
+    });
+    const existingTitles = new Set(existing.map((r: any) => String(r.title).trim().toLowerCase()));
+
+    for (const t of templates) {
+      for (const riskTitle of asArray(t.risks)) {
+        if (existingTitles.has(riskTitle.trim().toLowerCase())) { result.risks.skipped++; continue; }
+        const code = await generateRiskCode(tx, opts.tenantId);
+        await tx.risk.create({
+          data: {
+            tenantId: opts.tenantId,
+            code,
+            title: riskTitle.slice(0, 200),
+            description: `Riesgo sugerido por el pack ${normLabel}. Proceso: "${t.name}".`,
+            category,
+            nature: 'RISK',
+            process: t.name,
+            standard: opts.standardLabel,
+            requirement: asArray(t.clauses).length ? `${normLabel} — Cláusulas ${asArray(t.clauses).join(', ')}` : undefined,
+            probability: 3,
+            impact: 3,
+            riskLevel: 9,
+          },
+        });
+        existingTitles.add(riskTitle.trim().toLowerCase());
+        result.risks.created++;
+      }
+      for (const oppTitle of asArray(t.opportunities)) {
+        if (existingTitles.has(oppTitle.trim().toLowerCase())) { result.risks.skipped++; continue; }
+        const code = await generateRiskCode(tx, opts.tenantId);
+        await tx.risk.create({
+          data: {
+            tenantId: opts.tenantId,
+            code,
+            title: oppTitle.slice(0, 200),
+            description: `Oportunidad sugerida por el pack ${normLabel}. Proceso: "${t.name}".`,
+            category,
+            nature: 'OPPORTUNITY',
+            strategy: 'EXPLOTAR',
+            process: t.name,
+            standard: opts.standardLabel,
+            probability: 3,
+            impact: 3,
+            riskLevel: 9,
+          },
+        });
+        existingTitles.add(oppTitle.trim().toLowerCase());
+        result.risks.created++;
+      }
+    }
+  }
+
+  // ── Objetivos sugeridos (uno por proceso del pack, vinculado al proceso) ──
+  if (opts.createObjectives) {
+    const existing = await tx.sgiObjective.findMany({
+      where: { tenantId: opts.tenantId, deletedAt: null, year },
+      select: { title: true },
+    });
+    const existingTitles = new Set(existing.map((o: any) => String(o.title).trim().toLowerCase()));
+    const processes: any[] = opts.processMap?.processes ?? [];
+    let seq = await tx.sgiObjective.count({ where: { tenantId: opts.tenantId, code: { startsWith: `OBJ-${year}-` } } });
+
+    for (const t of templates) {
+      const title = (t.objective || `Asegurar la operación conforme del proceso "${t.name}"`).trim();
+      if (existingTitles.has(title.toLowerCase())) { result.objectives.skipped++; continue; }
+      const proc = processes.find((p: any) => p.name.trim().toLowerCase() === t.name.trim().toLowerCase());
+      const clauses = asArray(t.clauses);
+      seq++;
+      await tx.sgiObjective.create({
+        data: {
+          tenantId: opts.tenantId,
+          code: `OBJ-${year}-${String(seq).padStart(4, '0')}`,
+          title: title.slice(0, 300),
+          description: `Objetivo sugerido por el pack ${normLabel}. Proceso: "${t.name}".${clauses.length ? ` Cláusulas relacionadas: ${clauses.join(', ')}.` : ''}`,
+          year,
+          standard: opts.standardLabel,
+          target: t.objective || 'Proceso implementado y medido conforme a los requisitos aplicables.',
+          type: t.layer === 'STRATEGIC' ? 'STRATEGIC' : 'OPERATIONAL',
+          status: 'PLANNED',
+          processId: proc?.id ?? undefined,
+          originType: 'NORM_TEMPLATE',
+          originId: proc?.id ?? null,
+        },
+      });
+      existingTitles.add(title.toLowerCase());
+      result.objectives.created++;
+    }
+  }
+
+  return result;
 }
 
 export const processTemplatesRoutes: FastifyPluginAsync = async (app) => {
