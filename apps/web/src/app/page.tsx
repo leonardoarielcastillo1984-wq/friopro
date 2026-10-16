@@ -6,10 +6,10 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Zap, Shield, ShieldCheck, ClipboardCheck, Truck, AlertTriangle,
-  ArrowRight, CheckCircle, TrendingUp, Brain, BarChart3, Globe,
-  Users, Lock, FileCheck, Layers, ChevronDown, ChevronRight,
-  Phone, Mail, MapPin, Linkedin, Twitter, Play, Star,
-  Activity, Target, Cpu, Sparkles, ArrowUpRight, Cloud,
+  ArrowRight, CheckCircle, TrendingUp, Brain, Globe,
+  Lock, Layers, ChevronDown,
+  Mail, MapPin,
+  Activity, Target, Cpu, ArrowUpRight, Cloud,
   Rocket, Headphones, RefreshCw, Package
 } from 'lucide-react';
 import './landing.css';
@@ -244,7 +244,12 @@ export default function Home() {
 
 
 
-          <button onClick={() => setMobileMenu(!mobileMenu)} className="lg:hidden p-2">
+          <button
+            onClick={() => setMobileMenu(!mobileMenu)}
+            className="lg:hidden p-2"
+            aria-label={mobileMenu ? 'Cerrar menú de navegación' : 'Abrir menú de navegación'}
+            aria-expanded={mobileMenu}
+          >
             <div className="space-y-1.5">
               <div className="w-6 h-0.5 bg-slate-700"></div>
               <div className="w-6 h-0.5 bg-slate-700"></div>
@@ -295,10 +300,10 @@ export default function Home() {
 
               {/* Trust badges */}
               <div className="mt-10 flex flex-wrap items-center gap-6 text-xs text-slate-500">
-                <span className="flex items-center gap-1.5"><Package className="w-4 h-4 text-slate-400" /> 100% Modular</span>
-                <span className="flex items-center gap-1.5"><Cloud className="w-4 h-4 text-slate-400" /> En la nube</span>
-                <span className="flex items-center gap-1.5"><Lock className="w-4 h-4 text-slate-400" /> Seguro</span>
-                <span className="flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-slate-400" /> Escalable</span>
+                <span className="flex items-center gap-1.5"><Package className="w-4 h-4 text-slate-500" /> 100% Modular</span>
+                <span className="flex items-center gap-1.5"><Cloud className="w-4 h-4 text-slate-500" /> En la nube</span>
+                <span className="flex items-center gap-1.5"><Lock className="w-4 h-4 text-slate-500" /> Seguro</span>
+                <span className="flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-slate-500" /> Escalable</span>
               </div>
             </div>
 
@@ -319,7 +324,7 @@ export default function Home() {
                         </div>
                         <h3 className="font-bold text-slate-900 text-sm leading-tight">{product.title}</h3>
                         <p className={`text-[11px] font-medium ${product.textColor} mt-0.5`}>{product.subtitle}</p>
-                        <p className="text-[11px] text-slate-400 mt-2 leading-snug group-hover:text-slate-500 transition-colors line-clamp-2">{product.description}</p>
+                        <p className="text-[11px] text-slate-500 mt-2 leading-snug group-hover:text-slate-500 transition-colors line-clamp-2">{product.description}</p>
                       </div>
                       <div className="mt-4 flex items-center gap-1 text-[11px] font-bold text-orange-500 group-hover:translate-x-1 transition-transform duration-300">
                         Ingresar <ArrowUpRight className="w-3 h-3" />
@@ -349,7 +354,7 @@ export default function Home() {
                 <div className="flex items-center justify-between mb-5">
                   <div>
                     <p className="font-bold text-slate-900">¡Hola, Equipo!</p>
-                    <p className="text-xs text-slate-400">Este es el resumen de tu gestión</p>
+                    <p className="text-xs text-slate-500">Este es el resumen de tu gestión</p>
                   </div>
                   <span className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500">Este mes ▾</span>
                 </div>
@@ -364,9 +369,9 @@ export default function Home() {
                     { label: 'Vehículos', value: '32', sub: 'Activos', color: 'text-cyan-500' },
                   ].map((kpi, i) => (
                     <div key={i} className="text-center p-2 bg-slate-50/80 rounded-xl border border-slate-100">
-                      <p className="text-[10px] text-slate-400 font-medium">{kpi.label}</p>
+                      <p className="text-[10px] text-slate-500 font-medium">{kpi.label}</p>
                       <p className={`text-xl font-bold ${kpi.color}`}>{kpi.value}</p>
-                      <p className="text-[10px] text-slate-400">{kpi.sub}</p>
+                      <p className="text-[10px] text-slate-500">{kpi.sub}</p>
                     </div>
                   ))}
                 </div>
@@ -386,9 +391,9 @@ export default function Home() {
                           <div className={`w-2 h-2 rounded-full ${item.dot} mt-1.5 flex-shrink-0`}></div>
                           <div className="flex-1 min-w-0">
                             <p className="text-[11px] font-medium text-slate-700 truncate">{item.text}</p>
-                            <p className="text-[10px] text-slate-400 truncate">{item.sub}</p>
+                            <p className="text-[10px] text-slate-500 truncate">{item.sub}</p>
                           </div>
-                          <span className="text-[10px] text-slate-300 flex-shrink-0">{item.time}</span>
+                          <span className="text-[10px] text-slate-500 flex-shrink-0">{item.time}</span>
                         </div>
                       ))}
                     </div>
@@ -398,7 +403,7 @@ export default function Home() {
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <p className="text-xs font-semibold text-slate-700">KPI principales</p>
-                      <span className="text-[10px] text-slate-400">Este mes ▾</span>
+                      <span className="text-[10px] text-slate-500">Este mes ▾</span>
                     </div>
                     <div className="space-y-2">
                       {[
@@ -442,14 +447,14 @@ export default function Home() {
                   <Cpu className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
                   <div>
                     <h4 className="font-bold text-slate-900 text-xs">Acceso Independiente</h4>
-                    <p className="text-[11px] text-slate-400 mt-1 leading-snug">Cada módulo actúa como una aplicación separada para máxima organización.</p>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-snug">Cada módulo actúa como una aplicación separada para máxima organización.</p>
                   </div>
                 </div>
                 <div className="flex gap-3 bg-white p-4 rounded-xl border border-slate-100">
                   <Activity className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
                   <div>
                     <h4 className="font-bold text-slate-900 text-xs">Indicadores en Tiempo Real</h4>
-                    <p className="text-[11px] text-slate-400 mt-1 leading-snug">Monitoreá la actividad reciente y los KPIs clave de todo tu ecosistema.</p>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-snug">Monitoreá la actividad reciente y los KPIs clave de todo tu ecosistema.</p>
                   </div>
                 </div>
               </div>
@@ -463,7 +468,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-slate-900">Un módulo para cada necesidad</h2>
-            <p className="text-xs text-slate-400 mt-2">Hacé clic sobre cualquier módulo para desplegar su explicación detallada y conocer sus funcionalidades.</p>
+            <p className="text-xs text-slate-500 mt-2">Hacé clic sobre cualquier módulo para desplegar su explicación detallada y conocer sus funcionalidades.</p>
           </div>
 
           {/* Cards Row (Cliqueable, no redirects) */}
@@ -488,7 +493,7 @@ export default function Home() {
 
                     <h3 className="font-bold text-slate-900 text-sm">{product.title}</h3>
                     <p className={`text-xs font-semibold ${product.textColor} mt-0.5`}>{product.subtitle}</p>
-                    <p className="text-xs text-slate-400 mt-2 leading-relaxed line-clamp-3 group-hover:text-slate-500 transition-colors">{product.description}</p>
+                    <p className="text-xs text-slate-500 mt-2 leading-relaxed line-clamp-3 group-hover:text-slate-500 transition-colors">{product.description}</p>
                   </div>
 
                   <div className="mt-5 w-full">
@@ -519,7 +524,7 @@ export default function Home() {
                     <h3 className="text-2xl font-extrabold text-slate-900 mt-3">
                       Funcionalidades de {MODULE_DETAILS_MAP[selectedModule].title}
                     </h3>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-slate-500 mt-1">
                       {MODULE_DETAILS_MAP[selectedModule].subtitle} — Diseñado para operar de forma 100% independiente.
                     </p>
                   </div>
@@ -546,7 +551,7 @@ export default function Home() {
                           <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
                           {cap.title}
                         </h5>
-                        <p className="text-[11px] text-slate-400 leading-snug pl-3">{cap.desc}</p>
+                        <p className="text-[11px] text-slate-500 leading-snug pl-3">{cap.desc}</p>
                       </div>
                     ))}
                   </div>
@@ -631,7 +636,7 @@ export default function Home() {
           <div className="text-center mb-12 sr-fade">
             <span className="text-xs font-bold text-orange-500 uppercase tracking-widest">Pricing</span>
             <h2 className="mt-3 text-3xl font-bold text-slate-900">Un plan. Todo incluido.</h2>
-            <p className="mt-3 text-slate-500">Sin sorpresas. USD 99/mes por módulo con todo lo que necesitás.</p>
+            <p className="mt-3 text-slate-500">Sin sorpresas. Promo de lanzamiento: USD 99/mes por módulo los primeros 3 meses.</p>
           </div>
 
           <div className="bg-white rounded-3xl border-2 border-orange-200 p-10 shadow-xl shadow-orange-50 relative sr-fade">
@@ -642,7 +647,13 @@ export default function Home() {
                 <span className="text-5xl font-bold text-slate-900">USD 99</span>
                 <span className="text-lg text-slate-500"> /mes por módulo</span>
               </p>
-              <p className="text-sm text-slate-400 mt-2">Cada módulo se contrata de forma independiente</p>
+              <div className="mt-3 inline-block rounded-xl bg-orange-50 border border-orange-100 px-5 py-2.5">
+                <p className="text-sm font-semibold text-orange-600">Precio promocional los primeros 3 meses</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Desde el cuarto mes: <span className="font-bold text-slate-700">USD 299/mes por módulo</span>
+                </p>
+              </div>
+              <p className="text-sm text-slate-500 mt-3">Cada módulo se contrata de forma independiente</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
@@ -666,9 +677,9 @@ export default function Home() {
 
             <div className="text-center">
               <Link href="/login" className="inline-flex px-8 py-3.5 bg-orange-500 text-white rounded-full text-sm font-bold hover:bg-orange-600 hover:shadow-lg hover:shadow-orange-200 transition-all">
-                Empezar ahora — 3 días gratis
+                Empezar ahora — prueba gratuita
               </Link>
-              <p className="text-xs text-slate-400 mt-3">Sin tarjeta de crédito para la prueba</p>
+              <p className="text-xs text-slate-500 mt-3">Sin tarjeta de crédito para la prueba</p>
             </div>
           </div>
         </div>
@@ -685,7 +696,7 @@ export default function Home() {
             <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="flex flex-col items-center p-6 bg-slate-50 rounded-2xl border border-slate-100 hover:scale-[1.02] transition-transform">
                 <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center shadow-sm"><Mail className="w-5 h-5 text-orange-600" /></div>
-                <span className="mt-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Email</span>
+                <span className="mt-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Email</span>
                 <a href="mailto:soporte@logismart.ar" className="mt-2 text-sm font-bold text-slate-800 hover:text-orange-600 transition-colors">soporte@logismart.ar</a>
               </div>
               
@@ -695,13 +706,13 @@ export default function Home() {
                     <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.665.989 3.511 1.505 5.399 1.506 5.519 0 10.009-4.486 10.012-10.002.002-2.673-1.033-5.185-2.918-7.072C17.266 1.701 14.755.662 12.01.662 6.491.662 2.001 5.148 1.998 10.663c-.001 1.895.493 3.748 1.433 5.392L2.244 21.04l5.403-1.886z" />
                   </svg>
                 </div>
-                <span className="mt-4 text-xs font-bold text-slate-400 uppercase tracking-wider">WhatsApp</span>
+                <span className="mt-4 text-xs font-bold text-slate-500 uppercase tracking-wider">WhatsApp</span>
                 <a href="https://wa.me/541166169368" target="_blank" rel="noopener noreferrer" className="mt-2 text-sm font-bold text-slate-800 hover:text-emerald-600 transition-colors">+54 1166169368</a>
               </div>
               
               <div className="flex flex-col items-center p-6 bg-slate-50 rounded-2xl border border-slate-100 hover:scale-[1.02] transition-transform">
                 <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center shadow-sm"><MapPin className="w-5 h-5 text-orange-600" /></div>
-                <span className="mt-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Ubicación</span>
+                <span className="mt-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Ubicación</span>
                 <span className="mt-2 text-sm font-bold text-slate-800">Buenos Aires, Argentina</span>
               </div>
             </div>
@@ -751,31 +762,29 @@ export default function Home() {
             </div>
 
             <div>
-              <h4 className="font-semibold text-sm mb-3">Plataforma</h4>
+              <h4 className="font-semibold text-sm mb-3">Contacto</h4>
               <div className="space-y-2 text-xs text-slate-400">
-                <a href="#" className="block hover:text-white transition-colors">Documentación</a>
-                <a href="#" className="block hover:text-white transition-colors">API</a>
-                <a href="#" className="block hover:text-white transition-colors">Status</a>
-                <a href="#" className="block hover:text-white transition-colors">Roadmap</a>
+                <a href="mailto:soporte@logismart.ar" className="block hover:text-white transition-colors">soporte@logismart.ar</a>
+                <a href="https://wa.me/541166169368" target="_blank" rel="noopener noreferrer" className="block hover:text-white transition-colors">WhatsApp: +54 11 6616-9368</a>
+                <span className="block">Buenos Aires, Argentina</span>
               </div>
             </div>
 
             <div>
               <h4 className="font-semibold text-sm mb-3">Legal</h4>
               <div className="space-y-2 text-xs text-slate-400">
-                <a href="#" className="block hover:text-white transition-colors">Términos</a>
-                <a href="#" className="block hover:text-white transition-colors">Privacidad</a>
-                <a href="#" className="block hover:text-white transition-colors">SLA</a>
+                <Link href="/legal/aviso" className="block hover:text-white transition-colors">Aviso Legal</Link>
+                <Link href="/legal/terminos" className="block hover:text-white transition-colors">Términos y Condiciones</Link>
+                <Link href="/legal/privacidad" className="block hover:text-white transition-colors">Política de Privacidad</Link>
+                <Link href="/legal/cookies" className="block hover:text-white transition-colors">Política de Cookies</Link>
+                <Link href="/legal/reembolsos" className="block hover:text-white transition-colors">Política de Reembolsos</Link>
+                <Link href="/legal/ia" className="block hover:text-white transition-colors">Aviso sobre IA</Link>
               </div>
             </div>
           </div>
 
           <div className="mt-10 pt-6 border-t border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-slate-500">© 2024 LOGISMART. Todos los derechos reservados.</p>
-            <div className="flex items-center gap-4">
-              <a href="#" className="text-slate-500 hover:text-white transition-colors"><Linkedin className="w-4 h-4" /></a>
-              <a href="#" className="text-slate-500 hover:text-white transition-colors"><Twitter className="w-4 h-4" /></a>
-            </div>
+            <p className="text-xs text-slate-400">© {new Date().getFullYear()} LOGISMART — Buenos Aires, Argentina. Todos los derechos reservados.</p>
           </div>
         </div>
       </footer>
