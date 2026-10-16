@@ -29,6 +29,24 @@ export default function MatrizIpercPage() {
         ],
         cierre:
           'En SGI360 la matriz IPERC está conectada con los procesos, los controles documentados y las acciones correctivas — el auditor ve el ciclo completo, no una planilla.',
+        faq: [
+          {
+            q: '¿Qué es una matriz IPERC?',
+            a: 'IPERC significa Identificación de Peligros, Evaluación de Riesgos y Controles. Es la herramienta base del sistema de seguridad y salud ocupacional (ISO 45001): para cada tarea o proceso se identifican los peligros, se evalúa el riesgo y se definen los controles para reducirlo.',
+          },
+          {
+            q: '¿Cómo se calcula el nivel de riesgo?',
+            a: 'Nivel = Probabilidad × Impacto, cada uno en escala de 1 a 5. La plantilla lo calcula automáticamente y clasifica el riesgo: 1-4 Bajo, 5-9 Moderado, 10-14 Alto y 15-25 Crítico — con color según severidad.',
+          },
+          {
+            q: '¿Sirve para una auditoría ISO 45001?',
+            a: 'Sí — el formato cubre lo que el auditor pide: peligros por tarea, evaluación inicial, controles existentes, plan de acción con responsable y fecha, y re-evaluación posterior al control como evidencia de eficacia.',
+          },
+          {
+            q: '¿La plantilla funciona en Excel y Google Sheets?',
+            a: 'Sí, es un .xlsx estándar. Las fórmulas de nivel de riesgo y evaluación funcionan en ambas herramientas — solo tenés que borrar las filas de ejemplo y cargar tus procesos.',
+          },
+        ],
       }}
     />
   );

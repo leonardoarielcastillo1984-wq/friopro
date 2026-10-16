@@ -6,6 +6,35 @@ import { CheckCircle2, MessageCircle, Shield, Zap } from 'lucide-react';
 import { BUSINESS } from '@/lib/legal';
 import { LeadCapture } from '@/components/marketing/LeadCapture';
 
+const FAQ = [
+  {
+    q: '¿Para qué sirve este checklist ISO 9001?',
+    a: 'Es un autodiagnóstico de tu Sistema de Gestión de Calidad: recorrés los requisitos clave de ISO 9001:2015 (contexto, liderazgo, planificación, soporte, operación, evaluación y mejora) y obtenés un porcentaje de cumplimiento que te muestra dónde están las brechas antes de una auditoría.',
+  },
+  {
+    q: '¿Cuánto tiempo toma completarlo?',
+    a: 'Entre 10 y 15 minutos. Son unos 50 ítems organizados por cláusula — marcás lo que tu empresa ya tiene implementado y el resultado se calcula automáticamente.',
+  },
+  {
+    q: '¿Sirve para preparar una certificación ISO 9001?',
+    a: 'Sirve como punto de partida: te muestra qué cláusulas están débiles y dónde enfocar el trabajo previo. No reemplaza la auditoría formal ni una consultoría, pero ordena las prioridades.',
+  },
+  {
+    q: '¿Es gratis? ¿Tengo que registrarme?',
+    a: 'Sí, es gratis y el autodiagnóstico funciona sin registro — los datos quedan en tu navegador. Si querés, podés dejarnos tu email al final y te enviamos el resultado con una guía para cerrar las brechas.',
+  },
+];
+
+const FAQ_JSONLD = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: FAQ.map((f) => ({
+    '@type': 'Question',
+    name: f.q,
+    acceptedAnswer: { '@type': 'Answer', text: f.a },
+  })),
+};
+
 const CLAUSULAS: { titulo: string; items: string[] }[] = [
   {
     titulo: '4. Contexto de la organización',
@@ -209,6 +238,28 @@ export function ChecklistIso9001() {
           </div>
         </div>
       </section>
+
+      {/* FAQ — contenido para SEO + FAQPage JSON-LD */}
+      <section className="border-t border-slate-100 bg-slate-50/60 py-14">
+        <div className="mx-auto max-w-4xl px-6">
+          <h2 className="text-2xl font-bold text-slate-900">Preguntas frecuentes</h2>
+          <div className="mt-6 space-y-3">
+            {FAQ.map((f, i) => (
+              <details key={i} className="group rounded-2xl border border-slate-200 bg-white p-5 open:border-green-200">
+                <summary className="cursor-pointer list-none text-[15px] font-bold text-slate-900 transition-colors group-open:text-green-700">
+                  {f.q}
+                </summary>
+                <p className="mt-3 text-[15px] leading-relaxed text-slate-600">{f.a}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_JSONLD) }}
+      />
 
       <footer className="bg-slate-900 py-8">
         <div className="mx-auto flex max-w-4xl flex-col items-center gap-3 px-6 text-center">

@@ -15,6 +15,8 @@ export interface LeadMagnetLandingData {
   fuente: string;           // source tag para /leads
   downloadUrl?: string;     // link directo post-form
   cierre?: string;
+  /** FAQ visible + FAQPage JSON-LD para rich results en Google */
+  faq?: { q: string; a: string }[];
   /** key del icono (las páginas son Server Components — no pueden pasar funciones a un client component) */
   icono: 'shield' | 'doc' | 'lock';
 }
@@ -23,6 +25,17 @@ const ICONOS = { shield: ShieldAlert, doc: FileText, lock: Lock };
 
 export function LeadMagnetLanding({ d }: { d: LeadMagnetLandingData }) {
   const Icono = ICONOS[d.icono];
+  const faqJsonLd = d.faq?.length
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: d.faq.map((f) => ({
+          '@type': 'Question',
+          name: f.q,
+          acceptedAnswer: { '@type': 'Answer', text: f.a },
+        })),
+      }
+    : null;
   const waLink = `https://wa.me/${BUSINESS.whatsappIntl}?text=${encodeURIComponent(
     `Hola, descargué ${d.recursoTitulo} y quiero ver cómo SGI360 lo gestiona para ${d.norma}.`,
   )}`;
@@ -93,6 +106,25 @@ export function LeadMagnetLanding({ d }: { d: LeadMagnetLandingData }) {
         </div>
       </section>
 
+      {/* FAQ — contenido sustancial + rich results */}
+      {d.faq && d.faq.length > 0 && (
+        <section className="border-b border-slate-100 bg-slate-50/60 py-14">
+          <div className="mx-auto max-w-4xl px-6">
+            <h2 className="text-2xl font-bold">Preguntas frecuentes</h2>
+            <div className="mt-6 space-y-3">
+              {d.faq.map((f, i) => (
+                <details key={i} className="group rounded-2xl border border-slate-200 bg-white p-5 open:border-green-200">
+                  <summary className="cursor-pointer list-none text-[15px] font-bold text-slate-900 transition-colors group-open:text-green-700">
+                    {f.q}
+                  </summary>
+                  <p className="mt-3 text-[15px] leading-relaxed text-slate-600">{f.a}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Del Excel al sistema */}
       <section className="py-16">
         <div className="mx-auto max-w-4xl px-6">
@@ -124,6 +156,13 @@ export function LeadMagnetLanding({ d }: { d: LeadMagnetLandingData }) {
           </div>
         </div>
       </section>
+
+      {faqJsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+        />
+      )}
 
       <footer className="bg-slate-900 py-8">
         <div className="mx-auto flex max-w-4xl flex-col items-center gap-3 px-6 text-center">

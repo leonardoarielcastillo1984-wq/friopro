@@ -29,6 +29,24 @@ export default function SoaIso27001Page() {
         ],
         cierre:
           'En SGI360 el SoA no es un archivo: cada control queda vinculado a documentos, riesgos y evidencias — la revisión independiente sale con un clic.',
+        faq: [
+          {
+            q: '¿Qué es la Declaración de Aplicabilidad (SoA)?',
+            a: 'Es el documento obligatorio de la cláusula 6.1.3 de ISO 27001 donde la organización declara, para cada control del Anexo A, si lo implementa o lo excluye — y por qué. Es lo primero que pide el auditor en una certificación.',
+          },
+          {
+            q: '¿Cuántos controles tiene el Anexo A de ISO 27001:2022?',
+            a: '93 controles organizados en 4 temas: 37 organizacionales (A.5), 8 de personas (A.6), 14 físicos (A.7) y 34 tecnológicos (A.8). La plantilla ya los trae listados y separados por grupo — solo completás aplicabilidad, justificación, estado y responsable.',
+          },
+          {
+            q: '¿Puedo excluir controles del Anexo A?',
+            a: 'Sí — no todos los controles aplican a todas las organizaciones. Pero cada exclusión tiene que estar justificada (ej: "no desarrollamos software" para controles de desarrollo seguro). Una exclusión sin justificación es no conformidad segura en auditoría.',
+          },
+          {
+            q: '¿Qué campos mínimos evalúa el auditor en el SoA?',
+            a: 'Aplicabilidad (SI/NO), justificación de inclusión o exclusión, estado de implementación, responsable y vínculo a la evidencia. La plantilla incluye desplegables en "¿Aplica?" y "Estado" para mantener consistencia.',
+          },
+        ],
       }}
     />
   );
