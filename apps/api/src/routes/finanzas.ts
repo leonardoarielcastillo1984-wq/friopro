@@ -1462,6 +1462,11 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     return { ...r, monedaBase: base };
   }
 
+  // Exposición interna para routers hermanos (centro-empresa): la tarjeta
+  // "Administración" del Centro de Control usa el MISMO pipeline que el
+  // dashboard de Resultados — nunca un cálculo paralelo que pueda divergir.
+  (app as any).finanzaCore = { recolectarLineas, recolectarConsolidado, configMoneda };
+
   // Fecha del último dato económico registrado/modificado. Alimenta la
   // leyenda "actualizado hoy 08:32" de cada cuadro del módulo.
   async function ultimaAct(tenantId: string, moneda: string | null): Promise<Date | null> {

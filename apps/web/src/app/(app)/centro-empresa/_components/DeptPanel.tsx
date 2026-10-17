@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { SALUD_META, LAYER_META } from './types';
 import type { DeptResumen, EmpresaConn } from './types';
-import { X, ExternalLink, TrendingUp, Bell, Target } from 'lucide-react';
+import { X, ExternalLink, TrendingUp, Bell, Target, ListChecks } from 'lucide-react';
 
 export function DeptPanel({ dept, onClose, onImpact }: { dept: DeptResumen; onClose: () => void; onImpact?: () => void }) {
   const s = SALUD_META[dept.salud];
@@ -104,6 +104,11 @@ export function DeptPanel({ dept, onClose, onImpact }: { dept: DeptResumen; onCl
       </div>
 
       <footer className="ce-panel-actions">
+        {(dept.salud === 'warn' || dept.salud === 'crit') && (
+          <a className="ce-btn ghost sm" href="/plan-accion">
+            <ListChecks size={12} /> Asignar acción
+          </a>
+        )}
         {onImpact && (
           <button className="ce-btn ghost sm" onClick={onImpact}>
             <Target size={12} /> Ver impacto

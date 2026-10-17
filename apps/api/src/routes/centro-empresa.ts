@@ -48,7 +48,7 @@ export const BUILDING_MODELS = [
 
 const DEFAULT_DEPARTMENTS: EmpresaDept[] = [
   { key: 'direccion', name: 'DIRECCIÓN', sub: 'Estrategia y gobierno', model: 'office-building', moduleKey: 'objetivos', moduleHref: '/revision-direccion', layer: 'STRATEGIC', enabled: true },
-  { key: 'administracion', name: 'ADMINISTRACIÓN', sub: 'Gestión y finanzas', model: 'office-building', moduleKey: 'resultados', moduleHref: '/proyectos', layer: 'SUPPORT', enabled: true },
+  { key: 'administracion', name: 'ADMINISTRACIÓN', sub: 'Gestión y finanzas', model: 'office-building', moduleKey: 'resultados', moduleHref: '/resultados', layer: 'SUPPORT', enabled: true },
   { key: 'calidad', name: 'CALIDAD', sub: 'NCs, CAPA y auditorías', model: 'office-building', moduleKey: 'calidad', moduleHref: '/calidad', layer: 'OPERATIONAL', enabled: true },
   { key: 'trafico', name: 'TRÁFICO', sub: 'Logística y transporte', model: 'gas-station', moduleKey: 'flota', moduleHref: '/flota-360', layer: 'OPERATIONAL', enabled: true },
   { key: 'mantenimiento', name: 'MANTENIMIENTO', sub: 'Taller y disponibilidad', model: 'warehouse', moduleKey: 'mantenimiento', moduleHref: '/flota-360/ordenes', layer: 'SUPPORT', enabled: true },
@@ -92,7 +92,7 @@ const MODULEKEY_MIGRATIONS: Record<string, [string | undefined, string]> = {
 };
 const HREF_MIGRATIONS: Record<string, [string | undefined, string]> = {
   direccion:     ['/resultados', '/revision-direccion'],
-  administracion:['/resultados', '/proyectos'],
+  administracion:['/proyectos', '/resultados'],
   sistemas:      [undefined, '/admin'],
 };
 
@@ -297,6 +297,35 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
       ? (procsConInd as { _count: { processIndicators: number } }[]).filter((p) => p._count.processIndicators === 0).length
       : null;
 
+    // ── Resultado del negocio del mes (mismo pipeline que /finanzas) ──
+    // Mes en curso vs el mismo tramo del mes anterior (like-for-like:
+    // comparar 1..N contra 1..N evita caídas ficticias del ~100%).
+    const finCore = (app as any).finanzaCore;
+    const fin = await safe(async () => {
+      if (!finCore?.recolectarLineas) return null;
+      const cfg = finCore.configMoneda ? await finCore.configMoneda(tenantId).catch(() => null) : null;
+      const moneda = cfg?.monedaDefault || cfg?.monedaLocal || null;
+      const dA = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      const pm = now.getUTCMonth() === 0 ? 11 : now.getUTCMonth() - 1;
+      const pa = now.getUTCMonth() === 0 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
+      const dP = new Date(Date.UTC(pa, pm, 1));
+      const hP = new Date(Date.UTC(pa, pm + 1, 1));
+      const corteP = new Date(Math.min(dP.getTime() + (now.getTime() - dA.getTime()), hP.getTime()));
+      const [act, ant] = await Promise.all([
+        finCore.recolectarLineas(tenantId, dA, now, moneda, null),
+        finCore.recolectarLineas(tenantId, dP, corteP, moneda, null),
+      ]);
+      const res = (ls: any[]) => {
+        const g = (gr: string[]) => (ls || []).filter((l: any) => gr.includes(l.grupo)).reduce((s: number, l: any) => s + l.importe, 0);
+        const ventas = g(['FACTURADO', 'INGRESO_OPERATIVO']);
+        const costosTotales = g(['COSTO_OP', 'GASTO_MANUAL', 'ESTRUCTURA']);
+        const resultado = ventas - costosTotales;
+        return { ventas, costosTotales, resultado, margen: ventas > 0 ? (resultado / ventas) * 100 : null };
+      };
+      const A = res(act), P = res(ant);
+      return { moneda, ...A, deltaPct: P.resultado !== 0 ? ((A.resultado - P.resultado) / Math.abs(P.resultado)) * 100 : null };
+    });
+
     const kpisFor = (moduleKey?: string | null): { kpis: { label: string; value: string | number }[]; alertas: { label: string; nivel: 'warn' | 'crit' }[]; salud: DeptSalud } => {
       const kpis: { label: string; value: string | number }[] = [];
       const alertas: { label: string; nivel: 'warn' | 'crit' }[] = [];
@@ -338,6 +367,27 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
           break;
         }
         case 'resultados': {
+          // Indicadores financieros reales — la tarjeta del dueño ve plata,
+          // no trámites. Riesgos/acciones quedan como señales secundarias.
+          if (fin) {
+            const m = fin.moneda ? ` ${fin.moneda}` : '';
+            const money = (n: number) => `$${Math.round(n / 1000).toLocaleString('es-AR')}k${m}`;
+            kpis.push({ label: 'Ventas del mes', value: money(fin.ventas) });
+            kpis.push({ label: 'Costos del mes', value: money(fin.costosTotales) });
+            kpis.push({ label: 'Resultado del mes', value: money(fin.resultado) });
+            if (fin.margen != null) kpis.push({ label: 'Margen', value: `${fin.margen.toFixed(1)}%` });
+            if (fin.resultado < 0) {
+              alertas.push({ label: `Mes en pérdida (${money(fin.resultado)})`, nivel: 'crit' }); crit++;
+            } else if (fin.deltaPct != null && fin.deltaPct <= -25) {
+              alertas.push({ label: `Resultado −${Math.abs(Math.round(fin.deltaPct))}% vs mes anterior`, nivel: 'crit' }); crit++;
+            } else if (fin.deltaPct != null && fin.deltaPct <= -10) {
+              alertas.push({ label: `Resultado −${Math.abs(Math.round(fin.deltaPct))}% vs mes anterior`, nivel: 'warn' }); warn++;
+            }
+            if (fin.ventas === 0) {
+              alertas.push({ label: 'Sin facturación registrada este mes', nivel: 'warn' }); warn++;
+            }
+            sawData = true;
+          }
           if (riesgosAltos !== null && riesgosAltos > 0) {
             alertas.push({ label: `${riesgosAltos} riesgos altos`, nivel: 'warn' }); warn += riesgosAltos;
           }
