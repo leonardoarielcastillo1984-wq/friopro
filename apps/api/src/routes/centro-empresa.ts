@@ -7,6 +7,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
+import { finanzaCore } from '../services/finanzaCore.js';
 
 type DeptLayer = 'STRATEGIC' | 'OPERATIONAL' | 'SUPPORT';
 type DeptSalud = 'ok' | 'warn' | 'crit' | 'nodata';
@@ -300,7 +301,7 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
     // ── Resultado del negocio del mes (mismo pipeline que /finanzas) ──
     // Mes en curso vs el mismo tramo del mes anterior (like-for-like:
     // comparar 1..N contra 1..N evita caídas ficticias del ~100%).
-    const finCore = (app as any).finanzaCore;
+    const finCore = finanzaCore;
     const fin = await safe(async () => {
       if (!finCore?.recolectarLineas) return null;
       const cfg = finCore.configMoneda ? await finCore.configMoneda(tenantId).catch(() => null) : null;

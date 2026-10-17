@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
+import { finanzaCore } from '../services/finanzaCore.js';
 import { existsSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
@@ -1465,7 +1466,11 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   // Exposición interna para routers hermanos (centro-empresa): la tarjeta
   // "Administración" del Centro de Control usa el MISMO pipeline que el
   // dashboard de Resultados — nunca un cálculo paralelo que pueda divergir.
-  (app as any).finanzaCore = { recolectarLineas, recolectarConsolidado, configMoneda };
+  // Va por singleton de módulo: Fastify encapsula decorators por plugin,
+  // un app.decorate() acá NO llega a otros routers.
+  finanzaCore.recolectarLineas = recolectarLineas;
+  finanzaCore.recolectarConsolidado = recolectarConsolidado;
+  finanzaCore.configMoneda = configMoneda;
 
   // Fecha del último dato económico registrado/modificado. Alimenta la
   // leyenda "actualizado hoy 08:32" de cada cuadro del módulo.
