@@ -335,6 +335,41 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
       return r?.alertas || null;
     });
 
+    // ── Inmovilización: unidad fuera de servicio quema su ingreso diario.
+    // Episodio abierto = retirada del servicio; la quema se estima con el
+    // ingreso/día propio de la unidad (FlotaIngreso últimos 90 días) o el
+    // promedio de las unidades que facturan. Sin ingresos → impacto null.
+    const inmovilizadas = await safe(() => prisma().unidadIndisponibilidad.findMany({
+      where: { tenantId, estado: 'ABIERTA' },
+      select: { vehiculoId: true, inicioAt: true, motivo: true, vehiculo: { select: { dominio: true } } },
+    }));
+    const ingresos90 = await safe(async () => {
+      if (!inmovilizadas?.length) return [];
+      return prisma().flotaIngreso.groupBy({
+        by: ['vehiculoId'],
+        where: { tenantId, fecha: { gte: new Date(now.getTime() - 90 * 864e5) } },
+        _sum: { monto: true },
+      });
+    });
+    const ing90ByUnit = new Map<string, number>((ingresos90 || []).map((r: any) => [r.vehiculoId, r._sum?.monto || 0]));
+    const ing90Total = [...ing90ByUnit.values()].reduce((a, b) => a + b, 0);
+    const itemsFlota = (inmovilizadas || []).map((ep: any) => {
+      const dias = Math.max(1, Math.floor((now.getTime() - new Date(ep.inicioAt).getTime()) / 864e5) + 1);
+      const propio = ing90ByUnit.get(ep.vehiculoId);
+      const unidadesConIngreso = Math.max(1, ing90ByUnit.size || vehiculos || 1);
+      const porDia = propio != null && propio > 0 ? propio / 90 : ing90Total > 0 ? ing90Total / 90 / unidadesConIngreso : null;
+      const quema = porDia != null ? Math.round(porDia * dias) : null;
+      return {
+        motivo: `Unidad ${ep.vehiculo?.dominio || '?'} fuera de servicio hace ${dias} días${ep.motivo ? ` — ${ep.motivo}` : ''}${porDia ? ` (quema ~$${Math.round(porDia / 1000).toLocaleString('es-AR')}k/día)` : ''}`,
+        impacto: quema,
+        moneda: finMoneda,
+        nivel: dias >= 7 ? 'crit' as const : 'warn' as const,
+        ref: '/flota-360',
+        depto: 'TRÁFICO',
+        refKey: `flota:${ep.vehiculoId}`,
+      };
+    });
+
     const kpisFor = (moduleKey?: string | null): { kpis: { label: string; value: string | number }[]; alertas: { label: string; nivel: 'warn' | 'crit' }[]; salud: DeptSalud } => {
       const kpis: { label: string; value: string | number }[] = [];
       const alertas: { label: string; nivel: 'warn' | 'crit' }[] = [];
@@ -544,6 +579,7 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
           .filter((al: any) => d.key !== 'administracion' || !/^(Mes en pérdida|Resultado −|Sin facturación)/.test(al.label))
           .map((al: any) => ({ motivo: al.label as string, impacto: null, moneda: null, nivel: al.nivel, ref: d.moduleHref || null, depto: d.name as string, refKey: `dept:${d.key}:${slug(al.label)}` })),
       ),
+      ...itemsFlota,
     ]
       .sort((a, b) => (b.nivel === 'crit' ? 1 : 0) - (a.nivel === 'crit' ? 1 : 0) || (b.impacto || 0) - (a.impacto || 0))
       .slice(0, 5);
