@@ -24,6 +24,17 @@ export interface FinanzaCore {
     monedaLocal: string | null;
     monedaDefault: string | null;
   }>;
+  calcularAlertas?: (
+    tenantId: string,
+    anio: number,
+    mes: number,
+    moneda: string | null,
+    centroCostoId: string | null,
+  ) => Promise<{
+    alertas: { severidad: string; tipo: string; mensaje: string; impacto: number; ref: string | null }[];
+    umbrales: { atencion: number; critica: number };
+    actualizadoEn: Date | null;
+  }>;
 }
 
 export const finanzaCore: FinanzaCore = {};

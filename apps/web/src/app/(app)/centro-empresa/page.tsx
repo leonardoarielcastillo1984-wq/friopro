@@ -92,7 +92,27 @@ export default function VistaGeneralPage() {
         </div>
       )}
 
-      <div className="ce-section" style={{ borderTop: 'none', paddingTop: 0 }}>
+      {data?.atencion && data.atencion.length > 0 && (
+        <div className="ce-section" style={{ borderTop: 'none', paddingTop: 0 }}>
+          <h4>Atención hoy — qué atender primero</h4>
+          <table className="ce-table">
+            <thead><tr><th>#</th><th>Qué atender</th><th>Área</th><th>Impacto</th><th>Severidad</th></tr></thead>
+            <tbody>
+              {data.atencion.map((p, i) => (
+                <tr key={i} style={{ cursor: p.ref ? 'pointer' : 'default' }} onClick={() => p.ref && router.push(p.ref)}>
+                  <td><b>{i + 1}</b></td>
+                  <td>{p.motivo}</td>
+                  <td>{p.depto}</td>
+                  <td>{p.impacto != null && p.impacto > 0 ? `$${Math.round(p.impacto / 1000).toLocaleString('es-AR')}k${p.moneda ? ` ${p.moneda}` : ''}` : '—'}</td>
+                  <td><span className={`ce-salud ${p.nivel}`}><i />{p.nivel === 'crit' ? 'Crítico' : 'Atención'}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="ce-section">
         <h4>Elegí la plantilla visual</h4>
         <div className="ce-cards">
           <button className={`ce-card ${tpl === 'campus' ? 'sel' : ''}`} onClick={() => choose('campus')}>

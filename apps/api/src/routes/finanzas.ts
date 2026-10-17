@@ -1471,6 +1471,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   finanzaCore.recolectarLineas = recolectarLineas;
   finanzaCore.recolectarConsolidado = recolectarConsolidado;
   finanzaCore.configMoneda = configMoneda;
+  finanzaCore.calcularAlertas = calcularAlertas;
 
   // Fecha del último dato económico registrado/modificado. Alimenta la
   // leyenda "actualizado hoy 08:32" de cada cuadro del módulo.

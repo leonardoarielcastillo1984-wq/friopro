@@ -302,10 +302,11 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
     // Mes en curso vs el mismo tramo del mes anterior (like-for-like:
     // comparar 1..N contra 1..N evita caídas ficticias del ~100%).
     const finCore = finanzaCore;
+    const finCfg = await safe(async () => (finCore?.configMoneda ? finCore.configMoneda(tenantId) : null));
+    const finMoneda = finCfg?.monedaDefault || finCfg?.monedaLocal || null;
     const fin = await safe(async () => {
       if (!finCore?.recolectarLineas) return null;
-      const cfg = finCore.configMoneda ? await finCore.configMoneda(tenantId).catch(() => null) : null;
-      const moneda = cfg?.monedaDefault || cfg?.monedaLocal || null;
+      const moneda = finMoneda;
       const dA = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
       const pm = now.getUTCMonth() === 0 ? 11 : now.getUTCMonth() - 1;
       const pa = now.getUTCMonth() === 0 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
@@ -325,6 +326,13 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
       };
       const A = res(act), P = res(ant);
       return { moneda, ...A, deltaPct: P.resultado !== 0 ? ((A.resultado - P.resultado) / Math.abs(P.resultado)) * 100 : null };
+    });
+
+    // ── Alertas del motor de /finanzas (severidad + impacto $ real) ──
+    const finAlertas = await safe(async () => {
+      if (!finCore?.calcularAlertas) return null;
+      const r = await finCore.calcularAlertas(tenantId, now.getUTCFullYear(), now.getUTCMonth() + 1, finMoneda, null);
+      return r?.alertas || null;
     });
 
     const kpisFor = (moduleKey?: string | null): { kpis: { label: string; value: string | number }[]; alertas: { label: string; nivel: 'warn' | 'crit' }[]; salud: DeptSalud } => {
@@ -512,6 +520,29 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
       };
     });
 
+    // ── "Atención hoy": desvíos rankeados. Los financieros traen impacto
+    // en plata (mismo motor que /finanzas/alertas); las alertas por depto se
+    // suman, excluyendo las financieras ya representadas para no duplicar.
+    const atencion = [
+      ...(finAlertas || [])
+        .filter((a: any) => a.severidad !== 'INFO')
+        .map((a: any) => ({
+          motivo: a.mensaje as string,
+          impacto: a.impacto ?? null,
+          moneda: finMoneda,
+          nivel: a.severidad === 'CRITICA' ? 'crit' as const : 'warn' as const,
+          ref: a.ref || '/resultados',
+          depto: 'Administración',
+        })),
+      ...departments.flatMap((d: any) =>
+        (d.alertas || [])
+          .filter((al: any) => d.key !== 'administracion' || !/^(Mes en pérdida|Resultado −|Sin facturación)/.test(al.label))
+          .map((al: any) => ({ motivo: al.label as string, impacto: null, moneda: null, nivel: al.nivel, ref: d.moduleHref || null, depto: d.name as string })),
+      ),
+    ]
+      .sort((a, b) => (b.nivel === 'crit' ? 1 : 0) - (a.nivel === 'crit' ? 1 : 0) || (b.impacto || 0) - (a.impacto || 0))
+      .slice(0, 5);
+
     // Consolidado ejecutivo
     const crits = departments.filter((d) => d.salud === 'crit').length;
     const warns = departments.filter((d) => d.salud === 'warn').length;
@@ -520,6 +551,7 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
     return reply.send({
       departments,
       connections: config.connections,
+      atencion,
       resumen: {
         departamentos: departments.length,
         enObjetivo: oks,

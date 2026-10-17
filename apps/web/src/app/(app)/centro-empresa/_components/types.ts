@@ -71,10 +71,22 @@ export interface ResumenEjecutivo {
   procesosEnMapa: number | null;
 }
 
+// Desvío rankeado del bloque "Atención hoy": financieros traen impacto $,
+// los operativos vienen de las alertas de cada departamento.
+export interface Prioridad {
+  motivo: string;
+  impacto: number | null;
+  moneda?: string | null;
+  nivel: 'warn' | 'crit';
+  ref: string | null;
+  depto: string;
+}
+
 export interface ResumenResponse {
   departments: DeptResumen[];
   connections: EmpresaConn[];
   resumen: ResumenEjecutivo;
+  atencion?: Prioridad[];
 }
 
 export const SALUD_META: Record<DeptSalud, { label: string; color: string; hex: number }> = {
