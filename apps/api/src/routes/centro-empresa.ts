@@ -523,7 +523,11 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
     // ── "Atención hoy": desvíos rankeados. Los financieros traen impacto
     // en plata (mismo motor que /finanzas/alertas); las alertas por depto se
     // suman, excluyendo las financieras ya representadas para no duplicar.
-    const atencion = [
+    // refKey = clave estable del desvío: permite vincularle un Plan de Acción.
+    const slug = (s: string) => s.replace(/\d+/g, '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const atencionRaw = [
       ...(finAlertas || [])
         .filter((a: any) => a.severidad !== 'INFO')
         .map((a: any) => ({
@@ -533,15 +537,37 @@ export async function centroEmpresaRoutes(app: FastifyInstance) {
           nivel: a.severidad === 'CRITICA' ? 'crit' as const : 'warn' as const,
           ref: a.ref || '/resultados',
           depto: 'Administración',
+          refKey: `fin:${a.tipo || 'GENERICO'}`,
         })),
       ...departments.flatMap((d: any) =>
         (d.alertas || [])
           .filter((al: any) => d.key !== 'administracion' || !/^(Mes en pérdida|Resultado −|Sin facturación)/.test(al.label))
-          .map((al: any) => ({ motivo: al.label as string, impacto: null, moneda: null, nivel: al.nivel, ref: d.moduleHref || null, depto: d.name as string })),
+          .map((al: any) => ({ motivo: al.label as string, impacto: null, moneda: null, nivel: al.nivel, ref: d.moduleHref || null, depto: d.name as string, refKey: `dept:${d.key}:${slug(al.label)}` })),
       ),
     ]
       .sort((a, b) => (b.nivel === 'crit' ? 1 : 0) - (a.nivel === 'crit' ? 1 : 0) || (b.impacto || 0) - (a.impacto || 0))
       .slice(0, 5);
+
+    // ── "Quién está actuando": plan de acción vinculado a cada desvío ──
+    const refKeys = atencionRaw.map((p) => p.refKey).filter(Boolean);
+    const linkedPlans = refKeys.length
+      ? await safe(() => prisma().actionPlan.findMany({
+          where: { tenantId, deletedAt: null, sourceRef: { in: refKeys } },
+          select: {
+            id: true, code: true, sourceRef: true, status: true, progressPercent: true, plannedEndDate: true,
+            executor: { select: { firstName: true, lastName: true, email: true } },
+          },
+        }))
+      : null;
+    const planByRef = new Map<string, any>((linkedPlans || []).map((p: any) => [p.sourceRef, p]));
+    const atencion = atencionRaw.map((p) => {
+      const plan = planByRef.get(p.refKey);
+      const nombre = plan?.executor ? (`${plan.executor.firstName || ''} ${plan.executor.lastName || ''}`.trim() || plan.executor.email) : null;
+      return {
+        ...p,
+        accion: plan ? { id: plan.id, code: plan.code, status: plan.status, progressPercent: plan.progressPercent ?? 0, responsable: nombre, vence: plan.plannedEndDate } : null,
+      };
+    });
 
     // Consolidado ejecutivo
     const crits = departments.filter((d) => d.salud === 'crit').length;

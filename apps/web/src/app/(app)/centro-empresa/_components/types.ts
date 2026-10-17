@@ -73,6 +73,15 @@ export interface ResumenEjecutivo {
 
 // Desvío rankeado del bloque "Atención hoy": financieros traen impacto $,
 // los operativos vienen de las alertas de cada departamento.
+export interface PrioridadAccion {
+  id: string;
+  code: string | null;
+  status: string;
+  progressPercent: number;
+  responsable: string | null;
+  vence: string | null;
+}
+
 export interface Prioridad {
   motivo: string;
   impacto: number | null;
@@ -80,6 +89,8 @@ export interface Prioridad {
   nivel: 'warn' | 'crit';
   ref: string | null;
   depto: string;
+  refKey?: string;
+  accion?: PrioridadAccion | null;
 }
 
 export interface ResumenResponse {

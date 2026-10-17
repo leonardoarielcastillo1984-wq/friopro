@@ -12314,6 +12314,11 @@ model ActionPlan {
   attachments  ActionPlanAttachment[]
   portalDrafts PortalDraftSnapshot[]
 
+  // Clave estable del desvío que originó el plan — la setea el bloque
+  // "Atención hoy" del centro-empresa (fin:{tipo} / dept:{key}:{slug}).
+  // Permite mostrar "quién está actuando" sobre cada desvío.
+  sourceRef String?
+
   @@unique([tenantId, code])
   @@index([tenantId])
   @@index([tenantId, status])

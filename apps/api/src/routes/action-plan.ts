@@ -44,6 +44,8 @@ const createSchema = z.object({
   residualImpact: z.number().int().min(1).max(5).nullable().optional(),
   residualRiskLevel: z.string().nullable().optional(),
   riskReduction: z.number().nullable().optional(),
+  // Clave del desvío que originó el plan (centro-empresa "Atención hoy").
+  sourceRef: z.string().max(300).nullable().optional(),
 });
 
 const updateSchema = createSchema.extend({
@@ -186,6 +188,20 @@ export const actionPlanRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(400).send({ error: 'Validación fallida', details: e.errors });
     }
 
+    // Si viene de un desvío y ya existe un plan para ese desvío, retornar el
+    // existente — evita duplicar planes sobre la misma prioridad detectada.
+    if (body.sourceRef) {
+      const existing = await app.runWithDbContext(req, async (tx: any) =>
+        tx.actionPlan.findFirst({
+          where: { tenantId, sourceRef: body.sourceRef, deletedAt: null },
+          include: planInclude(),
+        })
+      );
+      if (existing) {
+        return reply.code(200).send({ plan: existing, alreadyExisted: true });
+      }
+    }
+
     // Si viene de NCR y ya existe uno, retornar el existente (evitar duplicado por NCR)
     if (body.ncrId) {
       const existing = await app.runWithDbContext(req, async (tx: any) =>
@@ -233,6 +249,7 @@ export const actionPlanRoutes: FastifyPluginAsync = async (app) => {
           plannedStartDate: body.plannedStartDate ? new Date(body.plannedStartDate) : null,
           plannedEndDate: body.plannedEndDate ? new Date(body.plannedEndDate) : null,
           observations: body.observations ?? null,
+          sourceRef: body.sourceRef ?? null,
           createdById: req.auth?.userId ?? null,
           updatedById: req.auth?.userId ?? null,
         },
@@ -240,7 +257,7 @@ export const actionPlanRoutes: FastifyPluginAsync = async (app) => {
       });
 
       await addLog(tx, created.id, req.auth?.userId, 'CREATE', undefined, undefined, undefined,
-        body.ncrId ? `Plan creado desde NCR ${body.ncrId}` : 'Plan creado manualmente'
+        body.sourceRef ? `Plan creado desde desvío ${body.sourceRef}` : body.ncrId ? `Plan creado desde NCR ${body.ncrId}` : 'Plan creado manualmente'
       );
 
       return created;

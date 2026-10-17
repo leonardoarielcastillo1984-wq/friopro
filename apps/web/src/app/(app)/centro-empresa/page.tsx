@@ -96,7 +96,7 @@ export default function VistaGeneralPage() {
         <div className="ce-section" style={{ borderTop: 'none', paddingTop: 0 }}>
           <h4>Atención hoy — qué atender primero</h4>
           <table className="ce-table">
-            <thead><tr><th>#</th><th>Qué atender</th><th>Área</th><th>Impacto</th><th>Severidad</th></tr></thead>
+            <thead><tr><th>#</th><th>Qué atender</th><th>Área</th><th>Impacto</th><th>Severidad</th><th>Quién actúa</th></tr></thead>
             <tbody>
               {data.atencion.map((p, i) => (
                 <tr key={i} style={{ cursor: p.ref ? 'pointer' : 'default' }} onClick={() => p.ref && router.push(p.ref)}>
@@ -105,6 +105,17 @@ export default function VistaGeneralPage() {
                   <td>{p.depto}</td>
                   <td>{p.impacto != null && p.impacto > 0 ? `$${Math.round(p.impacto / 1000).toLocaleString('es-AR')}k${p.moneda ? ` ${p.moneda}` : ''}` : '—'}</td>
                   <td><span className={`ce-salud ${p.nivel}`}><i />{p.nivel === 'crit' ? 'Crítico' : 'Atención'}</span></td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    {p.accion ? (
+                      <a href="/plan-accion" style={{ color: '#93c5fd' }}>
+                        {p.accion.code || 'Plan'} · {p.accion.responsable || 'sin responsable'} · {p.accion.progressPercent}%
+                      </a>
+                    ) : (
+                      <a href={`/plan-accion?nuevo=1&motivo=${encodeURIComponent(p.motivo)}&depto=${encodeURIComponent(p.depto)}&refKey=${encodeURIComponent(p.refKey || '')}`} style={{ color: '#93c5fd' }}>
+                        + Asignar acción
+                      </a>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

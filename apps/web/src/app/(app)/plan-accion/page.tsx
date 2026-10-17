@@ -301,8 +301,8 @@ function DetailModal({ plan, onClose }: { plan: ActionPlan; onClose: () => void;
 
 // ── Create Modal ─────────────────────────────────────────────────────────────
 
-function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [form, setForm] = useState<Record<string, any>>({ origin: 'MANUAL', type: 'CORRECTIVE' });
+function CreateModal({ onClose, onCreated, prefill }: { onClose: () => void; onCreated: () => void; prefill?: { form: Record<string, any>; motivo: string } | null }) {
+  const [form, setForm] = useState<Record<string, any>>({ origin: 'MANUAL', type: 'CORRECTIVE', ...(prefill?.form || {}) });
   const [saving, setSaving] = useState(false);
 
   async function save() {
@@ -347,6 +347,11 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           <h2 className="text-lg font-semibold text-neutral-900">Nuevo Plan de Accion</h2>
           <button onClick={onClose}><X className="w-5 h-5 text-neutral-400" /></button>
         </div>
+        {prefill?.motivo && (
+          <div className="mx-5 mt-4 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+            Vinculado al desvío: {prefill.motivo}
+          </div>
+        )}
         <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
           {s('type', 'Tipo de accion *', TYPE_OPTS)}
           {s('origin', 'Origen *', ORIGIN_OPTS)}
@@ -392,6 +397,7 @@ function PlanAccionPageInner() {
   const [showSolicitar, setShowSolicitar] = useState(false);
   const [showPortalAdmin, setShowPortalAdmin] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const [prefill, setPrefill] = useState<{ form: Record<string, any>; motivo: string } | null>(null);
   const [aiLoading, setAiLoading] = useState<Record<string, boolean>>({});
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
   const [showColSelector, setShowColSelector] = useState(false);
@@ -468,6 +474,25 @@ function PlanAccionPageInner() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Entrada desde "Atención hoy" del centro-empresa:
+  // /plan-accion?nuevo=1&motivo=...&depto=...&refKey=fin:RESULTADO
+  // Abre el modal de alta pre-cargado y vincula el plan al desvío (sourceRef).
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('nuevo') === '1') {
+      setPrefill({
+        form: {
+          findingDescription: q.get('motivo') || '',
+          area: q.get('depto') || '',
+          sourceRef: q.get('refKey') || null,
+          origin: 'INDICATOR',
+        },
+        motivo: q.get('motivo') || '',
+      });
+      setShowCreate(true);
+    }
+  }, []);
 
   const reloadStats = useCallback(async () => {
     try {
@@ -1084,7 +1109,7 @@ function PlanAccionPageInner() {
 
       {/* Modals */}
       {selectedPlan && <DetailModal plan={selectedPlan} onClose={() => setSelectedPlan(null)} />}
-      {showCreate && <CreateModal onClose={() => setShowCreate(false)} onCreated={load} />}
+      {showCreate && <CreateModal prefill={prefill} onClose={() => { setShowCreate(false); setPrefill(null); }} onCreated={load} />}
       <SolicitarActualizacionModal
         open={showSolicitar}
         onClose={() => setShowSolicitar(false)}
