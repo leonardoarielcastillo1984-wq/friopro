@@ -43,7 +43,7 @@ export default function Flota360Landing() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/flota360/" className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl text-sm font-semibold hover:shadow-lg transition-all">
+            <Link href="/flota360/login" className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl text-sm font-semibold hover:shadow-lg transition-all">
               Ingresar
             </Link>
           </div>
@@ -65,10 +65,9 @@ export default function Flota360Landing() {
             colorFrom="from-blue-500"
             colorTo="to-cyan-500"
             icon={Truck}
-            loginEndpoint="/api/flota360/auth/login"
-            signupEndpoint="/api/flota360/auth/signup"
-            destination="/flota360/"
-            forgotPasswordHref="/flota360-landing/forgot-password"
+            loginEndpoint="/flota360-api/auth/login"
+            destination="/flota360/flota-360"
+            forgotPasswordHref="/flota360/forgot-password"
           />
         </div>
       </section>
@@ -105,7 +104,7 @@ export default function Flota360Landing() {
           <h2 className="text-4xl font-bold text-white">¿Listo para operar sin fricciones?</h2>
           <p className="mt-4 text-blue-100 text-lg">Automatizá la gestión de tu flota y activá la IA predictiva en días, no en meses.</p>
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/flota360/" className="px-8 py-4 bg-white text-blue-700 rounded-2xl font-bold text-sm hover:shadow-xl transition-all">
+            <Link href="/flota360/login" className="px-8 py-4 bg-white text-blue-700 rounded-2xl font-bold text-sm hover:shadow-xl transition-all">
               Ingresar a FLOTA360
             </Link>
             <Link href="/" className="px-8 py-4 border-2 border-white/30 text-white rounded-2xl text-sm font-semibold hover:bg-white/10 transition-all flex items-center gap-2">

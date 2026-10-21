@@ -89,10 +89,14 @@ export default function UnifiedModuleHero({
         localStorage.setItem('seh360_token', data.token);
         localStorage.setItem('seh360_user', JSON.stringify(data.user));
       } else if (moduleKey === 'flota360') {
-        if (data.token) {
-          localStorage.setItem('flotaToken', data.token);
-          localStorage.setItem('accessToken', data.token);
-        }
+        // Producto standalone: sesión con prefijo flota: (mismo esquema
+        // que NEXT_PUBLIC_STORAGE_PREFIX=flota del build /flota360).
+        const flotaToken = data.accessToken ?? data.token;
+        if (flotaToken) localStorage.setItem('flota:accessToken', flotaToken);
+        if (data.user) localStorage.setItem('flota:user', JSON.stringify(data.user));
+        if (data.activeTenant?.id) localStorage.setItem('flota:tenantId', data.activeTenant.id);
+        if (data.csrfToken) localStorage.setItem('flota:csrfToken', data.csrfToken);
+        if (data.user?.globalRole) localStorage.setItem('flota:globalRole', data.user.globalRole);
       } else if (moduleKey === 'siniestros360') {
         if (data.token) {
           localStorage.setItem('s360Token', data.token);
