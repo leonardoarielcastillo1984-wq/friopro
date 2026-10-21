@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { useLicense, type PlanTier } from '@/hooks/useLicense';
 import { useState, useEffect } from 'react';
+import { lsKey } from '@/lib/api';
 
 interface LicenseGateProps {
   children: React.ReactNode;
@@ -241,13 +242,13 @@ export function LicenseGate({ children, module, fallback }: LicenseGateProps) {
   const router = useRouter();
 
   // Verificar si es SuperAdmin por localStorage
-  const isSuperAdmin = typeof window !== 'undefined' && window.localStorage.getItem('globalRole') === 'SUPER_ADMIN';
+  const isSuperAdmin = typeof window !== 'undefined' && window.localStorage.getItem(lsKey('globalRole')) === 'SUPER_ADMIN';
   
   // Debug: Mostrar contenido del localStorage
   if (typeof window !== 'undefined') {
     console.log(`LicenseGate: Verificando acceso para módulo ${module}`);
-    console.log('LicenseGate: globalRole en localStorage:', window.localStorage.getItem('globalRole'));
-    console.log('LicenseGate: user en localStorage:', window.localStorage.getItem('user'));
+    console.log('LicenseGate: globalRole en localStorage:', window.localStorage.getItem(lsKey('globalRole')));
+    console.log('LicenseGate: user en localStorage:', window.localStorage.getItem(lsKey('user')));
     console.log('LicenseGate: isSuperAdmin:', isSuperAdmin);
   }
   

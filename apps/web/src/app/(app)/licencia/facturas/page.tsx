@@ -5,9 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { 
-  FileText, 
-  Download, 
+import {
+  FileText,
+  Download,
   Calendar,
   Search,
   Filter,
@@ -16,7 +16,8 @@ import {
   CheckCircle,
   Clock,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  CreditCard
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
@@ -53,7 +54,7 @@ export default function FacturasPage() {
 
   const loadInvoices = async () => {
     try {
-      const response = await apiFetch('/license/invoices');
+      const response = await apiFetch<Invoice[] | null>('/license/invoices');
       setInvoices(response || []);
     } catch (error) {
       console.error('Error loading invoices:', error);

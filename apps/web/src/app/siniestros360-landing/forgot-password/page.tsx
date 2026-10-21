@@ -2,6 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, Mail, CheckCircle } from "lucide-react";
+import { apiPath } from '@/lib/api';
 
 export default function Siniestros360ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -14,7 +15,7 @@ export default function Siniestros360ForgotPassword() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/siniestros360/auth/forgot-password", {
+      const res = await fetch(apiPath("/api/siniestros360/auth/forgot-password"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),

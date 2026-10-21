@@ -1,3 +1,4 @@
+import { apiPath } from '@/lib/api';
 // ──────────────────────────────────────────────────────────────
 // PROJECT360 — Auth & API helper
 //
@@ -108,7 +109,7 @@ export async function loginProject360(
   };
   if (tenantId) headers['x-tenant-id'] = tenantId;
 
-  const res = await fetch('/api/project360/auth/login', {
+  const res = await fetch(apiPath('/api/project360/auth/login'), {
     method: 'POST',
     headers,
     credentials: 'include',

@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { FileDown, Loader2, Shield, ShieldOff, X, ChevronDown, FileSpreadsheet } from 'lucide-react';
 import { useDraggableFab } from '@/hooks/useDraggableFab';
+import { apiPath, lsKey } from '@/lib/api';
 
 const SKIP_PATHS = ['/login', '/register', '/validate-doc', '/select-tenant', '/onboarding', '/plan-selection', '/plans', '/billing'];
 
@@ -422,9 +423,9 @@ export default function GlobalExportFAB() {
     try {
       const isExcel = exportType === 'EXCEL_CONTROLLED';
       const { orientation, pageSize } = getPageOrientation(pathname || '');
-      const token = localStorage.getItem('accessToken');
-      const tenantId = localStorage.getItem('tenantId');
-      const csrf = localStorage.getItem('csrfToken');
+      const token = localStorage.getItem(lsKey('accessToken'));
+      const tenantId = localStorage.getItem(lsKey('tenantId'));
+      const csrf = localStorage.getItem(lsKey('csrfToken'));
 
       // outputKey: primer elemento con valor no vacío (el board interno del mapa
       // gana sobre el panel padre, que puede estar vacío sin mapa seleccionado)
@@ -443,7 +444,7 @@ export default function GlobalExportFAB() {
       // En vistas de mapa/diagrama, ajustar el contenido a una hoja horizontal
       const fitToPage = outKeyEls.length > 0;
 
-      const res = await fetch('/api/doc-export/export', {
+      const res = await fetch(apiPath('/api/doc-export/export'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

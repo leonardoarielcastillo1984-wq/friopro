@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, apiPath, lsKey } from '@/lib/api';
 import { FileText, Plus, X, Trash2, Upload, AlertTriangle, NotebookPen, MapPin, HeartPulse, CheckCircle2, XCircle, Download, Settings2, ShieldCheck, KeyRound, RefreshCw, Eye } from 'lucide-react';
 
 const CAT_L: Record<string, string> = { SEGURIDAD_HIGIENE: 'Seguridad e higiene', COMUNICADO: 'Comunicado', DOCUMENTO_UNIDAD: 'Doc. de unidad', GENERAL: 'General' };
@@ -589,13 +589,13 @@ export function LibroJornadaPanel() {
   async function exportCsv() {
     try {
       setDownloading(true);
-      const token = localStorage.getItem('accessToken');
-      const tenantId = localStorage.getItem('tenantId');
+      const token = localStorage.getItem(lsKey('accessToken'));
+      const tenantId = localStorage.getItem(lsKey('tenantId'));
       const q = new URLSearchParams({ formato: 'csv' });
       if (conductorId) q.set('conductorId', conductorId);
       if (desde) q.set('desde', desde);
       if (hasta) q.set('hasta', hasta);
-      const res = await fetch(`/api/fleet-ops/libro-jornada?${q}`, {
+      const res = await fetch(apiPath(`/api/fleet-ops/libro-jornada?${q}`), {
         headers: {
           ...(token ? { authorization: `Bearer ${token}` } : {}),
           ...(tenantId ? { 'x-tenant-id': tenantId } : {}),

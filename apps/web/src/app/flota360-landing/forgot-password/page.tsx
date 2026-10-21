@@ -2,6 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Truck, ArrowLeft, Mail, CheckCircle } from "lucide-react";
+import { apiPath } from '@/lib/api';
 
 export default function Flota360ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -14,7 +15,7 @@ export default function Flota360ForgotPassword() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/flota360/auth/forgot-password", {
+      const res = await fetch(apiPath("/api/flota360/auth/forgot-password"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),

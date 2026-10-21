@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, lsKey } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 
 export type PlanTier = 'BASIC' | 'PROFESSIONAL' | 'PREMIUM';
@@ -190,7 +190,7 @@ export function useLicense() {
   // Verificar acceso a un módulo
   const checkModuleAccess = useCallback(async (module: string): Promise<ModuleAccess> => {
     // Verificar globalRole del auth context o localStorage
-    const globalRole = auth.user?.globalRole || (typeof window !== 'undefined' ? window.localStorage.getItem('globalRole') : null);
+    const globalRole = auth.user?.globalRole || (typeof window !== 'undefined' ? window.localStorage.getItem(lsKey('globalRole')) : null);
     console.log('useLicense: Verificando acceso, globalRole:', globalRole);
     
     if (globalRole === "SUPER_ADMIN") {
@@ -323,7 +323,7 @@ export function useLicense() {
   // Helpers
   const hasAccessToModule = useCallback((module: string): boolean => {
     // Verificar globalRole del auth context o localStorage
-    const globalRole = auth.user?.globalRole || (typeof window !== 'undefined' ? window.localStorage.getItem('globalRole') : null);
+    const globalRole = auth.user?.globalRole || (typeof window !== 'undefined' ? window.localStorage.getItem(lsKey('globalRole')) : null);
     
     // Los SuperAdmin tienen acceso completo a todos los módulos
     if (globalRole === 'SUPER_ADMIN') {

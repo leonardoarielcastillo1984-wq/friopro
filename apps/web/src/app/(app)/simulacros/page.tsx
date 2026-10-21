@@ -98,6 +98,11 @@ interface ContingencyPlan {
   id: string;
   name: string;
   description: string;
+  version?: string;
+  coverage?: {
+    areas?: string[];
+    departments?: string[];
+  };
   type: 'BUSINESS_CONTINUITY' | 'DISASTER_RECOVERY' | 'CRISIS_MANAGEMENT' | 'EMERGENCY_RESPONSE';
   scope: {
     business_units: string[];

@@ -19,7 +19,7 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import OnlyOfficeEditor from './OnlyOfficeEditor';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, apiPath } from '@/lib/api';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -212,7 +212,7 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
       const tenantId = typeof window !== 'undefined' ? localStorage.getItem('tenantId') || '' : '';
       const endpoint = format === 'pdf' ? 'export-pdf' : 'export-docx';
-      const res = await fetch(`/api/documents/${documentId}/${endpoint}`, {
+      const res = await fetch(apiPath(`/api/documents/${documentId}/${endpoint}`), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'x-tenant-id': tenantId },
       });

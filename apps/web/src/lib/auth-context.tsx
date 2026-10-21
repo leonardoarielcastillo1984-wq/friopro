@@ -1,13 +1,13 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
-import { apiFetch, setCsrfToken, setTenantId } from '@/lib/api';
+import { apiFetch, apiPath, lsKey, setCsrfToken, setTenantId, LOGOUT_REDIRECT } from '@/lib/api';
 
 type AuthUser = {
   id: string;
   email: string;
   name?: string;
-  globalRole?: 'SUPER_ADMIN' | null;
+  globalRole?: 'SUPER_ADMIN' | 'TENANT' | string | null;
 };
 
 type TenantInfo = {
@@ -47,6 +47,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         activeTenant?: TenantInfo | null;
         tenantRole?: string | null;
         csrfToken?: string;
+        globalRole?: string | null;
+        tenantId?: string | null;
       }>('/auth/me');
 
       if (!res?.user) {
@@ -58,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (res?.activeTenant?.id) {
         setTenantId(res.activeTenant.id);
         if (typeof window !== 'undefined') {
-          window.localStorage.setItem('tenantId', res.activeTenant.id);
+          window.localStorage.setItem(lsKey('tenantId'), res.activeTenant.id);
         }
       }
 
@@ -80,18 +82,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Guardar usuario con globalRole en localStorage
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem('user', JSON.stringify(res.user));
+        window.localStorage.setItem(lsKey('user'), JSON.stringify(res.user));
         // Guardar globalRole específicamente
         if (res.user.globalRole) {
-          window.localStorage.setItem('globalRole', res.user.globalRole);
+          window.localStorage.setItem(lsKey('globalRole'), res.user.globalRole);
         } else {
-          window.localStorage.removeItem("globalRole");
+          window.localStorage.removeItem(lsKey('globalRole'));
         }
         // Guardar permisos
         if (permissions) {
-          window.localStorage.setItem('userPermissions', JSON.stringify(permissions));
+          window.localStorage.setItem(lsKey('userPermissions'), JSON.stringify(permissions));
         } else {
-          window.localStorage.removeItem('userPermissions');
+          window.localStorage.removeItem(lsKey('userPermissions'));
         }
       }
 
@@ -105,11 +107,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e: any) {
       // Limpiar localStorage si hay error para forzar login fresco
       if (typeof window !== 'undefined') {
-        window.localStorage.removeItem('user');
-        window.localStorage.removeItem('accessToken');
-        window.localStorage.removeItem('tenantId');
-        window.localStorage.removeItem('csrfToken');
-        window.localStorage.removeItem('userPermissions');
+        window.localStorage.removeItem(lsKey('user'));
+        window.localStorage.removeItem(lsKey('accessToken'));
+        window.localStorage.removeItem(lsKey('tenantId'));
+        window.localStorage.removeItem(lsKey('csrfToken'));
+        window.localStorage.removeItem(lsKey('userPermissions'));
       }
 
       setState({
@@ -128,18 +130,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => null);
+      await fetch(apiPath('/api/auth/logout'), { method: 'POST', credentials: 'include' }).catch(() => null);
     } finally {
       if (typeof window !== 'undefined') {
-        window.localStorage.removeItem('user');
-        window.localStorage.removeItem('accessToken');
-        window.localStorage.removeItem('tenantId');
-        window.localStorage.removeItem('csrfToken');
+        window.localStorage.removeItem(lsKey('user'));
+        window.localStorage.removeItem(lsKey('accessToken'));
+        window.localStorage.removeItem(lsKey('tenantId'));
+        window.localStorage.removeItem(lsKey('csrfToken'));
       }
       setCsrfToken(null);
       setTenantId(null);
       setState({ user: null, tenant: null, tenantRole: null, loading: false, error: null });
-      window.location.href = '/sgi360-landing';
+      window.location.href = LOGOUT_REDIRECT;
     }
   }, []);
 

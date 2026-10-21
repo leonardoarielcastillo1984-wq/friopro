@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, apiPath } from '@/lib/api';
 import { useModulePermission } from '@/hooks/useModulePermission';
 import { TrendingUp, Receipt, Wallet, Building2, HandCoins, Upload, Eye, Pin, Landmark, LineChart, Scale, PieChart, Settings } from 'lucide-react';
 import Dashboard from './_components/Dashboard';
@@ -102,7 +102,7 @@ function ResultadosPageInner() {
     if (mes) params.set('mes', String(mes));
     if (moneda) params.set('moneda', moneda);
     if (centroCostoId) params.set('centroCostoId', centroCostoId);
-    const res = await fetch(`/api/finanzas/informe-ejecutivo?${params}`, {
+    const res = await fetch(apiPath(`/api/finanzas/informe-ejecutivo?${params}`), {
       headers: { authorization: `Bearer ${localStorage.getItem('accessToken') || ''}`, 'x-tenant-id': localStorage.getItem('tenantId') || '' },
     });
     if (!res.ok) return;

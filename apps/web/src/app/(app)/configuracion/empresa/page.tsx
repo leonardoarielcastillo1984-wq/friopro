@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, apiPath } from '@/lib/api';
 import { Upload, Building2, Palette, FileText, Save, ImageIcon, X, Download, Archive, Globe, Plus, Copy, Pencil, Check, Loader2 } from 'lucide-react';
 import { COUNTRIES } from '@/lib/countries';
 
@@ -37,7 +37,7 @@ export default function CompanySettingsPage() {
       setDownloadingBackup(true);
       const token = localStorage.getItem('accessToken');
       const tenantId = localStorage.getItem('tenantId');
-      const res = await fetch('/api/company/document-backup', {
+      const res = await fetch(apiPath('/api/company/document-backup'), {
         headers: {
           ...(token ? { authorization: `Bearer ${token}` } : {}),
           ...(tenantId ? { 'x-tenant-id': tenantId } : {}),

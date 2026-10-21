@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { apiFetch, tryRefreshToken } from '@/lib/api';
+import { apiFetch, tryRefreshToken, apiPath } from '@/lib/api';
 import type { DocumentRow, DocumentReview, DocumentClauseMapping, NormativeClause } from '@/lib/types';
 import ComboSelect from '@/components/ComboSelect';
 import {
@@ -268,7 +268,7 @@ export default function DocumentDetailPage() {
     }
     
     try {
-      const res = await fetch(`/api/documents/${doc.id}/download`, {
+      const res = await fetch(apiPath(`/api/documents/${doc.id}/download`), {
         credentials: 'include',
       });
       
@@ -527,7 +527,7 @@ export default function DocumentDetailPage() {
 
   async function downloadVersion(versionId: string, fileName: string) {
     try {
-      const res = await fetch(`/api/documents/${id}/versions/${versionId}/download`, {
+      const res = await fetch(apiPath(`/api/documents/${id}/versions/${versionId}/download`), {
         credentials: 'include',
       });
       if (!res.ok) throw new Error(`Error HTTP ${res.status}`);

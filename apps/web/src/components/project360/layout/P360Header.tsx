@@ -1,1 +1,1 @@
-export default function P360Header() { return null; }
+export default function P360Header(_props: { onMenuClick?: () => void }) { return null; }

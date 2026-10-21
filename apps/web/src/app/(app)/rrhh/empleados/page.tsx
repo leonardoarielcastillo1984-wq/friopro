@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { apiFetch, getTenantId } from '@/lib/api';
+import { apiFetch, getTenantId, apiPath } from '@/lib/api';
 import { Plus, Search, Filter, Users, Building, Briefcase, MoreVertical, Edit2, UserCheck, Eye, EyeOff, Trash2, RefreshCw, UserPlus, Shield, UserX, Download, Upload, FileSpreadsheet } from 'lucide-react';
 
 interface Employee {
@@ -138,7 +138,7 @@ export default function EmployeesPage() {
     if (tenantId) headers['x-tenant-id'] = tenantId;
     // Usar /api como prefijo relativo (igual que apiFetch) — Nginx lo reescribe al backend
     // NO usar process.env.NEXT_PUBLIC_API_URL que se embebe en build-time y puede quedar stale
-    const response = await fetch(`/api${path}`, { headers, credentials: 'include' });
+    const response = await fetch(apiPath(`/api${path}`), { headers, credentials: 'include' });
     if (!response.ok) {
       const contentType = response.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
@@ -190,7 +190,7 @@ export default function EmployeesPage() {
     formData.append('updateExisting', updateExisting.toString());
 
     try {
-      const response = await fetch(`/api/hr/employees/import`, {
+      const response = await fetch(apiPath(`/api/hr/employees/import`), {
         method: 'POST',
         headers,
         credentials: 'include',

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { apiFetch, getTenantId, getCsrfToken } from '@/lib/api';
+import { apiFetch, getTenantId, getCsrfToken, apiPath } from '@/lib/api';
 import {
   CalendarClock, LayoutDashboard, ClipboardList, CalendarDays, Users2, ShieldCheck,
   Wallet, BarChart3, Settings, Plus, Check, X, Ban, RotateCcw, AlertTriangle, Loader2,
@@ -76,7 +76,7 @@ async function downloadFile(path: string, filename: string) {
     if (token) headers['authorization'] = `Bearer ${token}`;
   }
   const tid = getTenantId(); if (tid) headers['x-tenant-id'] = tid;
-  const res = await fetch(`/api${path}`, { headers, credentials: 'include' });
+  const res = await fetch(apiPath(`/api${path}`), { headers, credentials: 'include' });
   if (!res.ok) { alert('No se pudo descargar el archivo'); return; }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -94,7 +94,7 @@ async function uploadFile(path: string, file: File, fields: Record<string, strin
   const csrf = getCsrfToken(); if (csrf) headers['x-csrf-token'] = csrf;
   const fd = new FormData(); fd.append('file', file);
   for (const [k, v] of Object.entries(fields)) fd.append(k, v);
-  const res = await fetch(`/api${path}`, { method: 'POST', headers, credentials: 'include', body: fd });
+  const res = await fetch(apiPath(`/api${path}`), { method: 'POST', headers, credentials: 'include', body: fd });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((json as any)?.error || 'Error en la importación');
   return json;

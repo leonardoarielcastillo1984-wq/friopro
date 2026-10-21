@@ -41,7 +41,7 @@ export default function SidebarWithFeatureFlags({ isOpen, onToggle }: SidebarPro
   const loadModuleAccess = async () => {
     try {
       setLoading(true);
-      const response = await apiFetch('/modules/access');
+      const response = await apiFetch<{ modules?: any[] }>('/modules/access');
       setModules(response.modules || []);
     } catch (error) {
       console.error('Error loading module access:', error);

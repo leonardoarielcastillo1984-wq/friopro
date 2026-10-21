@@ -2,6 +2,35 @@ export type ApiError = {
   error: string;
 };
 
+// ── Producto / prefijos de entorno ──────────────────────────────
+// La app puede empaquetarse como producto standalone (p.ej. Flota360
+// en logismart.ar/flota360 con API en /flota360-api). Se resuelve en
+// build-time con NEXT_PUBLIC_* — en el deploy de SGI360 todo cae a
+// los defaults actuales (sin cambio de comportamiento).
+const ENV_API_BASE = process.env.NEXT_PUBLIC_API_URL;
+// Solo se acepta una base RELATIVA (path nginx). URLs absolutas se
+// ignoran para no romper SSR/proxies (misma regla que antes).
+const API_BASE = ENV_API_BASE && ENV_API_BASE.startsWith('/') ? ENV_API_BASE.replace(/\/+$/, '') : '/api';
+const STORAGE_PREFIX = process.env.NEXT_PUBLIC_STORAGE_PREFIX || '';
+export const PRODUCT = process.env.NEXT_PUBLIC_PRODUCT || 'sgi360';
+export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || '';
+export const LOGIN_PAGE = `${BASE_PATH}/login`;
+export const LOGOUT_REDIRECT = PRODUCT === 'flota360' ? `${BASE_PATH}/login` : '/sgi360-landing';
+
+// Prefija las claves de localStorage para que dos productos en el
+// mismo dominio no compartan sesión (localStorage es por origen).
+export function lsKey(key: string) {
+  return STORAGE_PREFIX ? `${STORAGE_PREFIX}:${key}` : key;
+}
+
+// Devuelve la URL completa para un path de API — usar en fetch() crudos
+// en vez de hardcodear '/api/...'.
+export function apiPath(path: string) {
+  if (!path.startsWith('/')) path = `/${path}`;
+  if (path === '/api' || path.startsWith('/api/')) return `${API_BASE}${path.slice(4)}`;
+  return `${API_BASE}${path}`;
+}
+
 let csrfToken: string | null = null;
 let tenantId: string | null = null;
 let isRefreshing = false;
@@ -18,9 +47,9 @@ export function setCsrfToken(token: string | null) {
   csrfToken = token;
   if (typeof window !== 'undefined') {
     if (token) {
-      window.localStorage.setItem('csrfToken', token);
+      window.localStorage.setItem(lsKey('csrfToken'), token);
     } else {
-      window.localStorage.removeItem('csrfToken');
+      window.localStorage.removeItem(lsKey('csrfToken'));
     }
   }
 }
@@ -28,7 +57,7 @@ export function setCsrfToken(token: string | null) {
 export function getCsrfToken() {
   if (typeof window !== 'undefined') {
     // First try localStorage (for persistence)
-    const stored = window.localStorage.getItem('csrfToken');
+    const stored = window.localStorage.getItem(lsKey('csrfToken'));
     if (stored) {
       csrfToken = stored; // Sync in-memory variable
       return stored;
@@ -41,7 +70,7 @@ export function getCsrfToken() {
       ?.split('=')[1];
     if (cookieToken) {
       // Save to localStorage for persistence
-      window.localStorage.setItem('csrfToken', cookieToken);
+      window.localStorage.setItem(lsKey('csrfToken'), cookieToken);
       csrfToken = cookieToken;
       return cookieToken;
     }
@@ -62,15 +91,15 @@ export function getTenantId() {
     if (tenantId) return tenantId;
     
     // Then try localStorage (for persistence)
-    const stored = window.localStorage.getItem('tenantId');
+    const stored = window.localStorage.getItem(lsKey('tenantId'));
     if (stored) return stored;
     
     // Try to get from activeTenant object in localStorage
     try {
-      const activeTenant = JSON.parse(localStorage.getItem('activeTenant') || 'null');
+      const activeTenant = JSON.parse(localStorage.getItem(lsKey('activeTenant')) || 'null');
       if (activeTenant?.id) {
         tenantId = activeTenant.id as string;
-        localStorage.setItem('tenantId', tenantId);
+        localStorage.setItem(lsKey('tenantId'), tenantId);
         return tenantId;
       }
     } catch (e) {
@@ -79,10 +108,10 @@ export function getTenantId() {
     
     // Fallback: try to get from user object in localStorage (legacy)
     try {
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const user = JSON.parse(localStorage.getItem(lsKey('user')) || '{}');
       if (user?.activeTenant?.id) {
         tenantId = user.activeTenant.id as string;
-        localStorage.setItem('tenantId', tenantId);
+        localStorage.setItem(lsKey('tenantId'), tenantId);
         return tenantId;
       }
     } catch (e) {
@@ -93,10 +122,9 @@ export function getTenantId() {
 }
 
 function apiBase() {
-  // Always use relative /api proxy — resolved by Nginx on both testing and production.
-  // NEVER use process.env.NEXT_PUBLIC_API_URL here: it is embedded at build-time and
-  // may contain a stale absolute URL (e.g. localhost:3002) that breaks client-side fetches.
-  return '/api';
+  // Default '/api' — resuelto por Nginx en testing y producción.
+  // Builds de producto (p.ej. Flota360) reciben NEXT_PUBLIC_API_URL=/flota360-api.
+  return API_BASE;
 }
 
 async function tryRefreshToken(): Promise<boolean> {
@@ -110,19 +138,19 @@ async function tryRefreshToken(): Promise<boolean> {
       // El Bearer viejo vencido tiene prioridad sobre la cookie: hay que
       // pisarlo con el access token nuevo o cada request sigue pegando 401.
       if (data?.accessToken && typeof window !== 'undefined') {
-        window.localStorage.setItem('accessToken', data.accessToken);
+        window.localStorage.setItem(lsKey('accessToken'), data.accessToken);
       }
       if (data?.csrfToken) {
         csrfToken = data.csrfToken;
         if (typeof window !== 'undefined') {
-          window.localStorage.setItem('csrfToken', data.csrfToken);
+          window.localStorage.setItem(lsKey('csrfToken'), data.csrfToken);
         }
       }
       // Update tenant ID from refresh response if available
       if (data?.activeTenant?.id) {
         tenantId = data.activeTenant.id;
         if (typeof window !== 'undefined') {
-          window.localStorage.setItem('tenantId', data.activeTenant.id);
+          window.localStorage.setItem(lsKey('tenantId'), data.activeTenant.id);
         }
       }
       return true;
@@ -157,7 +185,7 @@ async function rawFetch<T>(
 
   // Attach Bearer token from localStorage
   if (typeof window !== 'undefined') {
-    const token = window.localStorage.getItem('accessToken');
+    const token = window.localStorage.getItem(lsKey('accessToken'));
     if (token && !headers.authorization && !headers.Authorization) {
       headers['authorization'] = `Bearer ${token}`;
     }
@@ -282,12 +310,12 @@ export async function apiFetch<T>(
       // Refresh falló (token expirado o sesión inválida) → redirigir a la landing de SGI360.
       // Excepción: /auth/me nunca redirige (el AuthProvider maneja el user null en páginas públicas).
       if (typeof window !== 'undefined' && !isOnLoginPage && !isAuthCheck) {
-        window.localStorage.removeItem('accessToken');
-        window.localStorage.removeItem('csrfToken');
-        window.localStorage.removeItem('tenantId');
-        window.localStorage.removeItem('user');
-        window.localStorage.removeItem('userPermissions');
-        window.location.href = '/sgi360-landing?reason=session_expired';
+        window.localStorage.removeItem(lsKey('accessToken'));
+        window.localStorage.removeItem(lsKey('csrfToken'));
+        window.localStorage.removeItem(lsKey('tenantId'));
+        window.localStorage.removeItem(lsKey('user'));
+        window.localStorage.removeItem(lsKey('userPermissions'));
+        window.location.href = `${LOGOUT_REDIRECT}?reason=session_expired`;
       }
       return {} as T;
     }

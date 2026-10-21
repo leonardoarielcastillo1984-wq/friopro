@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Hash, Loader2, Sparkles, X } from 'lucide-react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, lsKey } from '@/lib/api';
 
 interface DocCodeBadgeProps {
   outputKey: string;
@@ -39,7 +39,7 @@ export default function DocCodeBadge({
   useEffect(() => {
     // Wait for auth token to be available before loading
     if (typeof window !== 'undefined') {
-      const token = window.localStorage.getItem('accessToken');
+      const token = window.localStorage.getItem(lsKey('accessToken'));
       if (!token) {
         // Retry shortly — AuthProvider may not have set token yet
         const timer = setTimeout(() => loadDef(), 1500);

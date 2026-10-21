@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import { apiPath } from '@/lib/api';
 
 export default function Project360ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -13,7 +14,7 @@ export default function Project360ForgotPassword() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/project360/auth/forgot-password', {
+      const res = await fetch(apiPath('/api/project360/auth/forgot-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),

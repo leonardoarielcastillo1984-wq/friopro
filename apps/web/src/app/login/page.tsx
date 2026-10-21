@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Zap, Lock, Mail, Clock } from 'lucide-react';
 import Link from 'next/link';
+import { apiPath, lsKey, PRODUCT, BASE_PATH } from '@/lib/api';
 
 export default function LoginPage() {
   const searchParams = useSearchParams();
@@ -12,7 +13,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
 
   useEffect(() => {
-    const lastEmail = localStorage.getItem('lastLoginEmail');
+    const lastEmail = localStorage.getItem(lsKey('lastLoginEmail'));
     if (lastEmail) setEmail(lastEmail);
   }, []);
   const [password, setPassword] = useState('');
@@ -32,7 +33,7 @@ export default function LoginPage() {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
       try {
-        const res = await fetch('/api/auth/login', {
+        const res = await fetch(apiPath('/api/auth/login'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -74,19 +75,20 @@ export default function LoginPage() {
       }
 
       const accessToken = (data as any)?.accessToken ?? (data as any)?.token;
-      if (accessToken) localStorage.setItem('accessToken', accessToken);
+      if (accessToken) localStorage.setItem(lsKey('accessToken'), accessToken);
       if ((data as any)?.user) {
-        localStorage.setItem('user', JSON.stringify((data as any).user));
+        localStorage.setItem(lsKey('user'), JSON.stringify((data as any).user));
         if ((data as any).user.globalRole) {
-          localStorage.setItem('globalRole', (data as any).user.globalRole);
+          localStorage.setItem(lsKey('globalRole'), (data as any).user.globalRole);
         }
       }
-      localStorage.setItem('lastLoginEmail', email.trim());
-      if ((data as any)?.activeTenant?.id) localStorage.setItem('tenantId', (data as any).activeTenant.id);
-      if ((data as any)?.csrfToken) localStorage.setItem('csrfToken', (data as any).csrfToken);
+      localStorage.setItem(lsKey('lastLoginEmail'), email.trim());
+      if ((data as any)?.activeTenant?.id) localStorage.setItem(lsKey('tenantId'), (data as any).activeTenant.id);
+      if ((data as any)?.csrfToken) localStorage.setItem(lsKey('csrfToken'), (data as any).csrfToken);
 
-      // Multi-país: si tiene más de un sistema de gestión, elegir primero
-      window.location.href = (data as any)?.needsTenantSwitch ? '/select-tenant' : '/dashboard';
+      // Producto Flota360 → directo al módulo; SGI360 → dashboard/select-tenant
+      const home = PRODUCT === 'flota360' ? `${BASE_PATH}/flota-360` : '/dashboard';
+      window.location.href = (data as any)?.needsTenantSwitch ? '/select-tenant' : home;
     } catch (e: any) {
       setError(e.message || 'Error inesperado. Por favor intentá nuevamente.');
     } finally {
@@ -102,8 +104,8 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-orange-600 mb-4">
             <Zap className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">SGI 360</h1>
-          <p className="text-slate-400">Sistema de Gestión Integrado</p>
+          <h1 className="text-3xl font-bold text-white mb-2">{PRODUCT === 'flota360' ? 'Flota 360' : 'SGI 360'}</h1>
+          <p className="text-slate-400">{PRODUCT === 'flota360' ? 'Gestión inteligente de flota — LogisMart' : 'Sistema de Gestión Integrado'}</p>
         </div>
 
         {/* Card */}

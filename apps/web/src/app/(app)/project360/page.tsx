@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import Link from 'next/link';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, apiPath } from '@/lib/api';
 import { EditProjectModal, TasksModal } from './components';
 import { exportProjectsToExcel } from '@/lib/project360-export';
 import { BoardCard } from './board-card';
@@ -1062,7 +1062,7 @@ export default function Project360Page() {
                         try {
                           const formData = new FormData();
                           formData.append('file', file);
-                          const res = await fetch('/api/project360/extract-text', {
+                          const res = await fetch(apiPath('/api/project360/extract-text'), {
                             method: 'POST',
                             body: formData,
                             credentials: 'include'

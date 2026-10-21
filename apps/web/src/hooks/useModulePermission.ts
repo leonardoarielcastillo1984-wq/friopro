@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { lsKey } from '@/lib/api';
 
 export type PermissionLevel = 'none' | 'view' | 'edit';
 
@@ -9,7 +10,7 @@ export function useModulePermission(moduleKey: string): PermissionLevel {
     if (typeof window === 'undefined') return 'none';
     
     try {
-      const perms = window.localStorage.getItem('userPermissions');
+      const perms = window.localStorage.getItem(lsKey('userPermissions'));
       if (!perms) return 'none';
       
       const parsed = JSON.parse(perms);
@@ -35,7 +36,7 @@ export function hasModulePermission(moduleKey: string, required: 'view' | 'edit'
   if (typeof window === 'undefined') return false;
   
   try {
-    const perms = window.localStorage.getItem('userPermissions');
+    const perms = window.localStorage.getItem(lsKey('userPermissions'));
     if (!perms) return false;
     
     const parsed = JSON.parse(perms);
@@ -71,7 +72,7 @@ export function hasSubModulePermission(childKey: string, parentKey: string): boo
   if (!hasModulePermission(parentKey)) return false;
 
   try {
-    const perms = window.localStorage.getItem('userPermissions');
+    const perms = window.localStorage.getItem(lsKey('userPermissions'));
     if (!perms) return true; // padre con acceso y sin granularidad → permitido
 
     const parsed = JSON.parse(perms);

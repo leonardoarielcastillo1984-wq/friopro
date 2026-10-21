@@ -125,7 +125,17 @@ export default function Flota360Landing() {
             <span className="font-bold text-sm">FLOTA360</span>
             <span className="text-slate-500 text-xs ml-2">by LOGISMART</span>
           </div>
-          <p className="text-xs text-slate-500">© 2024 LOGISMART. Todos los derechos reservados.</p>
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <nav aria-label="Enlaces legales" className="flex items-center gap-3">
+              <Link href="/legal/aviso" className="text-xs text-slate-500 hover:text-white transition-colors">Aviso Legal</Link>
+              <Link href="/legal/privacidad" className="text-xs text-slate-500 hover:text-white transition-colors">Privacidad</Link>
+              <Link href="/legal/terminos" className="text-xs text-slate-500 hover:text-white transition-colors">Términos</Link>
+              <Link href="/legal/cookies" className="text-xs text-slate-500 hover:text-white transition-colors">Cookies</Link>
+              <Link href="/legal/reembolsos" className="text-xs text-slate-500 hover:text-white transition-colors">Reembolsos</Link>
+              <Link href="/legal/ia" className="text-xs text-slate-500 hover:text-white transition-colors">Uso de IA</Link>
+            </nav>
+            <p className="text-xs text-slate-500">© {new Date().getFullYear()} LOGISMART. Todos los derechos reservados.</p>
+          </div>
         </div>
       </footer>
     </div>

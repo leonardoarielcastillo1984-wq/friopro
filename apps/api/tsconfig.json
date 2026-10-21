@@ -13,5 +13,23 @@
     "noEmitOnError": false
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": [
+    "dist",
+    "node_modules",
+    // Código muerto / legacy: no está en el grafo de app.ts y depende de
+    // paquetes no instalados o modelos Prisma que ya no existen.
+    // Se conservan como referencia; NO reintroducir en runtime sin portarlos.
+    "src/__tests__",
+    "src/app-simple.ts",
+    "src/plugins/elasticsearch.ts",
+    "src/plugins/auditLog.ts",
+    "src/plugins/websocket.ts",
+    "src/plugins/tenant-context.ts",
+    "src/middleware/rateLimiter.ts",
+    "src/routes/twoFactorAuthEnhanced.ts",
+    "src/routes/auditTrail.ts",
+    "src/routes/customerManagement.ts",
+    "src/routes/license-backup.ts",
+    "src/services/auditLogger.ts"
+  ]
 }

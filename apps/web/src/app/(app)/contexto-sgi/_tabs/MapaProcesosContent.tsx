@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, apiPath } from '@/lib/api';
 import MapaGeneralModal from './MapaGeneralModal';
 import MapaGeneralView from './MapaGeneralView';
 import InteraccionesModal, { type Interaction, type InteractionDraft } from './InteraccionesModal';
@@ -1024,7 +1024,7 @@ export default function MapaProcesosContent() {
       const tenantId = localStorage.getItem('tenantId');
       const csrf = localStorage.getItem('csrfToken');
 
-      const res = await fetch('/api/doc-export/export', {
+      const res = await fetch(apiPath('/api/doc-export/export'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

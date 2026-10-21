@@ -1,5 +1,8 @@
 const nextConfig = {
   reactStrictMode: true,
+  // Producto standalone (p.ej. Flota360 servido bajo /flota360 en nginx).
+  // En el deploy de SGI360 NEXT_PUBLIC_BASE_PATH no está seteado → ''.
+  basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
   typescript: {
     ignoreBuildErrors: true,
   },

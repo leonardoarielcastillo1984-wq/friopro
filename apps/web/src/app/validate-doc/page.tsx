@@ -6,6 +6,7 @@ import {
   ShieldCheck, ShieldX, FileText, AlertTriangle, Loader2,
   CheckCircle, XCircle, Clock, Hash, Calendar, Building2,
 } from 'lucide-react';
+import { apiPath } from '@/lib/api';
 
 interface ValidationResult {
   valid: boolean;
@@ -29,7 +30,7 @@ export default function ValidateDocPage() {
       setLoading(false);
       return;
     }
-    fetch(`/api/doc-export/validate/${token}`)
+    fetch(apiPath(`/api/doc-export/validate/${token}`))
       .then(r => r.json())
       .then(data => {
         setResult(data);

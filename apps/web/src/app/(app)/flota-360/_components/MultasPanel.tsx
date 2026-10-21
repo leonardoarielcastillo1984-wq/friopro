@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { apiFetch, getCsrfToken, getTenantId } from '@/lib/api';
+import { apiFetch, getCsrfToken, getTenantId, apiPath } from '@/lib/api';
 import { AlertOctagon, Plus, X, Trash2, Upload, ExternalLink, CheckCircle2 } from 'lucide-react';
 
 type Multa = {
@@ -65,7 +65,7 @@ export default function MultasPanel({ vehiculoId, conductores }: { vehiculoId: s
         const tenantId = getTenantId();
         if (csrf) headers['x-csrf-token'] = csrf;
         if (tenantId) headers['x-tenant-id'] = tenantId;
-        const res = await fetch('/api/flota/multas/upload', {
+        const res = await fetch(apiPath('/api/flota/multas/upload'), {
           method: 'POST',
           credentials: 'include',
           headers,

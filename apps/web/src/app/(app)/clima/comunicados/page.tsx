@@ -7,7 +7,7 @@ import {
   ImageIcon, X, Users, Mail, CheckCircle2, Clock, Loader2,
   Paperclip, ChevronDown
 } from 'lucide-react';
-import { apiFetch, getCsrfToken, getTenantId } from '@/lib/api';
+import { apiFetch, getCsrfToken, getTenantId, apiPath } from '@/lib/api';
 
 const STATUS_COLORS: Record<string, string> = {
   BORRADOR: 'bg-gray-100 text-gray-600',
@@ -140,7 +140,7 @@ export default function ComunicadosPage() {
       if (csrf) headers['x-csrf-token'] = csrf;
       const tenantId = getTenantId();
       if (tenantId) headers['x-tenant-id'] = tenantId;
-      const res = await fetch(`/api/clima/comunicados/upload`, {
+      const res = await fetch(apiPath(`/api/clima/comunicados/upload`), {
         method: 'POST',
         body: fd,
         headers,

@@ -12,6 +12,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [organizationName, setOrganizationName] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,6 +27,11 @@ export default function RegisterPage() {
 
     if (password.length < 8) {
       setError('La contraseña debe tener al menos 8 caracteres');
+      return;
+    }
+
+    if (!acceptedTerms) {
+      setError('Debés aceptar los Términos y la Política de Privacidad');
       return;
     }
 
@@ -53,7 +59,7 @@ export default function RegisterPage() {
     'Auditoría con inteligencia artificial',
     'Cumplimiento multinorma (ISO 9001, 14001, 45001, 39001)',
     'Matriz de riesgos 5×5',
-    '30 días de prueba gratuita',
+    'Prueba gratuita sin tarjeta de crédito',
   ];
 
   return (
@@ -143,19 +149,42 @@ export default function RegisterPage() {
               </div>
             </div>
 
+            {/* Consentimiento legal — Ley 25.326 */}
+            <div className="flex items-start gap-2.5 rounded-lg border border-neutral-200 bg-neutral-50/50 p-3">
+              <input
+                id="accept-terms"
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500"
+                required
+              />
+              <label htmlFor="accept-terms" className="text-xs leading-relaxed text-neutral-600">
+                Acepto los{' '}
+                <Link href="/legal/terminos" target="_blank" className="font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700">
+                  Términos y Condiciones
+                </Link>{' '}
+                y la{' '}
+                <Link href="/legal/privacidad" target="_blank" className="font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700">
+                  Política de Privacidad
+                </Link>
+                , y consiento el tratamiento de mis datos personales conforme a la Ley N° 25.326.
+              </label>
+            </div>
+
             {error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                 {error}
               </div>
             )}
 
             <button
-              disabled={loading}
+              disabled={loading || !acceptedTerms}
               className="w-full flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-60"
               type="submit"
             >
               {loading ? 'Creando cuenta…' : 'Crear cuenta'}
-              {!loading && <ArrowRight className="h-4 w-4" />}
+              {!loading && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
             </button>
           </form>
 
@@ -188,7 +217,7 @@ export default function RegisterPage() {
           </div>
 
           <div className="mt-10 rounded-xl bg-white/10 backdrop-blur-sm p-4">
-            <p className="text-sm font-medium text-white">Plan BÁSICO — Gratis 30 días</p>
+            <p className="text-sm font-medium text-white">Plan BÁSICO — Período de prueba gratuito</p>
             <p className="mt-1 text-xs text-brand-200">
               Incluye gestión documental, no conformidades y riesgos. Actualizá a PROFESIONAL o PREMIUM para acceder a IA Auditora y capacitaciones.
             </p>

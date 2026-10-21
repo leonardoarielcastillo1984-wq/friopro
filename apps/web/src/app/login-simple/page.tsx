@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { apiPath } from '@/lib/api';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('admin@sgi360.com');
@@ -17,7 +18,7 @@ export default function LoginPage() {
     try {
       console.log('🔵 Iniciando login...');
       
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(apiPath('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),

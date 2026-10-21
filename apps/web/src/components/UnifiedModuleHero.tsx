@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Play, Loader2, Send, CheckCircle2, Eye, EyeOff, Sparkles, Building2, Mail, Phone, User, Lock, AlertCircle } from 'lucide-react';
+import { apiPath } from '@/lib/api';
 
 interface UnifiedModuleHeroProps {
   moduleKey: string;
@@ -180,7 +181,7 @@ export default function UnifiedModuleHero({
         return;
       }
       // Lead request (comportamiento por defecto)
-      const res = await fetch('/api/register-company', {
+      const res = await fetch(apiPath('/api/register-company'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...registerForm, module: moduleKey })

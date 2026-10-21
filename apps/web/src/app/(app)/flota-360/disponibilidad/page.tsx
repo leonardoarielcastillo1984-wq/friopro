@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, apiPath, lsKey } from '@/lib/api';
 import {
   Activity, AlertTriangle, CalendarClock, DollarSign, Download,
   TrendingUp, Truck, Wrench,
@@ -45,8 +45,8 @@ export default function DisponibilidadPage() {
     setExporting(true);
     try {
       const token = localStorage.getItem('token');
-      const tenantId = localStorage.getItem('tenantId');
-      const res = await fetch(`/api/fleet-ops/tiempos-taller/export?dias=${dias}`, {
+      const tenantId = localStorage.getItem(lsKey('tenantId'));
+      const res = await fetch(apiPath(`/api/fleet-ops/tiempos-taller/export?dias=${dias}`), {
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(tenantId ? { 'x-tenant-id': tenantId } : {}),

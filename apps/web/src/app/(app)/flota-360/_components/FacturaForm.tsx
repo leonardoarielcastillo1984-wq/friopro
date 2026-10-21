@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { apiFetch, getCsrfToken, getTenantId } from '@/lib/api';
+import { apiFetch, getCsrfToken, getTenantId, apiPath } from '@/lib/api';
 import { X, FileText, Upload, Loader2 } from 'lucide-react';
 
 export type FacturaData = {
@@ -132,7 +132,7 @@ export async function subirArchivoFactura(file: File): Promise<{ url: string; na
   const tenantId = getTenantId();
   if (csrf) headers['x-csrf-token'] = csrf;
   if (tenantId) headers['x-tenant-id'] = tenantId;
-  const res = await fetch('/api/flota/facturas/upload', {
+  const res = await fetch(apiPath('/api/flota/facturas/upload'), {
     method: 'POST',
     credentials: 'include',
     headers,

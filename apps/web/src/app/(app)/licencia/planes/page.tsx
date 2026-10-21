@@ -61,7 +61,7 @@ export default function PlanesPagoPage() {
 
   const loadPlans = async () => {
     try {
-      const response = await apiFetch('/license/plans');
+      const response = await apiFetch<{ plans?: Plan[] }>('/license/plans');
       setPlans(response.plans || []);
     } catch (error) {
       console.error('Error loading plans:', error);
@@ -72,7 +72,7 @@ export default function PlanesPagoPage() {
 
   const loadCurrentSubscription = async () => {
     try {
-      const response = await apiFetch('/license/subscription');
+      const response = await apiFetch<{ hasSubscription: boolean; planTier: string }>('/license/subscription');
       if (response.hasSubscription) {
         setCurrentPlan(response.planTier);
         // No setear selectedPlan si es NO_PLAN - el usuario debe seleccionar un plan válido
@@ -93,7 +93,7 @@ export default function PlanesPagoPage() {
     try {
       // Create checkout preference
       console.log("[CHECKOUT] calling apiFetch...");
-      const response = await apiFetch('/license/checkout', {
+      const response = await apiFetch<{ checkout?: { preferenceId?: string; initPoint?: string }; preferenceId?: string; initPoint?: string }>('/license/checkout', {
         method: 'POST',
         json: {
           planTier: selectedPlan,

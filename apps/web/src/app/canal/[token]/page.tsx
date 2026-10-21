@@ -16,6 +16,7 @@ import {
   Loader2,
   Building2
 } from 'lucide-react';
+import { apiPath } from '@/lib/api';
 
 const SUGGESTION_TYPES = [
   { id: 'SUGGESTION', label: 'Sugerencia', icon: Lightbulb, color: 'bg-amber-100 text-amber-700' },
@@ -85,7 +86,7 @@ export default function CanalPage() {
   useEffect(() => {
     async function validateToken() {
       try {
-        const res = await fetch(`/api/clima/canal/${token}`);
+        const res = await fetch(apiPath(`/api/clima/canal/${token}`));
         if (!res.ok) throw new Error('Canal no válido');
         const data = await res.json();
         setCanalInfo(data);
@@ -109,7 +110,7 @@ export default function CanalPage() {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/clima/canal/${token}`, {
+      const res = await fetch(apiPath(`/api/clima/canal/${token}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

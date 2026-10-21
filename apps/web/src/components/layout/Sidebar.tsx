@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useCompany } from '@/lib/company-context';
+import { PRODUCT } from '@/lib/api';
 import { useLicense, type PlanTier } from '@/hooks/useLicense';
 import Tooltip from '@/components/ui/Tooltip';
 import { getModuleInfo } from '@/lib/moduleDescriptions';
@@ -102,7 +103,13 @@ const bottomNav = [
   // { label: 'Integraciones', icon: Puzzle, href: '/integraciones' },
   { label: 'Configuración de la empresa', icon: Settings, href: '/configuracion/empresa' },
 ];
+// En el build standalone del producto Flota360 el sidebar global solo
+// muestra el módulo flota (el resto del SGI no forma parte del producto).
+const mainNavProduct = PRODUCT === 'flota360'
+  ? mainNav.filter((i) => i.href === '/flota-360' || i.href === '/configuracion/empresa')
+  : mainNav;
 
+// 
 // Configuración de acceso a módulos por plan
 const MODULE_PLAN_REQUIREMENTS: Record<string, PlanTier> = {
   '/dashboard': 'BASIC',
@@ -358,7 +365,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       {/* Main Navigation */}
       <nav className="flex-1 overflow-y-auto px-3">
         <div className="space-y-1">
-          {mainNav.map((item) => {
+          {mainNavProduct.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
             // SUPER_ADMIN y TENANT_ADMIN nunca tienen módulos bloqueados

@@ -2,6 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Shield, ArrowLeft, Mail, CheckCircle } from "lucide-react";
+import { apiPath } from '@/lib/api';
 
 export default function SGI360ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -14,7 +15,7 @@ export default function SGI360ForgotPassword() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/auth/forgot-password", {
+      const res = await fetch(apiPath("/api/auth/forgot-password"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),

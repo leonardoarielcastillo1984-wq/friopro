@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { Wind, CheckCircle, AlertCircle, ChevronRight, Loader2, Star } from 'lucide-react';
+import { apiPath } from '@/lib/api';
 
 async function publicFetch(path: string, options?: RequestInit) {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(apiPath(`/api${path}`), {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });

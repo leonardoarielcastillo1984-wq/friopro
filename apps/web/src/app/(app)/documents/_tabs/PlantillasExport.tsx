@@ -12,6 +12,7 @@ interface Template {
   name: string;
   description?: string;
   headerLogoUrl?: string;
+  headerLogoSecondaryUrl?: string;
   companyName?: string;
   commercialName?: string;
   companyAddress?: string;

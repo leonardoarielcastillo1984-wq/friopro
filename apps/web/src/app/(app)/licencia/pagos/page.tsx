@@ -51,7 +51,7 @@ export default function PagosPage() {
 
   const loadPayments = async () => {
     try {
-      const response = await apiFetch('/license/payments');
+      const response = await apiFetch<{ payments?: Payment[] }>('/license/payments');
       setPayments(response.payments || []);
     } catch (error) {
       console.error('Error loading payments:', error);

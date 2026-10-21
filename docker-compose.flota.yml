@@ -1,0 +1,69 @@
+# ═══════════════════════════════════════════════════════════════
+# FLOTA360 — producto standalone de la suite LogisMart
+# Mismo monorepo friopro, deployado como producto separado:
+#   Web → logismart.ar/flota360   (nginx → :5001, basePath /flota360)
+#   API → logismart.ar/flota360-api (nginx strippea → :5002)
+#   DB  → friopro_flota (dentro del contenedor flota360-postgres)
+#
+# Se usa junto al compose principal:
+#   docker compose -f docker-compose.prod.yml \
+#                  -f docker-compose.flota.yml up -d flota-api flota-web
+# ═══════════════════════════════════════════════════════════════
+
+services:
+  flota-api:
+    image: friopro-api
+    container_name: flota-api
+    env_file: /home/ubuntu/friopro/.env
+    environment:
+      # environment pisa env_file: apunta a la DB propia del producto
+      DATABASE_URL: postgresql://flota360:flota360_secure_2024@flota360-postgres:5432/friopro_flota
+      PORT: 3002
+    volumes:
+      - flota_uploads:/app/uploads
+    ports:
+      - "5002:3002"
+    depends_on:
+      flota360-postgres:
+        condition: service_healthy
+    networks:
+      - sgi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3002/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  flota-web:
+    build:
+      context: /home/ubuntu/friopro
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /flota360-api
+        NEXT_PUBLIC_BASE_PATH: /flota360
+        NEXT_PUBLIC_PRODUCT: flota360
+        NEXT_PUBLIC_STORAGE_PREFIX: flota
+        NEXT_PUBLIC_ONLYOFFICE_URL: https://docs.logismart.ar
+    image: friopro-web-flota
+    container_name: flota-web
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      API_URL: http://flota-api:3002
+      API_PROXY_TARGET: http://flota-api:3002
+    ports:
+      - "5001:3000"
+    depends_on:
+      - flota-api
+    networks:
+      - sgi-network
+    restart: unless-stopped
+
+volumes:
+  flota_uploads:
+
+networks:
+  sgi-network:
+    external: true

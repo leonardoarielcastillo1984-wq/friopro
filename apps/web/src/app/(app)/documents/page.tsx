@@ -4,7 +4,7 @@ import DocCodeBadge from '@/components/DocCodeBadge';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, apiPath } from '@/lib/api';
 import type { DocumentRow } from '@/lib/types';
 import ComboSelect from '@/components/ComboSelect';
 import MaestroDocumentos from './_tabs/MaestroDocumentos';
@@ -222,7 +222,7 @@ export default function DocumentsPage() {
         apiFetch<{ departments: {id: string; name: string}[] }>('/hr/departments').catch(() => ({ departments: [] })),
         apiFetch<{ normativos: {id: string; name: string; code: string}[] }>('/normativos').catch(() => ({ normativos: [] })),
         apiFetch<{ employees: {id: string; firstName: string; lastName: string; email: string}[] }>('/hr/employees').catch(() => ({ employees: [] })),
-        fetch(`/api/documents/list`).then(r => r.json()).catch(() => ({ documents: [] })),
+        fetch(apiPath(`/api/documents/list`)).then(r => r.json()).catch(() => ({ documents: [] })),
       ]);
 
       // Combinar documentos de BD con documentos reales del almacenamiento

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Shield, X, AlertTriangle } from 'lucide-react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, lsKey } from '@/lib/api';
 
 interface ImpersonationState {
   isImpersonating: boolean;
@@ -51,17 +51,17 @@ export default function ImpersonationBanner() {
         method: 'POST',
       });
 
-      localStorage.setItem('accessToken', state.originalToken);
-      localStorage.removeItem('tenantId');
-      localStorage.removeItem('activeTenant');
+      localStorage.setItem(lsKey('accessToken'), state.originalToken);
+      localStorage.removeItem(lsKey('tenantId'));
+      localStorage.removeItem(lsKey('activeTenant'));
       clearImpersonationState();
 
       window.dispatchEvent(new Event('impersonation-change'));
       window.location.href = '/admin';
     } catch (err) {
-      localStorage.setItem('accessToken', state.originalToken);
-      localStorage.removeItem('tenantId');
-      localStorage.removeItem('activeTenant');
+      localStorage.setItem(lsKey('accessToken'), state.originalToken);
+      localStorage.removeItem(lsKey('tenantId'));
+      localStorage.removeItem(lsKey('activeTenant'));
       clearImpersonationState();
       window.location.href = '/admin';
     }

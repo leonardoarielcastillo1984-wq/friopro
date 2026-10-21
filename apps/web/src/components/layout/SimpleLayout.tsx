@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { lsKey } from '@/lib/api';
 
 interface SimpleLayoutProps {
   children: React.ReactNode;
@@ -13,7 +14,7 @@ export default function SimpleLayout({ children }: SimpleLayoutProps) {
 
   useEffect(() => {
     // Check if user exists in localStorage
-    const userData = localStorage.getItem('user');
+    const userData = localStorage.getItem(lsKey('user'));
     if (userData) {
       try {
         setUser(JSON.parse(userData));
@@ -43,8 +44,8 @@ export default function SimpleLayout({ children }: SimpleLayoutProps) {
                 </span>
                 <button
                   onClick={() => {
-                    localStorage.removeItem('user');
-                    localStorage.removeItem('accessToken');
+                    localStorage.removeItem(lsKey('user'));
+                    localStorage.removeItem(lsKey('accessToken'));
                     router.push('/simple');
                   }}
                   className="text-sm text-red-600 hover:text-red-700"

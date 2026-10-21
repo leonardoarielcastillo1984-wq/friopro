@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Download, Loader2, Mail, CheckCircle2 } from 'lucide-react';
+import { apiPath } from '@/lib/api';
 
 interface LeadCaptureProps {
   source: string;
@@ -46,7 +47,7 @@ export function LeadCapture({
     if (!email.trim() || status === 'loading') return;
     setStatus('loading');
     try {
-      const res = await fetch('/api/leads', {
+      const res = await fetch(apiPath('/api/leads'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

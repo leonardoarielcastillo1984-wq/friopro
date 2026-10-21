@@ -2,6 +2,7 @@
 import { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { apiPath } from '@/lib/api';
 
 function ResetForm() {
   const params = useSearchParams();
@@ -18,7 +19,7 @@ function ResetForm() {
     if (password.length < 8) { setError('Mínimo 8 caracteres'); return; }
     setLoading(true); setError('');
     try {
-      const res = await fetch('/api/project360/auth/reset-password', {
+      const res = await fetch(apiPath('/api/project360/auth/reset-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, password }),

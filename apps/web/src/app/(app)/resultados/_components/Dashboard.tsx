@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, apiPath } from '@/lib/api';
 import { TrendingUp, TrendingDown, DollarSign, Wallet, Building2, ChevronRight, Loader2, X, AlertTriangle, MessageSquare, Sparkles, Send, Scale, Receipt } from 'lucide-react';
 import { useAsistente } from './useAsistente';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ReferenceLine, CartesianGrid, Legend } from 'recharts';
@@ -169,7 +169,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
     if (!folio || f29PdfBusy) return;
     setF29PdfBusy(tipo);
     try {
-      const res = await fetch(`/api/finanzas/f29/pdf?folio=${folio}&tipo=${tipo}`, {
+      const res = await fetch(apiPath(`/api/finanzas/f29/pdf?folio=${folio}&tipo=${tipo}`), {
         headers: { authorization: `Bearer ${localStorage.getItem('accessToken') || ''}`, 'x-tenant-id': localStorage.getItem('tenantId') || '' },
       });
       if (!res.ok) {

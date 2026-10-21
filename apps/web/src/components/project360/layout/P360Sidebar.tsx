@@ -1,1 +1,1 @@
-export default function P360Sidebar() { return null; }
+export default function P360Sidebar(_props: { open?: boolean; onClose?: () => void }) { return null; }

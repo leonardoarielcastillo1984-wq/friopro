@@ -6,6 +6,7 @@ import {
   CheckCircle2, AlertCircle, Play, Pause, Settings, Shield, Database,
   Code, FileText, Users, Clock, BarChart3, Zap, Lock, Unlock
 } from 'lucide-react';
+import { apiPath } from '@/lib/api';
 
 interface APIEndpoint {
   id: string;
@@ -127,7 +128,7 @@ export default function ExternalAPI({
   const testEndpoint = async (endpoint: APIEndpoint, params: any = {}) => {
     try {
       // Simulate API call
-      const response = await fetch(`/api/external${endpoint.path}`, {
+      const response = await fetch(apiPath(`/api/external${endpoint.path}`), {
         method: endpoint.method,
         headers: {
           'Content-Type': 'application/json',

@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { useRouter } from 'next/navigation';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, apiPath } from '@/lib/api';
 import type { Risk, RiskStats } from '@/lib/types';
 import {
   Shield, Plus, X, Search, AlertCircle, CheckCircle2, AlertTriangle, TrendingUp, 
@@ -442,7 +442,7 @@ export default function RiesgosPage() {
       const token = typeof window !== 'undefined' ? window.localStorage.getItem('accessToken') : null;
       const tenantId = typeof window !== 'undefined' ? window.localStorage.getItem('tenantId') : null;
 
-      const res = await fetch(`/api/export/risks?${params.toString()}`, {
+      const res = await fetch(apiPath(`/api/export/risks?${params.toString()}`), {
         method: 'GET',
         credentials: 'include',
         headers: {
@@ -481,7 +481,7 @@ export default function RiesgosPage() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch(`/api/risks/import`, {
+      const res = await fetch(apiPath(`/api/risks/import`), {
         method: 'POST',
         credentials: 'include',
         headers: {

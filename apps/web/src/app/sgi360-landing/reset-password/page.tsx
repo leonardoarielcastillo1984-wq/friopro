@@ -3,6 +3,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Shield, ArrowLeft, KeyRound, CheckCircle, Eye, EyeOff } from "lucide-react";
+import { apiPath } from '@/lib/api';
 
 function ResetPasswordForm() {
   const searchParams = useSearchParams();
@@ -27,7 +28,7 @@ function ResetPasswordForm() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/auth/reset-password", {
+      const res = await fetch(apiPath("/api/auth/reset-password"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password }),

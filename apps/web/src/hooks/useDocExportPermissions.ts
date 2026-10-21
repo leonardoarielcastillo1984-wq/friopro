@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { lsKey } from '@/lib/api';
 
 export type DocExportPermission =
   | 'doc-export:export'
@@ -56,7 +57,7 @@ export function useDocExportPermissions() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const userStr = localStorage.getItem('user');
+      const userStr = localStorage.getItem(lsKey('user'));
       if (userStr) {
         try {
           const user = JSON.parse(userStr);

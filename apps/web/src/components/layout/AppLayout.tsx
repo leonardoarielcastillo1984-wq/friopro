@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { getTenantId } from '@/lib/api';
+import { getTenantId, apiPath, lsKey, PRODUCT, BASE_PATH } from '@/lib/api';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
@@ -55,22 +55,29 @@ export default function AppLayout({ children }: AppLayoutProps) {
     timeoutMs: 30 * 60 * 1000, // 30 minutos de inactividad
     onInactive: () => {
       // Cerrar sesión activamente al detectar inactividad
-      window.localStorage.removeItem('accessToken');
-      window.localStorage.removeItem('csrfToken');
-      window.localStorage.removeItem('tenantId');
-      window.localStorage.removeItem('user');
-      window.localStorage.removeItem('userPermissions');
-      fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => null);
-      window.location.href = '/sgi360-landing?reason=session_expired';
+      window.localStorage.removeItem(lsKey('accessToken'));
+      window.localStorage.removeItem(lsKey('csrfToken'));
+      window.localStorage.removeItem(lsKey('tenantId'));
+      window.localStorage.removeItem(lsKey('user'));
+      window.localStorage.removeItem(lsKey('userPermissions'));
+      fetch(apiPath('/api/auth/logout'), { method: 'POST', credentials: 'include' }).catch(() => null);
+      window.location.href = (PRODUCT === 'flota360' ? `${BASE_PATH}/login` : '/sgi360-landing') + '?reason=session_expired';
     },
     disabled: !user || loading,
   });
 
   useEffect(() => {
     if (!loading && !user) {
-      router.replace('/sgi360-landing');
+      router.replace(PRODUCT === 'flota360' ? '/login' : '/sgi360-landing');
+      return;
     }
-  }, [loading, user, router]);
+    // Producto standalone: el usuario solo puede ver su módulo.
+    // Si navega fuera de /flota-360 se lo devuelve al inicio del producto.
+    if (!loading && user && PRODUCT === 'flota360' && pathname) {
+      const allowed = pathname.startsWith('/flota-360') || pathname.startsWith('/select-tenant') || pathname === '/';
+      if (!allowed) router.replace('/flota-360');
+    }
+  }, [loading, user, router, pathname]);
 
   if (loading) {
     return (

@@ -4,6 +4,7 @@
  */
 
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { apiPath, lsKey } from '@/lib/api';
 
 interface Use2FASetupResponse {
   secret: string;
@@ -35,25 +36,25 @@ export function use2FAStatus() {
   return useQuery({
     queryKey: ['2fa-status'],
     queryFn: async () => {
-      const response = await fetch('/api/2fa/status', {
+      const response = await fetch(apiPath('/api/2fa/status'), {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+          'Authorization': `Bearer ${localStorage.getItem(lsKey('accessToken'))}`
         }
       });
       if (!response.ok) throw new Error('Failed to fetch 2FA status');
       return response.json() as Promise<Use2FAStatusResponse>;
     },
-    enabled: !!localStorage.getItem('accessToken'),
+    enabled: !!localStorage.getItem(lsKey('accessToken')),
   });
 }
 
 export function useEnable2FA() {
   return useMutation({
     mutationFn: async (): Promise<Use2FASetupResponse> => {
-      const response = await fetch('/api/2fa/setup', {
+      const response = await fetch(apiPath('/api/2fa/setup'), {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          'Authorization': `Bearer ${localStorage.getItem(lsKey('accessToken'))}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({})
@@ -67,10 +68,10 @@ export function useEnable2FA() {
 export function useConfirm2FA() {
   return useMutation({
     mutationFn: async ({ token }: { token: string }): Promise<Use2FAConfirmResponse> => {
-      const response = await fetch('/api/2fa/confirm', {
+      const response = await fetch(apiPath('/api/2fa/confirm'), {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          'Authorization': `Bearer ${localStorage.getItem(lsKey('accessToken'))}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ token })
@@ -87,10 +88,10 @@ export function useConfirm2FA() {
 export function useDisable2FA() {
   return useMutation({
     mutationFn: async ({ password }: { password: string }): Promise<any> => {
-      const response = await fetch('/api/2fa/disable', {
+      const response = await fetch(apiPath('/api/2fa/disable'), {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          'Authorization': `Bearer ${localStorage.getItem(lsKey('accessToken'))}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ password })
@@ -107,10 +108,10 @@ export function useDisable2FA() {
 export function useGenerateRecoveryCodes() {
   return useMutation({
     mutationFn: async (): Promise<any> => {
-      const response = await fetch('/api/2fa/recovery-codes', {
+      const response = await fetch(apiPath('/api/2fa/recovery-codes'), {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          'Authorization': `Bearer ${localStorage.getItem(lsKey('accessToken'))}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({})
@@ -124,7 +125,7 @@ export function useGenerateRecoveryCodes() {
 export function useVerify2FA() {
   return useMutation({
     mutationFn: async (variables: { sessionToken: string; token: string }): Promise<any> => {
-      const response = await fetch('/api/2fa/verify', {
+      const response = await fetch(apiPath('/api/2fa/verify'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

@@ -31,7 +31,7 @@ export default function LandingPageConfig() {
 
   const fetchSettings = async () => {
     try {
-      const response = await apiFetch('/landing/settings', { method: 'GET' });
+      const response = await apiFetch<{ settings?: LandingSettings }>('/landing/settings', { method: 'GET' });
       if (response.settings) {
         setSettings(response.settings);
       }
@@ -49,7 +49,7 @@ export default function LandingPageConfig() {
 
     setSaving(true);
     try {
-      const response = await apiFetch('/landing/settings', {
+      const response = await apiFetch<{ success?: boolean }>('/landing/settings', {
         method: 'PUT',
         json: settings,
       });

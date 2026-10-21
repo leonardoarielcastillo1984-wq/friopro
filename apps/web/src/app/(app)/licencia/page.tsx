@@ -97,17 +97,20 @@ export default function LicenciaPage() {
   const loadData = async () => {
     try {
       const [subResponse, paymentsResponse, invoicesResponse, usageResponse, historyResponse, methodsResponse] = await Promise.all([
-        apiFetch('/license/subscription'),
-        apiFetch('/license/payments'),
-        apiFetch('/license/invoices'),
-        apiFetch('/license/usage').catch(() => null),
-        apiFetch('/license/usage-history').catch(() => null),
-        apiFetch('/license/payment-methods').catch(() => null)
+        apiFetch<Subscription | null>('/license/subscription'),
+        apiFetch<Payment[] | null>('/license/payments'),
+        apiFetch<Invoice[] | null>('/license/invoices'),
+        apiFetch<{ metrics?: UsageMetric[]; history?: UsageHistory[] } | null>('/license/usage').catch(() => null),
+        apiFetch<UsageHistory[] | null>('/license/usage-history').catch(() => null),
+        apiFetch<PaymentMethod[] | null>('/license/payment-methods').catch(() => null)
       ]);
 
       setSubscription(subResponse);
-      setPayments(Array.isArray(paymentsResponse) ? paymentsResponse : []);
-      setInvoices(Array.isArray(invoicesResponse) ? invoicesResponse : []);
+      setPayments(paymentsResponse ?? []);
+      setInvoices(invoicesResponse ?? []);
+      setUsageMetrics(usageResponse?.metrics ?? []);
+      setUsageHistory(historyResponse ?? []);
+      setPaymentMethods(methodsResponse ?? []);
 
       // Mock usage data - será reemplazado por API real
       if (!usageResponse) {

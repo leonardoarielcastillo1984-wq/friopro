@@ -4,6 +4,7 @@
  */
 
 import { useState, useCallback } from 'react';
+import { apiPath, lsKey } from '@/lib/api';
 
 interface LoginResult {
   requires2FA: boolean;
@@ -29,7 +30,7 @@ export function useAuth(): AuthContextType {
   const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/auth/login`, {
+      const response = await fetch(apiPath('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -57,16 +58,16 @@ export function useAuth(): AuthContextType {
       // Regular login - set auth tokens
       setRequires2FA(false);
       setSessionToken(null);
-      localStorage.setItem('accessToken', data.accessToken);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem(lsKey('accessToken'), data.accessToken);
+      localStorage.setItem(lsKey('user'), JSON.stringify(data.user));
       if (data.activeTenant) {
-        localStorage.setItem('activeTenant', JSON.stringify(data.activeTenant));
+        localStorage.setItem(lsKey('activeTenant'), JSON.stringify(data.activeTenant));
       }
       if (data.tenantRole) {
-        localStorage.setItem('tenantRole', data.tenantRole);
+        localStorage.setItem(lsKey('tenantRole'), data.tenantRole);
       }
       if (data.user?.globalRole) {
-        localStorage.setItem('globalRole', data.user.globalRole);
+        localStorage.setItem(lsKey('globalRole'), data.user.globalRole);
       }
       // Note: Caller should handle redirect to app/dashboard
       return {
@@ -84,7 +85,7 @@ export function useAuth(): AuthContextType {
       if (!token) throw new Error('2FA session expired');
 
       // Step 1: Verify the TOTP/Recovery code
-      const verifyResponse = await fetch(`/api/2fa/verify`, {
+      const verifyResponse = await fetch(apiPath('/api/2fa/verify'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionToken: token, token: code })
@@ -96,7 +97,7 @@ export function useAuth(): AuthContextType {
       }
 
       // Step 2: Complete 2FA login and get auth tokens
-      const tokensResponse = await fetch(`/api/auth/2fa-complete`, {
+      const tokensResponse = await fetch(apiPath('/api/auth/2fa-complete'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionToken: token })
@@ -110,10 +111,10 @@ export function useAuth(): AuthContextType {
       const tokens = await tokensResponse.json();
 
       // Set auth state
-      localStorage.setItem('accessToken', tokens.accessToken);
-      localStorage.setItem('user', JSON.stringify(tokens.user));
-      localStorage.setItem('activeTenant', JSON.stringify(tokens.activeTenant));
-      localStorage.setItem('tenantRole', tokens.tenantRole);
+      localStorage.setItem(lsKey('accessToken'), tokens.accessToken);
+      localStorage.setItem(lsKey('user'), JSON.stringify(tokens.user));
+      localStorage.setItem(lsKey('activeTenant'), JSON.stringify(tokens.activeTenant));
+      localStorage.setItem(lsKey('tenantRole'), tokens.tenantRole);
 
       // Clear temporary 2FA session
       setRequires2FA(false);
@@ -127,18 +128,18 @@ export function useAuth(): AuthContextType {
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('user');
-    localStorage.removeItem('activeTenant');
-    localStorage.removeItem('tenantRole');
+    localStorage.removeItem(lsKey('accessToken'));
+    localStorage.removeItem(lsKey('user'));
+    localStorage.removeItem(lsKey('activeTenant'));
+    localStorage.removeItem(lsKey('tenantRole'));
     sessionStorage.removeItem('2fa_session_token');
     setRequires2FA(false);
     setSessionToken(null);
   }, []);
 
   return {
-    user: JSON.parse(localStorage.getItem('user') || 'null'),
-    token: localStorage.getItem('accessToken'),
+    user: typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem(lsKey('user')) || 'null') : null,
+    token: typeof localStorage !== 'undefined' ? localStorage.getItem(lsKey('accessToken')) : null,
     requires2FA,
     sessionToken,
     login,

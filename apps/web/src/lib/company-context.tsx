@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, lsKey } from '@/lib/api';
 
 type CompanySettings = {
   companyName: string;
@@ -51,11 +51,11 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     // Skip loading company settings for Super Admin without tenant or on select-tenant page
     if (typeof window !== 'undefined') {
       const isSelectTenantPage = window.location.pathname === '/select-tenant';
-      const userStr = localStorage.getItem('user');
+      const userStr = localStorage.getItem(lsKey('user'));
       const user = userStr ? JSON.parse(userStr) : null;
       const isSuperAdmin = user?.globalRole === 'SUPER_ADMIN';
       
-      if (isSelectTenantPage || (isSuperAdmin && !localStorage.getItem('tenantId'))) {
+      if (isSelectTenantPage || (isSuperAdmin && !localStorage.getItem(lsKey('tenantId')))) {
         setLoading(false);
         return;
       }

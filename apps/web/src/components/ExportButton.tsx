@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, apiPath, lsKey } from '@/lib/api';
 import { Download, Loader2, Shield, ShieldOff, FileDown, FileSpreadsheet } from 'lucide-react';
 import DocCodeBadge from '@/components/DocCodeBadge';
 
@@ -42,11 +42,11 @@ export default function ExportButton({
     setError(null);
     setShowMenu(false);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-      const tenantId = typeof window !== 'undefined' ? localStorage.getItem('tenantId') : null;
-      const csrf = typeof window !== 'undefined' ? localStorage.getItem('csrfToken') : null;
+      const token = typeof window !== 'undefined' ? localStorage.getItem(lsKey('accessToken')) : null;
+      const tenantId = typeof window !== 'undefined' ? localStorage.getItem(lsKey('tenantId')) : null;
+      const csrf = typeof window !== 'undefined' ? localStorage.getItem(lsKey('csrfToken')) : null;
 
-      const res = await fetch('/api/doc-export/export', {
+      const res = await fetch(apiPath('/api/doc-export/export'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
