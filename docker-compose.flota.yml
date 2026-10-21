@@ -67,3 +67,5 @@ volumes:
 networks:
   sgi-network:
     external: true
+    # El proyecto compose de prod vive en /home/ubuntu → red real 'ubuntu_sgi-network'
+    name: ubuntu_sgi-network
