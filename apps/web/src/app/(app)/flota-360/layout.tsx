@@ -10,7 +10,7 @@ import {
   LayoutDashboard, Wrench, Truck, Container, Link2, CalendarClock,
   ScanLine, PackageSearch, Disc, Fuel, Users, FileWarning, DollarSign,
   FileBarChart, LayoutGrid, ArrowLeft, Settings, Menu, X, TrendingUp, BookOpen,
-  HardHat, Activity, Building2, Briefcase, Radar,
+  HardHat, Activity, Building2, Briefcase, Radar, Navigation,
 } from 'lucide-react';
 
 const GROUPS: { label: string | null; items: { href: string; label: string; icon: any; exact?: boolean; cc?: boolean }[] }[] = [
@@ -20,6 +20,7 @@ const GROUPS: { label: string | null; items: { href: string; label: string; icon
       { href: '/flota-360', label: 'Centro de trabajo', icon: LayoutDashboard, exact: true },
       // Sub-permiso granular: 'flota-360-centro-control' dentro de 'flota-360'
       { href: '/flota-360/centro-control', label: 'Centro de Control', icon: Radar, cc: true },
+      { href: '/flota-360/seguimiento', label: 'Seguimiento en vivo', icon: Navigation },
     ],
   },
   {
