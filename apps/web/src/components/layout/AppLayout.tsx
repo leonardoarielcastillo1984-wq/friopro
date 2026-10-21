@@ -19,6 +19,7 @@ import { BackButton } from './BackButton';
 import ImpersonationBanner, { getImpersonationState } from '@/components/ImpersonationBanner';
 import GlobalExportFAB from '@/components/GlobalExportFAB';
 import FeedbackBot from '@/components/FeedbackBot';
+import CopilotPanel from '@/components/CopilotPanel';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -150,7 +151,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
       {/* Botón flotante de exportación PDF — disponible en todos los módulos */}
       <GlobalExportFAB />
+  {/* Copiloto IA transversal — chat con datos del negocio + acciones confirmables */}
+      <CopilotPanel />
 
+    
     </div>
   );
 }

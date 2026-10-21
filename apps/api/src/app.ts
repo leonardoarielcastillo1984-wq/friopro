@@ -150,6 +150,7 @@ import { aspectsRoutes } from './routes/aspects.js';
 import flotaRoutes from './routes/flota.js';
 import talleresRoutes from './routes/flota-talleres.js';
 import finanzasRoutes from './routes/finanzas.js';
+import { copilotRoutes } from './routes/copilot.js';
 import fleetOpsRoutes from './routes/fleet-ops.js';
 import { centroEmpresaRoutes } from './routes/centro-empresa.js';
 import fleetRecurrenceRoutes from './routes/fleet-recurrence.js';
@@ -505,6 +506,8 @@ export async function buildApp() {
   // Resultados del Negocio — doble prefijo: en prod Nginx strippea /api,
   // en local la web pega directo a la API con /api intacto.
   await app.register(finanzasRoutes, { prefix: '/finanzas' });
+  await app.register(copilotRoutes, { prefix: '/copilot' });
+  await app.register(copilotRoutes, { prefix: '/api/copilot' });
   await app.register(finanzasRoutes, { prefix: '/api/finanzas' });
   await app.register(fleetRecurrenceRoutes, { prefix: '/fleet-recurrence' });
   await app.register(fleetOpsRoutes, { prefix: '/fleet-ops' });
