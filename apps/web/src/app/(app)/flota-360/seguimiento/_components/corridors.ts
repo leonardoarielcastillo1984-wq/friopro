@@ -185,3 +185,12 @@ export function headingAt(c: Corridor, t: number): number {
   const x = Math.cos(toRad(a[1])) * Math.sin(toRad(b[1])) - Math.sin(toRad(a[1])) * Math.cos(toRad(b[1])) * Math.cos(dLon);
   return (Math.atan2(y, x) * 180) / Math.PI + 0;
 }
+
+/** Fracción del corredor (0..1) en el vértice i — para definir viajes parciales. */
+export function fracAtVertex(c: Corridor, i: number): number {
+  const idx = Math.max(0, Math.min(c.pts.length - 1, i));
+  let acc = 0;
+  for (let k = 1; k <= idx; k++) acc += segKm(c.pts[k - 1], c.pts[k]);
+  const total = corridorKm(c);
+  return total > 0 ? acc / total : 0;
+}
