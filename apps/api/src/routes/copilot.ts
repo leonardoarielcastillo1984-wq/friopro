@@ -63,6 +63,7 @@ async function buildContext(prisma: any, tenantId: string, msg: string): Promise
   const wantsServ = /servicio|viaje|cliente|contrato/i.test(q);
   const wantsCaja = /caja|flujo|proyec|previs|semana|queda|falta/i.test(q);
   const wantsAnom = /anomal|raro|subi|subió|atípic|anormal|incremento|doble/i.test(q);
+  const wantsSupplies = /insumo|consumible|limpieza|librer|film|stock|suministro|material/i.test(q);
 
   if (wantsFleet || wantsAnom) {
     try {
@@ -145,7 +146,34 @@ async function buildContext(prisma: any, tenantId: string, msg: string): Promise
       if (ingresosMens > 0) parts.push(`INGRESO_ESTIMADO_MES (fijos+mensuales): ~$${fmt(ingresosMens)}`);
     } catch {}
   }
+if (wantsSupplies || wantsAnom) {
+    try {
+      const items = await prisma.supplyItem.findMany({
+        where: { tenantId, deletedAt: null, activo: true },
+        take: 200,
+      });
+      if (items.length) {
+        const since60 = new Date(Date.now() - 60 * 86400_000);
+        const movs = await prisma.supplyMovement.groupBy({
+          by: ['itemId'],
+          where: { tenantId, delta: { lt: 0 }, createdAt: { gte: since60 } },
+          _sum: { delta: true },
+        });
+        const usage: Record<string, number> = {};
+        for (const r of movs) usage[r.itemId] = Math.abs(num(r._sum.delta)) / 60;
+        const bajos = items
+          .map((i: any) => {
+            const daily = usage[i.id] || 0;
+            const critico = i.minStock > 0 ? i.minStock : daily * i.leadTimeDays * i.safetyFactor;
+            return { name: i.name, rubro: i.rubro, stock: i.currentStock, critico: Math.round(critico * 10) / 10, unidad: i.unit, bajo: i.currentStock < critico };
+          })
+          .filter((i: any) => i.bajo);
+        parts.push(`INSUMOS: ${items.length} ítems en catálogo.${bajos.length ? ` BAJO_STOCK_CRITICO: ${JSON.stringify(bajos.slice(0, 15))}` : ' Ninguno bajo stock crítico.'}`);
+      }
+    } catch {}
+  }
 
+  
   // unidad puntual por patente
   const patente = msg.toUpperCase().match(/\b[A-Z]{2,3}\s?\d{3}\s?[A-Z]{0,3}\b|\b[A-Z]{2}\d{3}[A-Z]{2}\b/)?.[0]?.replace(/\s/g, '');
   if (patente) {

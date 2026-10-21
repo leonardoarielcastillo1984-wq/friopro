@@ -1,16 +1,18 @@
 'use client';
 import { Suspense } from 'react';
-import { Settings, Ruler, ScanLine } from 'lucide-react';
+import { Settings, Ruler, ScanLine, Package } from 'lucide-react';
 import PageTabs from '@/components/PageTabs';
 import PageTitleHelp from '@/components/ui/PageTitleHelp';
 import MantenimientoContent from './_tabs/MantenimientoContent';
 import CalibracionesContent from './_tabs/CalibracionesContent';
 import InspeccionesContent from './_tabs/InspeccionesContent';
+import InsumosContent from './_tabs/InsumosContent';
 
 const TABS = [
   { key: 'mantenimiento', label: 'Mantenimiento', icon: Settings },
   { key: 'calibraciones', label: 'Calibraciones', icon: Ruler },
   { key: 'inspecciones', label: 'Inspecciones QR', icon: ScanLine },
+  { key: 'insumos', label: 'Insumos', icon: Package },
 ];
 
 export default function InfraestructuraPage() {
@@ -27,6 +29,7 @@ export default function InfraestructuraPage() {
               {active === 'mantenimiento' && <MantenimientoContent />}
               {active === 'calibraciones' && <CalibracionesContent />}
               {active === 'inspecciones' && <InspeccionesContent />}
+              {active === 'insumos' && <InsumosContent />}
             </>
           )}
         </PageTabs>

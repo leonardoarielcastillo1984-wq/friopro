@@ -559,6 +559,11 @@ model Tenant {
   // Action Plan Relations
   actionPlans ActionPlan[]
 
+  // Insumos y consumibles (Infraestructura)
+  supplyItems     SupplyItem[]
+  supplyNeeds     SupplyNeed[]
+  supplyMovements SupplyMovement[]
+
   // Portal Externo Relations
   portalAccessTokens PortalAccessToken[]
 
@@ -13523,4 +13528,96 @@ model MarketingLead {
   @@index([source])
   @@index([createdAt])
   @@map("marketing_leads")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INSUMOS Y CONSUMIBLES — Infraestructura
+// Catálogo de consumibles por rubro (limpieza, librería, film…),
+// declaración mensual de necesidades por sector y movimientos.
+// Stock crítico se calcula en runtime:
+//   (consumo medio/día × leadTimeDays) × safetyFactor
+// ═══════════════════════════════════════════════════════════════
+
+model SupplyItem {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  code        String @unique
+  name        String
+  rubro       String @default("OTRO") // LIMPIEZA, LIBRERIA, FILM, LUBRICANTE, EP, OTRO
+  unit        String @default("unidad") // unidad, litro, kg, caja, resma, rollo
+  description String?
+
+  currentStock Float @default(0)
+  leadTimeDays Int   @default(3) // plazo de entrega del proveedor en días
+  minStock     Float @default(0) // override manual; si 0 se usa el crítico calculado
+  safetyFactor Float @default(1.2)
+
+  supplier     String?
+  supplierCode String?
+  location     String?
+  unitCost     Float   @default(0)
+  activo       Boolean @default(true)
+
+  needs     SupplyNeed[]
+  movements SupplyMovement[]
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([code])
+  @@index([rubro])
+  @@map("supply_items")
+}
+
+model SupplyNeed {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  itemId String     @db.Uuid
+  item   SupplyItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  // Sector que declara la necesidad (texto libre; departmentId opcional)
+  sector       String
+  departmentId String? @db.Uuid
+
+  // Período 'YYYY-MM' al que aplica la declaración
+  period     String
+  monthlyQty Float // consumo mensual promedio declarado por el sector
+
+  responsibleId   String? @db.Uuid
+  responsibleName String?
+  notes           String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@unique([tenantId, itemId, sector, period])
+  @@index([tenantId, period])
+  @@map("supply_needs")
+}
+
+model SupplyMovement {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  itemId String     @db.Uuid
+  item   SupplyItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  delta  Float // + ingreso, - egreso
+  motivo String
+  sector String? // sector consumidor — habilita desvíos declarado vs real
+  userId String? @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([itemId])
+  @@index([createdAt])
+  @@map("supply_movements")
 }
