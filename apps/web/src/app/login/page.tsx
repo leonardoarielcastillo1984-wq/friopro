@@ -88,7 +88,7 @@ export default function LoginPage() {
 
       // Producto Flota360 → directo al módulo; SGI360 → dashboard/select-tenant
       const home = PRODUCT === 'flota360' ? `${BASE_PATH}/flota-360` : '/dashboard';
-      window.location.href = (data as any)?.needsTenantSwitch ? '/select-tenant' : home;
+      window.location.href = (data as any)?.needsTenantSwitch ? `${BASE_PATH}/select-tenant` : home;
     } catch (e: any) {
       setError(e.message || 'Error inesperado. Por favor intentá nuevamente.');
     } finally {

@@ -74,7 +74,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
     // Producto standalone: el usuario solo puede ver su módulo.
     // Si navega fuera de /flota-360 se lo devuelve al inicio del producto.
     if (!loading && user && PRODUCT === 'flota360' && pathname) {
-      const allowed = pathname.startsWith('/flota-360') || pathname.startsWith('/select-tenant') || pathname === '/';
+      const allowed = pathname.startsWith('/flota-360')
+        || pathname.startsWith('/select-tenant')
+        || pathname.startsWith('/admin')          // gestión de tenants (SUPER_ADMIN)
+        || pathname.startsWith('/planes')         // licencia/suscripción del tenant
+        || pathname.startsWith('/onboarding')
+        || pathname.startsWith('/notificaciones')
+        || pathname === '/';
       if (!allowed) router.replace('/flota-360');
     }
   }, [loading, user, router, pathname]);
