@@ -202,17 +202,21 @@ export function welcomeTenantEmail(options: {
   loginUrl: string;
   userName?: string;
   trialDays?: number;
+  productName?: string;
+  productTagline?: string;
 }): EmailPayload {
   const { to, companyName, password, loginUrl, userName, trialDays } = options;
   const greeting = userName ? userName : companyName;
   const trial = trialDays ?? 3;
+  const productName = options.productName || 'SGI 360';
+  const productTagline = options.productTagline || 'Sistema de Gestión Integrado 360°';
   return {
     to,
-    subject: `🎉 ¡Bienvenido a SGI 360! Tus datos de acceso`,
+    subject: `🎉 ¡Bienvenido a ${productName}! Tus datos de acceso`,
     text: [
       `¡Hola, ${greeting}!`,
       ``,
-      `Tu cuenta en SGI 360 para "${companyName}" fue creada con éxito.`,
+      `Tu cuenta en ${productName} para "${companyName}" fue creada con éxito.`,
       ``,
       `Datos de acceso:`,
       `  Usuario / Email: ${to}`,
@@ -223,18 +227,18 @@ export function welcomeTenantEmail(options: {
       ``,
       `Por seguridad, cambiá tu contraseña en el primer ingreso.`,
       ``,
-      `— Equipo SGI 360`,
+      `— Equipo ${productName}`,
     ].join('\n'),
     html: EMAIL_TEMPLATE_BASE(`
       <div style="background:#1a1a2e;border-radius:16px;padding:40px 32px;color:#ffffff;">
         <div style="text-align:center;margin-bottom:32px;">
-          <h1 style="color:#ffffff;font-size:22px;font-weight:800;margin:0 0 6px;">SGI 360</h1>
-          <p style="color:#9CA3AF;font-size:13px;margin:0;">Sistema de Gestión Integrado 360°</p>
+          <h1 style="color:#ffffff;font-size:22px;font-weight:800;margin:0 0 6px;">${productName}</h1>
+          <p style="color:#9CA3AF;font-size:13px;margin:0;">${productTagline}</p>
         </div>
 
         <h2 style="color:#ffffff;font-size:20px;font-weight:700;margin:0 0 8px;">¡Hola, ${greeting}! 👋</h2>
         <p style="color:#D1D5DB;font-size:14px;line-height:1.6;margin:0 0 24px;">
-          Tu cuenta en <strong style="color:#ffffff;">SGI 360</strong> para <strong style="color:#ffffff;">${companyName}</strong> fue creada con éxito. Ya podés comenzar tu período de prueba gratuita.
+          Tu cuenta en <strong style="color:#ffffff;">${productName}</strong> para <strong style="color:#ffffff;">${companyName}</strong> fue creada con éxito. Ya podés comenzar tu período de prueba gratuita.
         </p>
 
         <div style="background:#0f3460;border:1px solid #1e4a8a;border-radius:10px;padding:20px;margin-bottom:20px;">
@@ -260,7 +264,7 @@ export function welcomeTenantEmail(options: {
 
         <div style="text-align:center;">
           <a href="${loginUrl}" style="display:inline-block;background:#E8541A;color:#ffffff;font-weight:700;font-size:15px;padding:14px 40px;border-radius:10px;text-decoration:none;letter-spacing:0.02em;">
-            Ingresar a SGI360 →
+            Ingresar a ${productName} →
           </a>
         </div>
       </div>

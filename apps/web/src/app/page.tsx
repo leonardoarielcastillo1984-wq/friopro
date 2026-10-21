@@ -3,7 +3,9 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { PRODUCT } from '@/lib/api';
 import {
   Zap, Shield, ShieldCheck, ClipboardCheck, Truck, AlertTriangle,
   ArrowRight, CheckCircle, TrendingUp, Brain, Globe,
@@ -203,6 +205,11 @@ const MODULE_DETAILS_MAP: Record<string, {
 };
 
 export default function Home() {
+  const router = useRouter();
+  // Producto standalone: la raíz del dominio no es marketing, es el producto.
+  useEffect(() => {
+    if (PRODUCT === 'flota360') router.replace('/flota-360');
+  }, [router]);
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [selectedModule, setSelectedModule] = useState('sgi360');
@@ -222,6 +229,8 @@ export default function Home() {
     document.querySelectorAll('.sr-fade').forEach(el => observer.observe(el));
     return () => observer.disconnect();
   }, []);
+
+  if (PRODUCT === 'flota360') return null;
 
   return (
     <div className="min-h-screen bg-white font-sans antialiased">

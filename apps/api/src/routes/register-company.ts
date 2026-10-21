@@ -190,13 +190,16 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
       app.log.info(`[REGISTER-COMPANY] Registro auto-aprobado: ${registration.id}`);
 
       // Enviar email de bienvenida con credenciales al cliente
-      const loginUrl = `${appUrl}/login`;
+      const isFlota = validatedData.module === 'flota360';
+      const loginUrl = isFlota ? `${appUrl}/flota360/login` : `${appUrl}/login`;
       try {
         const welcomeResult = await sendEmail(welcomeTenantEmail({
           to: validatedData.email,
           companyName: validatedData.companyName,
           password: tempPassword,
           loginUrl,
+          productName: isFlota ? 'Flota 360' : 'SGI 360',
+          productTagline: isFlota ? 'Gestión inteligente de flota — LogisMart' : 'Sistema de Gestión Integrado 360°',
         }));
         if (welcomeResult.success) {
           app.log.info(`[REGISTER-COMPANY] Email de bienvenida enviado a ${validatedData.email}`);
