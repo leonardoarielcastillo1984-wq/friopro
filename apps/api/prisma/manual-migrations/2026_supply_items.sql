@@ -4,7 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS supply_items (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenantId" UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  "tenantId" UUID NOT NULL REFERENCES "Tenant"(id) ON DELETE CASCADE,
   "code" TEXT NOT NULL UNIQUE,
   "name" TEXT NOT NULL,
   "rubro" TEXT NOT NULL DEFAULT 'OTRO',
@@ -29,7 +29,7 @@ CREATE INDEX IF NOT EXISTS supply_items_rubro_idx ON supply_items("rubro");
 
 CREATE TABLE IF NOT EXISTS supply_needs (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenantId" UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  "tenantId" UUID NOT NULL REFERENCES "Tenant"(id) ON DELETE CASCADE,
   "itemId" UUID NOT NULL REFERENCES supply_items(id) ON DELETE CASCADE,
   "sector" TEXT NOT NULL,
   "departmentId" UUID,
@@ -46,7 +46,7 @@ CREATE INDEX IF NOT EXISTS supply_needs_tenant_period_idx ON supply_needs("tenan
 
 CREATE TABLE IF NOT EXISTS supply_movements (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenantId" UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  "tenantId" UUID NOT NULL REFERENCES "Tenant"(id) ON DELETE CASCADE,
   "itemId" UUID NOT NULL REFERENCES supply_items(id) ON DELETE CASCADE,
   "delta" DOUBLE PRECISION NOT NULL,
   "motivo" TEXT NOT NULL,
