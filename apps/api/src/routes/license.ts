@@ -1970,7 +1970,8 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
       endDate.setFullYear(endDate.getFullYear() + 1);
 
       const preapprovalBody = {
-        reason: `${PRODUCT_BILLING.productName} - Plan ${planTier} — débito automático mensual${isPromo ? ' (promo lanzamiento)' : ''}`,
+        // MP limita reason a 60 caracteres
+        reason: `${PRODUCT_BILLING.productName} - Plan ${planTier} — debito automatico`.slice(0, 60),
         external_reference: `${tenantId}_${planTier}_monthly`,
         payer_email: user.email,
         back_url: `${appBase}${PRODUCT_BILLING.basePath}${PRODUCT_BILLING.successPath}?status=subscribed`,
