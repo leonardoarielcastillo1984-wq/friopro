@@ -61,7 +61,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
       window.localStorage.removeItem(lsKey('user'));
       window.localStorage.removeItem(lsKey('userPermissions'));
       fetch(apiPath('/api/auth/logout'), { method: 'POST', credentials: 'include' }).catch(() => null);
-      window.location.href = (PRODUCT === 'flota360' ? `${BASE_PATH}/login` : '/sgi360-landing') + '?reason=session_expired';
+      window.location.href = (PRODUCT === 'flota360' ? '/flota360-landing' : '/sgi360-landing') + '?reason=session_expired';
     },
     disabled: !user || loading,
   });

@@ -15,7 +15,8 @@ const STORAGE_PREFIX = process.env.NEXT_PUBLIC_STORAGE_PREFIX || '';
 export const PRODUCT = process.env.NEXT_PUBLIC_PRODUCT || 'sgi360';
 export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || '';
 export const LOGIN_PAGE = `${BASE_PATH}/login`;
-export const LOGOUT_REDIRECT = PRODUCT === 'flota360' ? `${BASE_PATH}/login` : '/sgi360-landing';
+// flota360: fuera del basePath (la landing pública vive en sgi-web, no en el producto)
+export const LOGOUT_REDIRECT = PRODUCT === 'flota360' ? '/flota360-landing' : '/sgi360-landing';
 
 // Prefija las claves de localStorage para que dos productos en el
 // mismo dominio no compartan sesión (localStorage es por origen).

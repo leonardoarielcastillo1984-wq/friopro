@@ -186,9 +186,16 @@ export default function LoginPage() {
 
         {/* Footer */}
         <div className="mt-6 text-center">
-          <Link href="/" className="text-slate-400 hover:text-orange-500 transition-colors text-sm">
-            ← Volver al inicio
-          </Link>
+          {/* En producto flota360 hay que salir del basePath → <a> (Link prependearía /flota360) */}
+          {PRODUCT === 'flota360' ? (
+            <a href="/flota360-landing" className="text-slate-400 hover:text-orange-500 transition-colors text-sm">
+              ← Volver al inicio
+            </a>
+          ) : (
+            <Link href="/" className="text-slate-400 hover:text-orange-500 transition-colors text-sm">
+              ← Volver al inicio
+            </Link>
+          )}
         </div>
       </div>
     </div>
