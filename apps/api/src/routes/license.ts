@@ -56,6 +56,14 @@ const PRODUCT_BILLING = IS_FLOTA_PRODUCT ? {
   promo: null,
 };
 
+// MercadoPago no admite suscripciones (preapproval) en USD para cuentas
+// argentinas: el débito automático se factura en ARS al tipo de cambio
+// configurable por entorno (los precios del plan siguen mostrándose en USD).
+const SUBSCRIPTION_CURRENCY = process.env.SUBSCRIPTION_CURRENCY || 'ARS';
+const USD_TO_SUBSCRIPTION_FX = Number(process.env.USD_ARS_RATE || 1000);
+const toSubscriptionAmount = (usd: number) =>
+  SUBSCRIPTION_CURRENCY === 'USD' ? usd : Math.round(usd * USD_TO_SUBSCRIPTION_FX);
+
 // Precio efectivo del período para un tier, aplicando promo por producto.
 // La promo mensual aplica a los primeros `promo.months` pagos mensuales del tenant.
 async function resolvePrice(app: FastifyInstance, tenantId: string, tier: string, period: 'monthly' | 'annual') {
@@ -1920,7 +1928,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
             method: 'PUT',
             headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              auto_recurring: { frequency: 1, frequency_type: 'months', transaction_amount: regular, currency_id: 'USD' }
+              auto_recurring: { frequency: 1, frequency_type: 'months', transaction_amount: toSubscriptionAmount(regular), currency_id: SUBSCRIPTION_CURRENCY }
             })
           });
           if (updRes.ok) {
@@ -1978,12 +1986,11 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
         auto_recurring: {
           frequency: 1,
           frequency_type: 'months',
-          transaction_amount: amount,
-          currency_id: 'USD',
+          transaction_amount: toSubscriptionAmount(amount),
+          currency_id: SUBSCRIPTION_CURRENCY,
           start_date: startDate.toISOString(),
           end_date: endDate.toISOString(),
         },
-        status: 'pending',
       };
 
       const mpRes = await fetch('https://api.mercadopago.com/preapproval', {
@@ -2005,6 +2012,8 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
         initPoint: preapproval.init_point,
         amount,
         isPromo,
+        localAmount: toSubscriptionAmount(amount),
+        localCurrency: SUBSCRIPTION_CURRENCY,
       });
     } catch (error: any) {
       app.log.error(error);
@@ -2126,7 +2135,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
                         planTier: prePlanTier || 'PREMIUM',
                         period: 'monthly',
                         amount: preapproval.auto_recurring?.transaction_amount ?? 0,
-                        currency: 'USD',
+                        currency: SUBSCRIPTION_CURRENCY,
                         mpPreferenceId: String(preapprovalId),
                         status: String(preapproval.status || 'pending').toUpperCase(),
                       }
@@ -2186,7 +2195,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
                       period: apPeriod === 'annual' ? 'annual' : 'monthly',
                       providerRef: String(ap.id),
                       amount: ap.transaction_amount ?? ap.transaction?.amount ?? 0,
-                      currency: 'USD',
+                      currency: SUBSCRIPTION_CURRENCY,
                       preapprovalId: String(ap.preapproval_id),
                     });
                   }

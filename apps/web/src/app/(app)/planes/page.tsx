@@ -286,6 +286,11 @@ export default function PlanesPage() {
                       Activar débito automático mensual
                     </button>
                   )}
+                  {period === 'monthly' && !isCurrentPlan && (
+                    <p className="text-[10px] text-slate-400 text-center leading-tight">
+                      El débito se cobra en ARS al tipo de cambio vigente
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             );

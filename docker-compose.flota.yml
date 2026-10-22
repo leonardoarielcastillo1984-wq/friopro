@@ -24,6 +24,10 @@ services:
       AUTH_REFRESH_COOKIE_PATH: /flota360-api/auth
       # Billing del producto: promo $99 x3 meses → $299, basePath y descriptor propios
       PRODUCT: flota360
+      # Suscripciones MP: se facturan en ARS (USD no permitido en preapproval)
+      USD_ARS_RATE: "1000"
+      # Reenvío de webhooks MP entre productos (una sola app MP = una sola notification URL)
+      SGI_API_INTERNAL: http://sgi-api:3002
     volumes:
       - flota_uploads:/app/uploads
     ports:
