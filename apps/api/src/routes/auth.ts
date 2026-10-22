@@ -21,9 +21,17 @@ const strictRateLimit = {
 export const authRoutes: FastifyPluginAsync = async (app) => {
   const isProd = (process.env.NODE_ENV ?? 'development') === 'production';
 
+  // Producto standalone (flota360-api): cookies con prefijo propio para no
+  // pisar la sesión de SGI360 en el mismo dominio, y path de refresh que
+  // matchea la URL pública (/flota360-api/auth vs /api/auth).
+  const COOKIE_PREFIX = process.env.AUTH_COOKIE_PREFIX ?? '';
+  const ACCESS_COOKIE = `${COOKIE_PREFIX}access_token`;
+  const REFRESH_COOKIE = `${COOKIE_PREFIX}refresh_token`;
+  const REFRESH_COOKIE_PATH = process.env.AUTH_REFRESH_COOKIE_PATH ?? '/api/auth';
+
   function setAuthCookies(reply: FastifyReply, args: { accessToken: string; refreshToken: string }) {
     // No especificar dominio para permitir que el navegador lo determine automáticamente
-    reply.setCookie('access_token', args.accessToken, {
+    reply.setCookie(ACCESS_COOKIE, args.accessToken, {
       path: '/',
       httpOnly: true,
       sameSite: 'lax',
@@ -34,8 +42,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     // El frontend llama /api/auth/refresh vía Nginx: el path de la cookie tiene
     // que matchear ESA url, no la interna del backend (bug: con '/auth/refresh'
     // el browser nunca la enviaba → refresh siempre 401 → logout a la hora).
-    reply.setCookie('refresh_token', args.refreshToken, {
-      path: '/api/auth',
+    reply.setCookie(REFRESH_COOKIE, args.refreshToken, {
+      path: REFRESH_COOKIE_PATH,
       httpOnly: true,
       sameSite: 'lax',
       secure: isProd,
@@ -43,9 +51,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   }
 
   function clearAuthCookies(reply: FastifyReply) {
-    reply.clearCookie('access_token', { path: '/' });
-    reply.clearCookie('refresh_token', { path: '/api/auth' });
-    reply.clearCookie('refresh_token', { path: '/auth/refresh' }); // legacy
+    reply.clearCookie(ACCESS_COOKIE, { path: '/' });
+    reply.clearCookie(REFRESH_COOKIE, { path: REFRESH_COOKIE_PATH });
+    reply.clearCookie(REFRESH_COOKIE, { path: '/auth/refresh' }); // legacy
+    // Limpiar también las sin prefijo por si el usuario venía del otro producto
+    if (COOKIE_PREFIX) {
+      reply.clearCookie('access_token', { path: '/' });
+      reply.clearCookie('refresh_token', { path: '/api/auth' });
+    }
   }
 
   app.get('/csrf', async (_req: FastifyRequest, reply: FastifyReply) => {
@@ -470,7 +483,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post('/refresh', async (req: FastifyRequest, reply: FastifyReply) => {
-    const cookieRefresh = (req.cookies as any)?.refresh_token as string | undefined;
+    const cookieRefresh = (req.cookies as any)?.[REFRESH_COOKIE] as string | undefined;
     if (!cookieRefresh) return reply.code(401).send({ error: 'Sesión expirada. Iniciá sesión nuevamente.' });
 
     let payload: { userId: string; refreshTokenVersion: number; tokenType: 'refresh' };
@@ -578,7 +591,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const tenantId = (req as any).db?.tenantId;
 
     clearAuthCookies(reply);
-    reply.clearCookie('csrf_token', { path: '/' });
+    reply.clearCookie(`${COOKIE_PREFIX}csrf_token`, { path: '/' });
+    if (COOKIE_PREFIX) reply.clearCookie('csrf_token', { path: '/' });
 
     // Registrar evento de logout (non-blocking)
     if (userId && tenantId) {
@@ -794,7 +808,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     });
 
     // Keep refresh cookie unchanged; only rotate on /refresh.
-    reply.setCookie('access_token', accessToken, {
+    reply.setCookie(ACCESS_COOKIE, accessToken, {
       path: '/',
       httpOnly: true,
       sameSite: 'lax',

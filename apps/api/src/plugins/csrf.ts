@@ -72,7 +72,7 @@ export const csrfPlugin = fp(async (app: FastifyInstance) => {
       return;
     }
 
-    const cookieToken = (req.cookies as any)?.csrf_token as string | undefined;
+    const cookieToken = (req.cookies as any)?.[`${process.env.AUTH_COOKIE_PREFIX ?? ''}csrf_token`] as string | undefined;
     const headerToken = (req.headers['x-csrf-token'] as string | undefined) ?? undefined;
 
     if (!cookieToken || !headerToken || cookieToken !== headerToken) {
@@ -82,7 +82,7 @@ export const csrfPlugin = fp(async (app: FastifyInstance) => {
 
   app.decorate('issueCsrfCookie', async (reply: FastifyReply) => {
     const csrf = crypto.randomBytes(32).toString('hex');
-    reply.setCookie('csrf_token', csrf, {
+    reply.setCookie(`${process.env.AUTH_COOKIE_PREFIX ?? ''}csrf_token`, csrf, {
       path: '/',
       httpOnly: false,
       sameSite: 'lax',

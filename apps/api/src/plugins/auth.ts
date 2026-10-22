@@ -75,8 +75,11 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
 
   app.decorateRequest('auth', null);
 
+  // Prefijo de cookies por producto (flota360 usa flota_* para no colisionar con SGI).
+  const COOKIE_PREFIX = process.env.AUTH_COOKIE_PREFIX ?? '';
+
   app.addHook('preHandler', async (req: FastifyRequest) => {
-    const cookieToken = (req.cookies as any)?.access_token as string | undefined;
+    const cookieToken = ((req.cookies as any)?.[`${COOKIE_PREFIX}access_token`]) as string | undefined;
     const header = req.headers.authorization;
     const bearerToken = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : undefined;
     // Bearer takes priority: during impersonation the cookie still holds the super admin token
@@ -136,9 +139,9 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
       if (error instanceof Error && error.message.includes('jwt malformed')) {
         const reply = (req as any).reply;
         if (reply) {
-          reply.clearCookie('access_token', { path: '/' });
-          reply.clearCookie('refresh_token', { path: '/auth/refresh' });
-          reply.clearCookie('csrf_token', { path: '/' });
+          reply.clearCookie(`${COOKIE_PREFIX}access_token`, { path: '/' });
+          reply.clearCookie(`${COOKIE_PREFIX}refresh_token`, { path: '/auth/refresh' });
+          reply.clearCookie(`${COOKIE_PREFIX}csrf_token`, { path: '/' });
         }
       }
     }

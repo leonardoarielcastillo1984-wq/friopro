@@ -19,6 +19,9 @@ services:
       # environment pisa env_file: apunta a la DB propia del producto
       DATABASE_URL: postgresql://flota360:flota360_secure_2024@flota360-postgres:5432/friopro_flota
       PORT: 3002
+      # Aislar cookies del producto: no pisar la sesión de SGI360 en el mismo dominio
+      AUTH_COOKIE_PREFIX: flota_
+      AUTH_REFRESH_COOKIE_PATH: /flota360-api/auth
     volumes:
       - flota_uploads:/app/uploads
     ports:
