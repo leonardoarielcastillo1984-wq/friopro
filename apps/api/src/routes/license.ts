@@ -30,6 +30,50 @@ const PLAN_PRICES = {
   }
 };
 
+// Billing por producto: el producto standalone flota360 tiene su propio
+// pricing (promo $99 los primeros N meses, luego $299) y sus propias URLs
+// públicas (basePath /flota360, API /flota360-api). SGI360 queda igual.
+const APP_PRODUCT = process.env.PRODUCT || 'sgi360';
+const IS_FLOTA_PRODUCT = APP_PRODUCT === 'flota360';
+const PRODUCT_BILLING = IS_FLOTA_PRODUCT ? {
+  productName: 'Flota 360',
+  descriptor: 'FLOTA360',
+  basePath: '/flota360',
+  apiBase: '/flota360-api',
+  successPath: '/planes',
+  prices: {
+    monthly: { BASIC: 0, PROFESSIONAL: 0, PREMIUM: Number(process.env.MONTHLY_PRICE || 299) },
+    annual: { BASIC: 0, PROFESSIONAL: 0, PREMIUM: Number(process.env.ANNUAL_PRICE || Math.round(299 * 12 * 0.95)) },
+  },
+  promo: { price: Number(process.env.PROMO_PRICE || 99), months: Number(process.env.PROMO_MONTHS || 3) },
+} : {
+  productName: 'SGI 360',
+  descriptor: 'SGI360',
+  basePath: '',
+  apiBase: '/api',
+  successPath: '/configuracion?tab=licencia',
+  prices: PLAN_PRICES,
+  promo: null,
+};
+
+// Precio efectivo del período para un tier, aplicando promo por producto.
+// La promo mensual aplica a los primeros `promo.months` pagos mensuales del tenant.
+async function resolvePrice(app: FastifyInstance, tenantId: string, tier: string, period: 'monthly' | 'annual') {
+  const prices = PRODUCT_BILLING.prices as any;
+  let amount = prices[period]?.[tier];
+  let isPromo = false;
+  if (period === 'monthly' && PRODUCT_BILLING.promo) {
+    const paidMonthly = await app.prisma.payment.count({
+      where: { tenantId, status: 'COMPLETED' as any, period: 'monthly' },
+    });
+    if (paidMonthly < PRODUCT_BILLING.promo.months) {
+      amount = PRODUCT_BILLING.promo.price;
+      isPromo = true;
+    }
+  }
+  return { amount, isPromo };
+}
+
 // Límites por plan
 const PLAN_LIMITS = {
   BASIC: {
@@ -213,7 +257,23 @@ export async function licenseRoutes(app: FastifyInstance) {
         orderBy: { tier: 'asc' }
       });
 
-      const planDescriptions = {
+      // Promo por producto (flota360): calcula si el tenant aún puede pagar precio promo
+      let promoMonthsLeft = 0;
+      if (PRODUCT_BILLING.promo) {
+        const tenantId = await getEffectiveTenantId(req, app.prisma).catch(() => null);
+        if (tenantId) {
+          const paidMonthly = await app.prisma.payment.count({
+            where: { tenantId, status: 'COMPLETED' as any, period: 'monthly' },
+          });
+          promoMonthsLeft = Math.max(0, PRODUCT_BILLING.promo.months - paidMonthly);
+        }
+      }
+
+      const planDescriptions = IS_FLOTA_PRODUCT ? {
+        BASIC: 'Gestión esencial de flota',
+        PROFESSIONAL: 'Gestión completa de flota y mantenimiento',
+        PREMIUM: 'Flota completa con IA predictiva y todos los módulos',
+      } : {
         BASIC: 'Ideal para pequeñas empresas comenzando con ISO',
         PROFESSIONAL: 'Para empresas que necesitan gestión completa ISO',
         PREMIUM: 'Máximo poder con IA y análisis predictivo'
@@ -271,20 +331,26 @@ export async function licenseRoutes(app: FastifyInstance) {
           })
           .sort();
 
-        // Usar precios por defecto (el modelo Plan no tiene metadata)
-        const monthlyPrice = PLAN_PRICES.monthly[plan.tier as keyof typeof PLAN_PRICES.monthly];
-        const annualPrice = PLAN_PRICES.annual[plan.tier as keyof typeof PLAN_PRICES.annual];
-        const savings = Math.round((1 - annualPrice / (monthlyPrice * 12)) * 100);
+        // Precios por producto (flota360 tiene promo de lanzamiento)
+        const prices = PRODUCT_BILLING.prices as any;
+        const regularMonthly = prices.monthly[plan.tier] ?? 0;
+        const annualPrice = prices.annual[plan.tier] ?? 0;
+        const promoActive = PRODUCT_BILLING.promo && promoMonthsLeft > 0 && periodSafe(plan.tier);
+        function periodSafe(tier: string) { return tier === 'PREMIUM'; }
+        const monthlyPrice = promoActive ? PRODUCT_BILLING.promo!.price : regularMonthly;
+        const savings = regularMonthly > 0 ? Math.round((1 - annualPrice / (regularMonthly * 12)) * 100) : 0;
 
         return {
           tier: plan.tier,
-          name: plan.name,
+          name: IS_FLOTA_PRODUCT && plan.tier === 'PREMIUM' ? 'Flota 360 — Plan Completo' : plan.name,
           description: planDescriptions[plan.tier as keyof typeof planDescriptions],
           prices: {
             monthly: monthlyPrice,
             annual: annualPrice,
+            regularMonthly,
             savings: savings
           },
+          promo: promoActive ? { price: PRODUCT_BILLING.promo!.price, monthsLeft: promoMonthsLeft, regularPrice: regularMonthly } : null,
           limits: plan.limits,
           features: [
             `Hasta ${(plan.limits as any)?.['users'] || (plan.tier === 'BASIC' ? 5 : plan.tier === 'PROFESSIONAL' ? 20 : 50)} usuarios`,
@@ -1375,10 +1441,10 @@ export async function licenseRoutes(app: FastifyInstance) {
         return reply.code(404).send({ error: 'Tenant o usuario no encontrado' });
       }
 
-      // Calcular monto
-      const amount = PLAN_PRICES[period as keyof typeof PLAN_PRICES]?.[planTier as keyof (typeof PLAN_PRICES)['monthly']];
-      console.log('[CHECKOUT] Monto calculado:', { amount, planTier, period });
-      
+      // Calcular monto (aplicando promo del producto si corresponde)
+      const { amount, isPromo } = await resolvePrice(app, tenantId, planTier, period);
+      console.log('[CHECKOUT] Monto calculado:', { amount, planTier, period, isPromo });
+
       if (!amount) {
         console.log('[CHECKOUT] Error: Precio no encontrado');
         return reply.code(400).send({ error: 'Precio no encontrado' });
@@ -1391,10 +1457,13 @@ export async function licenseRoutes(app: FastifyInstance) {
       if (accessToken) {
         // Si tenemos token de MercadoPago, crear preferencia real
         try {
+          const appBase = process.env.APP_URL || 'http://localhost:3000';
+          const apiBase = `${process.env.WEBHOOK_BASE_URL || process.env.APP_URL || 'https://logismart.ar'}${PRODUCT_BILLING.apiBase}`;
+          const periodLabel = period === 'monthly' ? 'Mensual' : 'Anual';
           const preferenceData = {
             items: [{
-              title: `SGI 360 - Plan ${planTier} (${period === 'monthly' ? 'Mensual' : 'Anual'})`,
-              description: `Suscripción ${period === 'monthly' ? 'mensual' : 'anual'} a SGI 360 - Plan ${planTier}`,
+              title: `${PRODUCT_BILLING.productName} - Plan ${planTier} (${periodLabel})${isPromo ? ' — Promo lanzamiento' : ''}`,
+              description: `Suscripción ${period === 'monthly' ? 'mensual' : 'anual'} a ${PRODUCT_BILLING.productName} - Plan ${planTier}`,
               quantity: 1,
               currency_id: 'USD',
               unit_price: amount
@@ -1404,13 +1473,13 @@ export async function licenseRoutes(app: FastifyInstance) {
               name: user.email.split('@')[0]
             },
             back_urls: {
-              success: `${process.env.APP_URL || 'http://localhost:3000'}/configuracion?tab=licencia&status=success`,
-              failure: `${process.env.APP_URL || 'http://localhost:3000'}/configuracion?tab=licencia&status=failure`,
-              pending: `${process.env.APP_URL || 'http://localhost:3000'}/configuracion?tab=licencia&status=pending`
+              success: `${appBase}${PRODUCT_BILLING.basePath}${PRODUCT_BILLING.successPath}?status=success`,
+              failure: `${appBase}${PRODUCT_BILLING.basePath}${PRODUCT_BILLING.successPath}?status=failure`,
+              pending: `${appBase}${PRODUCT_BILLING.basePath}${PRODUCT_BILLING.successPath}?status=pending`
             },
-            notification_url: `${process.env.WEBHOOK_BASE_URL || process.env.APP_URL || 'https://logismart.ar'}/api/license/webhook/mercadopago`,
+            notification_url: `${apiBase}/license/webhook/mercadopago`,
             external_reference: `${tenantId}_${planTier}_${period}`,
-            statement_descriptor: "SGI360",
+            statement_descriptor: PRODUCT_BILLING.descriptor,
             metadata: {
               tenant_id: tenantId,
               plan_tier: planTier,
@@ -1503,7 +1572,7 @@ export async function licenseRoutes(app: FastifyInstance) {
   app.post('/activate', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       const body = req.body as any;
-      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      let tenantId = await getEffectiveTenantId(req, app.prisma);
       // Fallback para testing: buscar primer tenant si no hay contexto
       if (!tenantId) {
         const firstTenant = await app.prisma.tenant.findFirst({ orderBy: { createdAt: 'asc' } });
@@ -1752,10 +1821,20 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
               data: {
                 tier: planTier,
                 name: planTier.charAt(0) + planTier.slice(1).toLowerCase(),
-                features: PLAN_LIMITS[planTier],
-                limits: { maxUsers: PLAN_LIMITS[planTier].maxUsers }
+                features: (PLAN_LIMITS as any)[planTier],
+                limits: { maxUsers: (PLAN_LIMITS as any)[planTier]?.maxUsers ?? 50 }
               }
             });
+          }
+
+          // Idempotencia: MercadoPago reintenta webhooks — si ya procesamos este
+          // paymentId no duplicar suscripción/pago.
+          const alreadyProcessed = await (app.prisma as any).payment.findFirst({
+            where: { tenantId, provider: 'mercadopago', providerRef: String(paymentId) },
+          });
+          if (alreadyProcessed) {
+            app.log.info(`[MP WEBHOOK] Pago ${paymentId} ya procesado — ignorando reintento`);
+            return;
           }
 
           // Calcular fechas
@@ -1781,7 +1860,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
               status: 'ACTIVE',
               startedAt: now,
               endsAt,
-              price: PLAN_PRICES[period as keyof typeof PLAN_PRICES]?.[planTier as keyof (typeof PLAN_PRICES)['monthly']] || 99,
+              price: payment.transaction_amount || (PRODUCT_BILLING.prices as any)[period]?.[planTier] || 99,
               provider: 'mercadopago'
             }
           });
@@ -1846,7 +1925,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
               period: period === 'annual' ? 'annual' : 'monthly',
               amount: payment.transaction_amount || 0,
               endsAt,
-              loginUrl: `${appUrl}/login`,
+              loginUrl: `${appUrl}${PRODUCT_BILLING.basePath}/login`,
             }));
             if (emailResult.success) {
               app.log.info(`[MP WEBHOOK] Email de confirmación enviado a ${adminMembership.user.email}`);

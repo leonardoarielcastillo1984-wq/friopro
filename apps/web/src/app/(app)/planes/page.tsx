@@ -12,7 +12,7 @@ import {
   ArrowRight,
   Shield
 } from 'lucide-react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, PRODUCT } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -117,7 +117,7 @@ export default function PlanesPage() {
           ) : (
             <>
               <h1 className="text-3xl font-bold text-slate-900 mb-2">
-                Planes SGI 360
+                Planes {PRODUCT === 'flota360' ? 'Flota 360' : 'SGI 360'}
               </h1>
               <p className="text-slate-600 max-w-xl mx-auto">
                 Elegí el plan que mejor se adapte a las necesidades de tu organización. 
@@ -193,6 +193,14 @@ export default function PlanesPage() {
                         /{period === 'monthly' ? 'mes' : 'año'}
                       </span>
                     </div>
+                    {period === 'monthly' && plan.promo && (
+                      <div className="mt-1">
+                        <span className="text-sm text-slate-400 line-through">USD {plan.promo.regularPrice}/mes</span>
+                        <p className="text-sm text-green-600 font-medium">
+                          Promo lanzamiento: USD {plan.promo.price} × {plan.promo.monthsLeft} {plan.promo.monthsLeft === 1 ? 'mes' : 'meses'}, luego USD {plan.promo.regularPrice}
+                        </p>
+                      </div>
+                    )}
                     {period === 'annual' && (
                       <p className="text-sm text-green-600 mt-1">
                         Ahorrás {plan.prices.savings}%

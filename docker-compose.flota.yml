@@ -22,6 +22,8 @@ services:
       # Aislar cookies del producto: no pisar la sesión de SGI360 en el mismo dominio
       AUTH_COOKIE_PREFIX: flota_
       AUTH_REFRESH_COOKIE_PATH: /flota360-api/auth
+      # Billing del producto: promo $99 x3 meses → $299, basePath y descriptor propios
+      PRODUCT: flota360
     volumes:
       - flota_uploads:/app/uploads
     ports:

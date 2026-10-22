@@ -35,8 +35,10 @@ export interface Plan {
   prices: {
     monthly: number;
     annual: number;
+    regularMonthly?: number;
     savings: number;
   };
+  promo?: { price: number; monthsLeft: number; regularPrice: number } | null;
   limits: {
     maxUsers: number;
     modules: string[];
