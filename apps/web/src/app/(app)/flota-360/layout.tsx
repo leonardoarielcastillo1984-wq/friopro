@@ -5,12 +5,13 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { hasSubModulePermission } from '@/hooks/useModulePermission';
+import { PRODUCT } from '@/lib/api';
 import './fleet.css';
 import {
   LayoutDashboard, Wrench, Truck, Container, Link2, CalendarClock,
   ScanLine, PackageSearch, Disc, Fuel, Users, FileWarning, DollarSign,
   FileBarChart, LayoutGrid, ArrowLeft, Settings, Menu, X, TrendingUp, BookOpen,
-  HardHat, Activity, Building2, Briefcase, Radar, Navigation,
+  HardHat, Activity, Building2, Briefcase, Radar, Navigation, Shield,
 } from 'lucide-react';
 
 const GROUPS: { label: string | null; items: { href: string; label: string; icon: any; exact?: boolean; cc?: boolean }[] }[] = [
@@ -64,21 +65,32 @@ const GROUPS: { label: string | null; items: { href: string; label: string; icon
   },
 ];
 
-function NavContent({ pathname, onNavigate, allowCC }: { pathname: string | null; onNavigate?: () => void; allowCC?: boolean }) {
+function NavContent({ pathname, onNavigate, allowCC, isSuperAdmin }: { pathname: string | null; onNavigate?: () => void; allowCC?: boolean; isSuperAdmin?: boolean }) {
   return (
     <>
       <div className="flex items-center gap-2 px-2.5 mb-1 pb-3 border-b border-white/10">
         <LayoutGrid className="h-4 w-4 text-blue-400 shrink-0" />
         <span className="font-bold text-white text-2xl tracking-tight">Flota <span className="text-blue-400">360</span></span>
       </div>
-      <Link
-        href="/dashboard"
-        onClick={onNavigate}
-        className="flex items-center gap-2 px-2.5 py-1.5 mb-2 rounded-md text-[12.5px] text-blue-300 hover:bg-white/5 hover:text-white transition-colors"
-      >
-        <ArrowLeft className="h-3.5 w-3.5 shrink-0" />
-        <span>Volver al SGI</span>
-      </Link>
+      {/* En producto flota360 hay que salir del basePath → <a>; en SGI vuelve al dashboard */}
+      {PRODUCT === 'flota360' ? (
+        <a
+          href="/flota360-landing"
+          className="flex items-center gap-2 px-2.5 py-1.5 mb-2 rounded-md text-[12.5px] text-blue-300 hover:bg-white/5 hover:text-white transition-colors"
+        >
+          <ArrowLeft className="h-3.5 w-3.5 shrink-0" />
+          <span>Volver al inicio</span>
+        </a>
+      ) : (
+        <Link
+          href="/dashboard"
+          onClick={onNavigate}
+          className="flex items-center gap-2 px-2.5 py-1.5 mb-2 rounded-md text-[12.5px] text-blue-300 hover:bg-white/5 hover:text-white transition-colors"
+        >
+          <ArrowLeft className="h-3.5 w-3.5 shrink-0" />
+          <span>Volver al SGI</span>
+        </Link>
+      )}
       <Link
         href="/modo-de-uso?guide=flota-360"
         onClick={onNavigate}
@@ -114,6 +126,16 @@ function NavContent({ pathname, onNavigate, allowCC }: { pathname: string | null
             })}
           </div>
         ))}
+        {isSuperAdmin && (
+          <Link
+            href="/admin"
+            onClick={onNavigate}
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12.5px] text-red-300 hover:bg-red-900/30 hover:text-red-200 transition-colors mt-1 border-t border-white/10 pt-3"
+          >
+            <Shield className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">Super Admin</span>
+          </Link>
+        )}
       </nav>
     </>
   );
@@ -136,7 +158,7 @@ export default function Flota360Layout({ children }: { children: React.ReactNode
     <div className="fleet-shell flex gap-0 -m-4 sm:-m-6 min-h-[calc(100vh-4rem)]">
       {/* Sidebar desktop — única navegación visible dentro del módulo */}
       <aside className="hidden lg:flex flex-col w-[256px] shrink-0 bg-[#0d1b3d] py-4 px-2.5 sticky top-0 h-screen shadow-[1px_0_0_rgba(255,255,255,0.06)]">
-        <NavContent pathname={pathname} allowCC={allowCC} />
+        <NavContent pathname={pathname} allowCC={allowCC} isSuperAdmin={user?.globalRole === 'SUPER_ADMIN'} />
       </aside>
 
       {/* Mobile: barra superior compacta + drawer propio del módulo */}
@@ -160,7 +182,7 @@ export default function Flota360Layout({ children }: { children: React.ReactNode
             >
               <X className="h-4 w-4" />
             </button>
-            <NavContent pathname={pathname} allowCC={allowCC} onNavigate={() => setMobileOpen(false)} />
+            <NavContent pathname={pathname} allowCC={allowCC} isSuperAdmin={user?.globalRole === 'SUPER_ADMIN'} onNavigate={() => setMobileOpen(false)} />
           </aside>
         </>
       )}
