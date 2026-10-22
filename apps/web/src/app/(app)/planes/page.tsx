@@ -87,6 +87,28 @@ export default function PlanesPage() {
     }
   };
 
+  const handleSubscribe = async (planTier: string) => {
+    setLoading(true);
+    setSelectedPlan(planTier);
+    try {
+      const response = await apiFetch('/license/checkout/subscribe', {
+        method: 'POST',
+        json: { planTier }
+      }) as any;
+
+      const initPoint = response.initPoint;
+      if (initPoint) {
+        window.location.href = initPoint;
+      } else {
+        alert('Error: no se pudo crear la suscripción de débito automático');
+      }
+    } catch (error: any) {
+      alert(`Error: ${error.message || 'Error desconocido al crear la suscripción'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (status.loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -252,6 +274,18 @@ export default function PlanesPage() {
                       </>
                     )}
                   </Button>
+
+                  {/* Débito automático mensual (MercadoPago preapproval) */}
+                  {period === 'monthly' && !isCurrentPlan && (
+                    <button
+                      onClick={() => handleSubscribe(plan.tier)}
+                      disabled={loading}
+                      className="w-full h-9 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:border-blue-400 hover:text-blue-600 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      <CreditCard className="w-3.5 h-3.5" />
+                      Activar débito automático mensual
+                    </button>
+                  )}
                 </CardContent>
               </Card>
             );

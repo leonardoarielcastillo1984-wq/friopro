@@ -1758,11 +1758,266 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
     }
   });
 
+  // ────────────────────────────────────────────────────────────
+  // Helpers compartidos de cobro (preferencia única y débito automático)
+  // ────────────────────────────────────────────────────────────
+
+  // Una sola app de MercadoPago → una sola notification URL. Si el tenant del
+  // evento no existe en esta DB, el cobro pertenece al otro producto: se
+  // reenvía por la red interna de Docker (sgi-network). El header
+  // 'x-mp-forwarded' evita loops de reenvío.
+  const PEER_WEBHOOK_URL = IS_FLOTA_PRODUCT
+    ? `${process.env.SGI_API_INTERNAL || 'http://sgi-api:3002'}/license/webhook/mercadopago`
+    : `${process.env.FLOTA_API_INTERNAL || 'http://flota-api:3002'}/license/webhook/mercadopago`;
+
+  async function forwardWebhookToPeer(req: FastifyRequest, body: any, query: any) {
+    if ((req.headers['x-mp-forwarded'] as string | undefined) === '1') return;
+    try {
+      await fetch(PEER_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-mp-forwarded': '1' },
+        // El query IPN (?topic&id) viaja dentro del body para que el peer lo procese igual
+        body: JSON.stringify({ ...(body || {}), __forwarded_query: query || {} }),
+      });
+      app.log.info(`[MP WEBHOOK] Evento reenviado al producto par (${PEER_WEBHOOK_URL})`);
+    } catch (e: any) {
+      app.log.error(`[MP WEBHOOK] Error reenviando al peer: ${e.message}`);
+    }
+  }
+
+  // Activa/renueva la licencia tras un cobro aprobado. Compartida por el pago
+  // único (preferencia) y cada débito automático (authorized_payment).
+  async function activatePaidPeriod(opts: {
+    tenantId: string;
+    planTier: string;
+    period: 'monthly' | 'annual';
+    providerRef: string;
+    amount: number;
+    currency?: string;
+    preapprovalId?: string;
+  }) {
+    const { tenantId, planTier, period, providerRef, amount, currency, preapprovalId } = opts;
+    const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+
+    // Buscar o crear plan
+    let plan = await app.prisma.plan.findUnique({ where: { tier: planTier as any } });
+    if (!plan) {
+      plan = await app.prisma.plan.create({
+        data: {
+          tier: planTier as any,
+          name: planTier.charAt(0) + planTier.slice(1).toLowerCase(),
+          features: (PLAN_LIMITS as any)[planTier],
+          limits: { maxUsers: (PLAN_LIMITS as any)[planTier]?.maxUsers ?? 50 }
+        }
+      });
+    }
+
+    // Idempotencia: el cobro ya fue procesado (MercadoPago reintenta webhooks)
+    const alreadyProcessed = await (app.prisma as any).payment.findFirst({
+      where: { tenantId, provider: 'mercadopago', providerRef },
+    });
+    if (alreadyProcessed) {
+      app.log.info(`[MP WEBHOOK] Cobro ${providerRef} ya procesado — ignorando`);
+      return;
+    }
+
+    // Período de licencia
+    const now = new Date();
+    const endsAt = new Date(now);
+    if (period === 'monthly') endsAt.setMonth(endsAt.getMonth() + 1);
+    else endsAt.setFullYear(endsAt.getFullYear() + 1);
+
+    // Cancelar suscripciones anteriores y crear la activa
+    await app.prisma.tenantSubscription.updateMany({
+      where: { tenantId },
+      data: { status: 'CANCELED' }
+    });
+
+    const newSub = await app.prisma.tenantSubscription.create({
+      data: {
+        tenantId,
+        planId: plan.id,
+        status: 'ACTIVE',
+        startedAt: now,
+        endsAt,
+        price: amount || 0,
+        provider: 'mercadopago',
+        ...(preapprovalId ? { providerRef: preapprovalId } : {}),
+      }
+    });
+
+    // Registrar el pago
+    await (app.prisma as any).payment.create({
+      data: {
+        tenantId,
+        subscriptionId: newSub.id,
+        planId: plan.id,
+        amount: amount || 0,
+        currency: currency || 'USD',
+        status: 'COMPLETED',
+        period: period === 'annual' ? 'annual' : 'monthly',
+        planTier,
+        paidAt: now,
+        providerRef,
+        provider: 'mercadopago'
+      }
+    });
+
+    // Reactivar licencia y salir de demo
+    const updatedTenant = await (app.prisma as any).tenant.update({
+      where: { id: tenantId },
+      data: {
+        isDemo: false,
+        demoExpiresAt: null,
+        licensePlan: planTier,
+        licenseStartAt: now,
+        licenseEndAt: endsAt,
+        licenseStatus: 'ACTIVE',
+        graceEndAt: null,
+        lastPaymentId: providerRef,
+        notified7Days: false,
+        notified3Days: false,
+        notified1Day: false,
+        notifiedExpired: false,
+        notifiedGrace: false,
+      }
+    });
+
+    // Email de confirmación al admin del tenant
+    const adminMembership = await app.prisma.tenantMembership.findFirst({
+      where: { tenantId, role: 'TENANT_ADMIN', deletedAt: null },
+      include: { user: { select: { email: true } } }
+    });
+    if (adminMembership?.user?.email) {
+      const appUrl = process.env.APP_URL || 'https://logismart.ar';
+      const emailResult = await sendEmail(paymentConfirmationEmail({
+        to: adminMembership.user.email,
+        companyName: updatedTenant.name || tenantId,
+        planName: plan.name || planTier,
+        planTier,
+        period: period === 'annual' ? 'annual' : 'monthly',
+        amount: amount || 0,
+        endsAt,
+        loginUrl: `${appUrl}${PRODUCT_BILLING.basePath}/login`,
+      }));
+      if (emailResult.success) {
+        app.log.info(`[MP WEBHOOK] Email de confirmación enviado a ${adminMembership.user.email}`);
+      } else {
+        app.log.warn(`[MP WEBHOOK] No se pudo enviar email: ${emailResult.error}`);
+      }
+    }
+
+    // Escalado de promo: cuando el tenant agota los meses promocionales, el
+    // preapproval sube al precio regular para el siguiente débito.
+    if (preapprovalId && PRODUCT_BILLING.promo && period === 'monthly' && accessToken) {
+      try {
+        const paidMonthly = await app.prisma.payment.count({
+          where: { tenantId, status: 'COMPLETED' as any, period: 'monthly' },
+        });
+        if (paidMonthly >= PRODUCT_BILLING.promo.months) {
+          const regular = (PRODUCT_BILLING.prices as any).monthly[planTier];
+          const updRes = await fetch(`https://api.mercadopago.com/preapproval/${preapprovalId}`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              auto_recurring: { frequency: 1, frequency_type: 'months', transaction_amount: regular, currency_id: 'USD' }
+            })
+          });
+          if (updRes.ok) {
+            app.log.info(`[MP WEBHOOK] Promo agotada (${paidMonthly} pagos) — preapproval ${preapprovalId} → USD ${regular}/mes`);
+          } else {
+            app.log.warn(`[MP WEBHOOK] MP rechazó actualización de preapproval ${preapprovalId}: ${updRes.status}`);
+          }
+        }
+      } catch (e: any) {
+        app.log.warn(`[MP WEBHOOK] No se pudo actualizar precio del preapproval: ${e.message}`);
+      }
+    }
+
+    app.log.info(`[MP WEBHOOK] ✅ Plan ${planTier} activado para tenant ${tenantId} — modo demo desactivado`);
+  }
+
+  // POST /checkout/subscribe — Suscripción con débito automático mensual
+  // (MercadoPago preapproval). Cobra el precio promo si corresponde y el
+  // webhook lo sube al regular cuando se agotan los meses promo.
+  app.post('/checkout/subscribe', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      const userId = (req as any).auth?.userId;
+      if (!tenantId || !userId) return reply.code(401).send({ error: 'Unauthorized' });
+
+      const { planTier } = (req.body as any) || {};
+      if (!planTier || !['BASIC', 'PROFESSIONAL', 'PREMIUM'].includes(planTier)) {
+        return reply.code(400).send({ error: 'Plan inválido' });
+      }
+
+      const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+      if (!accessToken) {
+        return reply.code(500).send({ error: 'MercadoPago no configurado' });
+      }
+
+      const user = await app.prisma.platformUser.findUnique({ where: { id: userId } });
+      const tenant = await app.prisma.tenant.findUnique({ where: { id: tenantId } });
+      if (!user || !tenant) return reply.code(404).send({ error: 'Tenant o usuario no encontrado' });
+
+      const { amount, isPromo } = await resolvePrice(app, tenantId, planTier, 'monthly');
+      if (!amount) return reply.code(400).send({ error: 'Precio no encontrado' });
+
+      const appBase = process.env.APP_URL || 'https://logismart.ar';
+      const now = new Date();
+      const startDate = new Date(now.getTime() + 10 * 60 * 1000);
+      const endDate = new Date(now);
+      endDate.setFullYear(endDate.getFullYear() + 1);
+
+      const preapprovalBody = {
+        reason: `${PRODUCT_BILLING.productName} - Plan ${planTier} — débito automático mensual${isPromo ? ' (promo lanzamiento)' : ''}`,
+        external_reference: `${tenantId}_${planTier}_monthly`,
+        payer_email: user.email,
+        back_url: `${appBase}${PRODUCT_BILLING.basePath}${PRODUCT_BILLING.successPath}?status=subscribed`,
+        auto_recurring: {
+          frequency: 1,
+          frequency_type: 'months',
+          transaction_amount: amount,
+          currency_id: 'USD',
+          start_date: startDate.toISOString(),
+          end_date: endDate.toISOString(),
+        },
+        status: 'pending',
+      };
+
+      const mpRes = await fetch('https://api.mercadopago.com/preapproval', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(preapprovalBody),
+      });
+      const preapproval = await mpRes.json();
+
+      if (!mpRes.ok) {
+        app.log.error({ preapproval }, '[SUBSCRIBE] Error creando preapproval');
+        return reply.code(500).send({ error: preapproval.message || 'Error creando suscripción en MercadoPago' });
+      }
+
+      app.log.info(`[SUBSCRIBE] Preapproval ${preapproval.id} creado para tenant ${tenantId} — USD ${amount}/mes`);
+
+      return reply.send({
+        preapprovalId: preapproval.id,
+        initPoint: preapproval.init_point,
+        amount,
+        isPromo,
+      });
+    } catch (error: any) {
+      app.log.error(error);
+      return reply.code(500).send({ error: 'Error creando suscripción', details: error.message });
+    }
+  });
+
   // Webhook para recibir notificaciones de pago de MercadoPago
   app.post('/webhook/mercadopago', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       const body = req.body as any;
-      const query = req.query as any;
+      // Si el evento fue reenviado desde el otro producto, el query IPN original
+      // (?topic&id) viaja dentro del body en __forwarded_query.
+      const query = { ...(req.query as any), ...(body?.__forwarded_query || {}) };
       app.log.info({ body, query }, '[MP WEBHOOK] Notificación recibida');
 
       // Responder inmediatamente a MercadoPago (200 OK)
@@ -1814,129 +2069,132 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
 
           app.log.info(`[MP WEBHOOK] Activando plan ${planTier} para tenant ${tenantId}, período ${period}`);
 
-          // Buscar o crear plan
-          let plan = await app.prisma.plan.findUnique({ where: { tier: planTier } });
-          if (!plan) {
-            plan = await app.prisma.plan.create({
-              data: {
-                tier: planTier,
-                name: planTier.charAt(0) + planTier.slice(1).toLowerCase(),
-                features: (PLAN_LIMITS as any)[planTier],
-                limits: { maxUsers: (PLAN_LIMITS as any)[planTier]?.maxUsers ?? 50 }
-              }
-            });
-          }
-
-          // Idempotencia: MercadoPago reintenta webhooks — si ya procesamos este
-          // paymentId no duplicar suscripción/pago.
-          const alreadyProcessed = await (app.prisma as any).payment.findFirst({
-            where: { tenantId, provider: 'mercadopago', providerRef: String(paymentId) },
+          // Una sola app de MP sirve a ambos productos: si el tenant no existe
+          // en esta DB, el evento es del producto par → reenviar por red interna.
+          const tenantExists = await app.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { id: true },
           });
-          if (alreadyProcessed) {
-            app.log.info(`[MP WEBHOOK] Pago ${paymentId} ya procesado — ignorando reintento`);
+          if (!tenantExists) {
+            await forwardWebhookToPeer(req, body, query);
             return;
           }
 
-          // Calcular fechas
-          const now = new Date();
-          const endsAt = new Date(now);
-          if (period === 'monthly') {
-            endsAt.setMonth(endsAt.getMonth() + 1);
-          } else {
-            endsAt.setFullYear(endsAt.getFullYear() + 1);
-          }
-
-          // Cancelar suscripciones anteriores
-          await app.prisma.tenantSubscription.updateMany({
-            where: { tenantId },
-            data: { status: 'CANCELED' }
+          await activatePaidPeriod({
+            tenantId,
+            planTier,
+            period: period === 'annual' ? 'annual' : 'monthly',
+            providerRef: String(paymentId),
+            amount: payment.transaction_amount || 0,
+            currency: payment.currency_id || 'USD',
           });
-
-          // Crear nueva suscripción activa
-          const newSub = await app.prisma.tenantSubscription.create({
-            data: {
-              tenantId,
-              planId: plan.id,
-              status: 'ACTIVE',
-              startedAt: now,
-              endsAt,
-              price: payment.transaction_amount || (PRODUCT_BILLING.prices as any)[period]?.[planTier] || 99,
-              provider: 'mercadopago'
-            }
-          });
-
-          // Guardar pago
-          await (app.prisma as any).payment.create({
-            data: {
-              tenantId,
-              subscriptionId: newSub.id,
-              planId: plan.id,
-              amount: payment.transaction_amount || 99,
-              currency: payment.currency_id || 'USD',
-              status: 'COMPLETED',
-              period: period === 'annual' ? 'annual' : 'monthly',
-              planTier: planTier,
-              paidAt: new Date(payment.date_approved || Date.now()),
-              providerRef: String(paymentId),
-              provider: 'mercadopago'
-            }
-          });
-
-          // Desactivar modo demo y reactivar licencia al pagar
-          const licenseEnd = new Date(now);
-          if (period === 'monthly') {
-            licenseEnd.setMonth(licenseEnd.getMonth() + 1);
-          } else {
-            licenseEnd.setFullYear(licenseEnd.getFullYear() + 1);
-          }
-
-          const updatedTenant = await (app.prisma as any).tenant.update({
-            where: { id: tenantId },
-            data: {
-              isDemo: false,
-              demoExpiresAt: null,
-              licensePlan: planTier,
-              licenseStartAt: now,
-              licenseEndAt: licenseEnd,
-              licenseStatus: 'ACTIVE',
-              graceEndAt: null,
-              lastPaymentId: String(paymentId),
-              notified7Days: false,
-              notified3Days: false,
-              notified1Day: false,
-              notifiedExpired: false,
-              notifiedGrace: false,
-            }
-          });
-
-          // Obtener email del admin del tenant para enviar confirmación
-          const adminMembership = await app.prisma.tenantMembership.findFirst({
-            where: { tenantId, role: 'TENANT_ADMIN', deletedAt: null },
-            include: { user: { select: { email: true } } }
-          });
-
-          if (adminMembership?.user?.email) {
-            const appUrl = process.env.APP_URL || 'https://app.sgi360.com';
-            const emailResult = await sendEmail(paymentConfirmationEmail({
-              to: adminMembership.user.email,
-              companyName: updatedTenant.name || tenantId,
-              planName: plan.name || planTier,
-              planTier,
-              period: period === 'annual' ? 'annual' : 'monthly',
-              amount: payment.transaction_amount || 0,
-              endsAt,
-              loginUrl: `${appUrl}${PRODUCT_BILLING.basePath}/login`,
-            }));
-            if (emailResult.success) {
-              app.log.info(`[MP WEBHOOK] Email de confirmación enviado a ${adminMembership.user.email}`);
-            } else {
-              app.log.warn(`[MP WEBHOOK] No se pudo enviar email: ${emailResult.error}`);
-            }
-          }
-
-          app.log.info(`[MP WEBHOOK] ✅ Plan ${planTier} activado para tenant ${tenantId} — modo demo desactivado`);
         } catch (procError: any) {
           app.log.error(`[MP WEBHOOK] Error procesando pago: ${procError.message}`);
+        }
+      }
+
+      // ── Suscripción automática: alta/cambio del preapproval ──
+      const isPreapprovalEvent =
+        body?.type === 'subscription_preapproval' || body?.type === 'preapproval' ||
+        query?.topic === 'preapproval' || query?.topic === 'subscription_preapproval';
+      if (isPreapprovalEvent) {
+        const preapprovalId = body?.data?.id || query?.id;
+        const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+        if (preapprovalId && accessToken) {
+          try {
+            const preRes = await fetch(`https://api.mercadopago.com/preapproval/${preapprovalId}`, {
+              headers: { 'Authorization': `Bearer ${accessToken}` },
+            });
+            if (preRes.ok) {
+              const preapproval = await preRes.json();
+              const ext = preapproval.external_reference || '';
+              const [preTenantId, prePlanTier] = ext.split('_');
+              if (preTenantId) {
+                const tenantExists = await app.prisma.tenant.findUnique({
+                  where: { id: preTenantId },
+                  select: { id: true },
+                });
+                if (!tenantExists) {
+                  await forwardWebhookToPeer(req, body, query);
+                } else {
+                  // Guardar referencia para trazabilidad (no activa: se activa al primer débito)
+                  try {
+                    await (app.prisma as any).paymentPreference.create({
+                      data: {
+                        tenantId: preTenantId,
+                        planTier: prePlanTier || 'PREMIUM',
+                        period: 'monthly',
+                        amount: preapproval.auto_recurring?.transaction_amount ?? 0,
+                        currency: 'USD',
+                        mpPreferenceId: String(preapprovalId),
+                        status: String(preapproval.status || 'pending').toUpperCase(),
+                      }
+                    });
+                  } catch { /* trazabilidad best-effort */ }
+                  if (preapproval.status === 'cancelled' || preapproval.status === 'paused') {
+                    await app.prisma.tenantSubscription.updateMany({
+                      where: { tenantId: preTenantId, provider: 'mercadopago', providerRef: String(preapprovalId) },
+                      data: { status: 'CANCELED' },
+                    });
+                    app.log.info(`[MP WEBHOOK] Preapproval ${preapprovalId} ${preapproval.status} — suscripción marcada CANCELED`);
+                  } else {
+                    app.log.info(`[MP WEBHOOK] Preapproval ${preapprovalId} estado ${preapproval.status} para tenant ${preTenantId}`);
+                  }
+                }
+              }
+            }
+          } catch (e: any) {
+            app.log.error(`[MP WEBHOOK] Error procesando preapproval: ${e.message}`);
+          }
+        }
+      }
+
+      // ── Suscripción automática: cada débito cobrado (authorized_payment) ──
+      const isAuthorizedPayment =
+        body?.type === 'subscription_authorized_payment' ||
+        query?.topic === 'subscription_authorized_payment' || query?.topic === 'authorized_payment';
+      if (isAuthorizedPayment) {
+        const authPayId = body?.data?.id || query?.id;
+        const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+        if (authPayId && accessToken) {
+          try {
+            const apRes = await fetch(`https://api.mercadopago.com/authorized_payments/${authPayId}`, {
+              headers: { 'Authorization': `Bearer ${accessToken}` },
+            });
+            if (apRes.ok) {
+              const ap = await apRes.json();
+              app.log.info({ authPayId, status: ap.status, preapprovalId: ap.preapproval_id }, '[MP WEBHOOK] Débito automático consultado');
+              if (ap.status === 'processed') {
+                const preRes = await fetch(`https://api.mercadopago.com/preapproval/${ap.preapproval_id}`, {
+                  headers: { 'Authorization': `Bearer ${accessToken}` },
+                });
+                const preapproval = preRes.ok ? await preRes.json() : {};
+                const ext = preapproval.external_reference || '';
+                const [apTenantId, apPlanTier, apPeriod = 'monthly'] = ext.split('_');
+                if (apTenantId && apPlanTier) {
+                  const tenantExists = await app.prisma.tenant.findUnique({
+                    where: { id: apTenantId },
+                    select: { id: true },
+                  });
+                  if (!tenantExists) {
+                    await forwardWebhookToPeer(req, body, query);
+                  } else {
+                    await activatePaidPeriod({
+                      tenantId: apTenantId,
+                      planTier: apPlanTier,
+                      period: apPeriod === 'annual' ? 'annual' : 'monthly',
+                      providerRef: String(ap.id),
+                      amount: ap.transaction_amount ?? ap.transaction?.amount ?? 0,
+                      currency: 'USD',
+                      preapprovalId: String(ap.preapproval_id),
+                    });
+                  }
+                }
+              }
+            }
+          } catch (e: any) {
+            app.log.error(`[MP WEBHOOK] Error procesando authorized_payment: ${e.message}`);
+          }
         }
       }
     } catch (error: any) {
