@@ -11,6 +11,7 @@ import { encryptApiKey, decryptApiKey } from '../services/llm/tenantCrypto.js';
 import { sendEmail } from '../services/email.js';
 // @ts-ignore — pdf-parse no publica tipos propios
 import pdfParse from 'pdf-parse';
+import XLSX from 'xlsx';
 
 // ════════════════════════════════════════════════════════════════════════════
 // RESULTADOS DEL NEGOCIO — /api/finanzas
@@ -1332,16 +1333,28 @@ export default async function finanzasRoutes(app: FastifyInstance) {
 
     // ── COSTO DE PERSONAL (dedup Conductor↔Employee por DNI) ────
     const empleados = await p.employee.findMany({
-      where: { tenantId, deletedAt: null, status: 'ACTIVE', costoMensual: { not: null } },
+      where: { tenantId, deletedAt: null, status: 'ACTIVE' },
       select: { id: true, firstName: true, lastName: true, dni: true, costoMensual: true, centroCostoId: true },
     }).catch(() => []);
     const dnisEmpleados = new Set<string>(empleados.map((e: any) => (e.dni || '').trim()).filter(Boolean));
+    // Sueldos importados desde la planilla de liquidaciones: si existe un
+    // EmployeeSalary para (empleado, año, mes) ese monto gana sobre costoMensual.
+    const sueldosImp = await p.employeeSalary.findMany({
+      where: { tenantId, anio: { gte: desde.getFullYear(), lte: hasta.getFullYear() } },
+      select: { employeeId: true, anio: true, mes: true, monto: true, tipoGasto: true },
+    }).catch(() => []);
+    const sueldoMes = new Map<string, { monto: number; tipoGasto: string }>();
+    for (const s of sueldosImp) sueldoMes.set(`${s.employeeId}:${s.anio}-${s.mes}`, { monto: num(s.monto), tipoGasto: s.tipoGasto || 'OPERATIVO' });
     for (const e of empleados) {
       const costo = num(e.costoMensual);
-      if (costo <= 0 || !ccOk(e.centroCostoId)) continue;
       const concepto = `Sueldo ${`${e.firstName || ''} ${e.lastName || ''}`.trim()}`;
-      for (const ms of monthStarts(desde, hasta))
-        add({ fecha: ms, concepto, importe: costo, grupo: 'COSTO_OP', fuente: 'PERSONAL', modulo: 'RRHH', origenId: e.id, origenUrl: '/rrhh', centroCostoId: e.centroCostoId });
+      for (const ms of monthStarts(desde, hasta)) {
+        const imp = sueldoMes.get(`${e.id}:${ms.getFullYear()}-${ms.getMonth() + 1}`);
+        const importe = imp ? imp.monto : costo;
+        if (importe <= 0 || !ccOk(e.centroCostoId)) continue;
+        const grupo = imp?.tipoGasto === 'ESTRUCTURA' ? 'ESTRUCTURA' : 'COSTO_OP';
+        add({ fecha: ms, concepto, importe, grupo, fuente: 'PERSONAL', modulo: 'RRHH', origenId: e.id, origenUrl: '/rrhh', centroCostoId: e.centroCostoId });
+      }
     }
     const conductores = await p.conductor.findMany({
       where: { tenantId, status: 'ACTIVO', costoMensual: { gt: 0 } },
@@ -3126,6 +3139,166 @@ ${pregunta
       { tipo, moneda, centroCostoId, diasVencimiento, categoriaDefault, tipoGastoDefault, filas },
     );
     return reply.send({ ok: true, creados, duplicados, errores: errores.slice(0, 50), totalErrores: errores.length });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // IMPORTAR SUELDOS — planilla de liquidaciones (.xlsx)
+  // Formato esperado: una fila por empleado por mes; columna A = Fecha
+  // (periodo), R.U.T. + NOMBRE para matchear al empleado, "Costo Mano
+  // Obra" para imputación (Administrativo → estructura) y
+  // "COSTO EMPRESA" como monto. La misma planilla puede traer todo el año:
+  // cada fila se vincula al mes de su Fecha.
+  // ═══════════════════════════════════════════════════════════════
+
+  const normHdr = (s: any) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+  const normRutEmp = (s: any) => String(s ?? '').replace(/[^0-9kK]/g, '').toUpperCase();
+  const normNombreEmp = (s: any) => normHdr(s).split(' ').filter(Boolean).sort().join(' ');
+
+  const parseMontoSueldo = (v: any): number => {
+    if (v === null || v === undefined || v === '') return 0;
+    if (typeof v === 'number') return v;
+    let s = String(v).trim().replace(/[^\d,.-]/g, '');
+    if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
+    else if (s.includes(',') && !s.includes('.')) s = s.replace(',', '.');
+    const n = Number(s);
+    return isNaN(n) ? 0 : n;
+  };
+
+  const parsePeriodo = (v: any): { anio: number; mes: number } | null => {
+    if (v instanceof Date && !isNaN(v.getTime())) return { anio: v.getFullYear(), mes: v.getMonth() + 1 };
+    if (typeof v === 'number' && v > 20000 && v < 80000) { // serial de Excel
+      const d = XLSX.SSF?.parse_date_code?.(v);
+      if (d) return { anio: d.y, mes: d.m };
+      const js = new Date(Math.round((v - 25569) * 86400 * 1000));
+      if (!isNaN(js.getTime())) return { anio: js.getUTCFullYear(), mes: js.getUTCMonth() + 1 };
+    }
+    const s = String(v ?? '').trim();
+    let m = s.match(/^(\d{4})-(\d{1,2})/);
+    if (m) return { anio: +m[1], mes: +m[2] };
+    m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+    if (m) return { anio: +m[3], mes: +m[2] };
+    m = s.match(/^(\d{1,2})[\/-](\d{4})$/); // MM-YYYY
+    if (m) return { anio: +m[2], mes: +m[1] };
+    return null;
+  };
+
+  // Busca la hoja con headers Fecha + Costo Empresa (prefiere la llamada "Sueldos")
+  function extraerFilasSueldos(wb: any) {
+    type H = { sheet: string; headerRow: number; col: Record<string, number> };
+    const detectar = (name: string): H | null => {
+      const ws = wb.Sheets[name];
+      if (!ws) return null;
+      const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '', range: 0 }) as any[][];
+      for (let r = 0; r < Math.min(rows.length, 15); r++) {
+        const h = (rows[r] || []).map(normHdr);
+        const idx = (preds: string[]) => h.findIndex(x => preds.some(px => x === px || x.includes(px)));
+        const col = {
+          fecha: idx(['fecha', 'periodo']),
+          rut: idx(['rut', 'r u t']),
+          nombre: idx(['nombre', 'apellido nombre', 'trabajador', 'empleado']),
+          tipo: idx(['costo mano obra', 'costo mano de obra', 'tipo personal']),
+          monto: idx(['costo empresa', 'costo total empresa']),
+        };
+        if (col.fecha >= 0 && col.monto >= 0) return { sheet: name, headerRow: r, col };
+      }
+      return null;
+    };
+    let h = detectar('Sueldos');
+    if (!h) for (const name of wb.SheetNames) { h = detectar(name); if (h) break; }
+    if (!h) return null;
+    const ws = wb.Sheets[h.sheet];
+    const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '', range: h.headerRow + 1 }) as any[][];
+    const cr = h.col;
+    const get = (row: any[], i: number) => (i >= 0 ? row[i] : '');
+    return rows.map(row => ({
+      periodo: parsePeriodo(get(row, cr.fecha)),
+      rut: normRutEmp(get(row, cr.rut)),
+      nombre: String(get(row, cr.nombre) ?? '').trim(),
+      tipoManoObra: String(get(row, cr.tipo) ?? '').trim(),
+      monto: parseMontoSueldo(get(row, cr.monto)),
+    })).filter(f => f.periodo && f.monto > 0 && (f.rut || f.nombre));
+  }
+
+  app.post('/importar-sueldos', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const file = await (req as any).file();
+    if (!file) return reply.code(400).send({ error: 'No se proporcionó archivo' });
+    const buf = await file.toBuffer();
+    let wb: any;
+    try { wb = XLSX.read(buf, { type: 'buffer', cellDates: true }); }
+    catch { return reply.code(400).send({ error: 'No se pudo leer el archivo. Subí un .xlsx válido.' }); }
+    const filas = extraerFilasSueldos(wb);
+    if (!filas) return reply.code(400).send({ error: 'No encontré una hoja con columnas "Fecha" y "Costo Empresa". ¿Es la planilla de liquidaciones?' });
+    if (!filas.length) return reply.code(400).send({ error: 'La hoja no tiene filas válidas (fecha + costo empresa > 0).' });
+
+    const empleados = await prisma().employee.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { id: true, firstName: true, lastName: true, dni: true, centroCostoId: true },
+    });
+    const porRut = new Map<string, any>(empleados.map((e: any) => [normRutEmp(e.dni), e] as const).filter(([r]: [string, any]) => r));
+    const porNombre = new Map(empleados.map((e: any) => [normNombreEmp(`${e.firstName} ${e.lastName}`), e] as const));
+
+    let matched = 0, sinMatch = 0;
+    const porPeriodo = new Map<string, { personas: number; total: number }>();
+    const filasOut = filas.map(f => {
+      const emp = (f.rut ? porRut.get(f.rut) : undefined) || (f.nombre ? porNombre.get(normNombreEmp(f.nombre)) : undefined);
+      const tipoGasto = /administr/i.test(f.tipoManoObra) ? 'ESTRUCTURA' : 'OPERATIVO';
+      const p = f.periodo!;
+      const key = `${p.anio}-${String(p.mes).padStart(2, '0')}`;
+      const agg = porPeriodo.get(key) || { personas: 0, total: 0 };
+      agg.personas += 1; agg.total += f.monto; porPeriodo.set(key, agg);
+      if (emp) matched++; else sinMatch++;
+      return {
+        anio: p.anio, mes: p.mes,
+        rut: f.rut || null, nombreExcel: f.nombre || null,
+        employeeId: emp?.id || null, nombreEmpleado: emp ? `${emp.firstName} ${emp.lastName}`.trim() : null,
+        monto: f.monto, tipoGasto,
+      };
+    });
+    return reply.send({
+      ok: true,
+      filas: filasOut.slice(0, 500), totalFilas: filasOut.length,
+      matched, sinMatch,
+      periodos: Array.from(porPeriodo.entries()).sort().map(([periodo, v]) => ({ periodo, ...v })),
+    });
+  });
+
+  const sueldoFilaSchema = z.object({
+    anio: z.number().int().min(2000).max(2100), mes: z.number().int().min(1).max(12),
+    employeeId: z.string().uuid(), monto: z.number().positive(),
+    tipoGasto: z.enum(['OPERATIVO', 'ESTRUCTURA']).default('OPERATIVO'),
+  });
+
+  app.post('/importar-sueldos/confirm', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const body = z.object({ filas: z.array(sueldoFilaSchema).min(1).max(5000) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    // Solo filas matcheadas a un empleado del tenant
+    const empIds = new Set((await prisma().employee.findMany({ where: { tenantId }, select: { id: true } })).map((e: any) => e.id));
+    const filas = body.data.filas.filter(f => empIds.has(f.employeeId));
+    if (!filas.length) return reply.code(400).send({ error: 'Ninguna fila corresponde a un empleado del tenant.' });
+
+    let upserted = 0;
+    const ultimoPorEmp = new Map<string, { anio: number; mes: number; monto: number }>();
+    for (const f of filas) {
+      await prisma().employeeSalary.upsert({
+        where: { tenantId_employeeId_anio_mes: { tenantId, employeeId: f.employeeId, anio: f.anio, mes: f.mes } },
+        create: { tenantId, employeeId: f.employeeId, anio: f.anio, mes: f.mes, monto: f.monto, tipoGasto: f.tipoGasto, origen: 'IMPORT_SUELDOS' },
+        update: { monto: f.monto, tipoGasto: f.tipoGasto, origen: 'IMPORT_SUELDOS' },
+      });
+      upserted++;
+      const cur = ultimoPorEmp.get(f.employeeId);
+      if (!cur || f.anio * 100 + f.mes > cur.anio * 100 + cur.mes) ultimoPorEmp.set(f.employeeId, { anio: f.anio, mes: f.mes, monto: f.monto });
+    }
+    // costoMensual queda como fallback de meses sin importar → lo sincronizamos
+    // al último sueldo importado de cada empleado.
+    for (const [employeeId, u] of ultimoPorEmp) {
+      await prisma().employee.update({ where: { id: employeeId }, data: { costoMensual: u.monto } }).catch(() => {});
+    }
+    const periodos = [...new Set(filas.map(f => `${f.anio}-${String(f.mes).padStart(2, '0')}`))].sort();
+    return reply.send({ ok: true, upserted, empleados: ultimoPorEmp.size, periodos });
   });
 
   // ═══════════════════════════════════════════════════════════════

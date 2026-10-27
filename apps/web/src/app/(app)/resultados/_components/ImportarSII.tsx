@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { apiFetch } from '@/lib/api';
-import { Upload, Loader2, CheckCircle2, AlertTriangle, FileSpreadsheet, Info, RefreshCw, KeyRound, ShieldCheck } from 'lucide-react';
+import { apiFetch, apiPath, getTenantId } from '@/lib/api';
+import { Upload, Loader2, CheckCircle2, AlertTriangle, FileSpreadsheet, Info, RefreshCw, KeyRound, ShieldCheck, Users } from 'lucide-react';
 import { fmtMoney, fmtFecha, CATEGORIA_GASTO, MONEDAS } from './fmt';
 import { useAsistente } from './useAsistente';
 
@@ -122,6 +122,48 @@ export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChan
   const [tipoSync, setTipoSync] = useState<'AMBOS' | 'VENTAS' | 'COMPRAS'>('AMBOS');
   const [syncing, setSyncing] = useState(false);
   const [resultadoSync, setResultadoSync] = useState<any>(null);
+
+  // ── Importar sueldos (Excel anual de liquidaciones) ──
+  const [archivoSueldos, setArchivoSueldos] = useState<string | null>(null);
+  const [previewSueldos, setPreviewSueldos] = useState<any>(null);
+  const [cargandoSueldos, setCargandoSueldos] = useState(false);
+  const [importandoSueldos, setImportandoSueldos] = useState(false);
+  const [resultadoSueldos, setResultadoSueldos] = useState<any>(null);
+  const sueldosFileRef = useRef<HTMLInputElement>(null);
+
+  const cargarSueldos = async (file: File) => {
+    setPreviewSueldos(null); setResultadoSueldos(null); setError(null);
+    setArchivoSueldos(file.name); setCargandoSueldos(true);
+    try {
+      const token = typeof window !== 'undefined' ? window.localStorage.getItem('accessToken') : null;
+      const tenantId = getTenantId();
+      const headers: Record<string, string> = {};
+      if (token) headers['authorization'] = `Bearer ${token}`;
+      if (tenantId) headers['x-tenant-id'] = tenantId;
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(apiPath('/api/finanzas/importar-sueldos'), { method: 'POST', headers, credentials: 'include', body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
+      setPreviewSueldos(data);
+    } catch (e: any) { setError(e?.message || 'Error al leer el Excel de sueldos'); setArchivoSueldos(null); }
+    finally { setCargandoSueldos(false); }
+  };
+
+  const importarSueldos = async () => {
+    const filas = (previewSueldos?.filas || []).filter((f: any) => f.employeeId);
+    if (!filas.length) return;
+    setImportandoSueldos(true); setError(null);
+    try {
+      const r = await apiFetch<any>('/finanzas/importar-sueldos/confirm', {
+        method: 'POST',
+        json: { filas: filas.map((f: any) => ({ anio: f.anio, mes: f.mes, employeeId: f.employeeId, monto: f.monto, tipoGasto: f.tipoGasto })) },
+      });
+      setResultadoSueldos(r); setPreviewSueldos(null);
+      onChanged();
+    } catch (e: any) { setError(e?.message || 'Error al importar sueldos'); }
+    finally { setImportandoSueldos(false); }
+  };
 
   useEffect(() => {
     apiFetch<any>('/finanzas/config').then(c => {
@@ -365,6 +407,86 @@ export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChan
           </div>
         </div>
       )}
+
+      {/* ── Importar sueldos (planilla anual de liquidaciones) ── */}
+      <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4" data-explica="importar-sueldos" data-explica-titulo="Importar sueldos">
+        <div className="mb-1 flex items-center gap-2">
+          <Users size={15} className="text-violet-700" />
+          <span className="text-sm font-semibold text-violet-900">Importar sueldos</span>
+        </div>
+        <p className="mb-3 text-[12px] text-violet-800">
+          Subí la planilla de liquidaciones (.xlsx). Puede traer todo el año: cada fila se vincula al mes de su <b>Fecha</b> (columna A) y se toma el <b>Costo Empresa</b> (columna AZ) como sueldo + cargas. Ese monto reemplaza al costo mensual del empleado para ese mes en Resultados.
+        </p>
+
+        <button onClick={() => sueldosFileRef.current?.click()} disabled={cargandoSueldos}
+          className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-violet-300 bg-white py-6 text-violet-600 hover:border-violet-400 hover:bg-violet-50 disabled:opacity-50">
+          {cargandoSueldos ? <Loader2 size={20} className="animate-spin" /> : <Upload size={20} />}
+          <span className="text-sm">{archivoSueldos ? <><FileSpreadsheet size={14} className="mr-1 inline" />{archivoSueldos} — clic para cambiar</> : 'Subir Excel de liquidaciones (.xlsx)'}</span>
+        </button>
+        <input ref={sueldosFileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { if (e.target.files?.[0]) cargarSueldos(e.target.files[0]); e.target.value = ''; }} />
+
+        {previewSueldos && (
+          <div className="mt-3 rounded-xl border border-neutral-200 bg-white">
+            <div className="flex flex-wrap items-center gap-3 border-b border-neutral-200 px-4 py-3">
+              <span className="text-sm font-semibold">{previewSueldos.totalFilas} filas detectadas</span>
+              <span className="text-xs text-emerald-700">{previewSueldos.matched} vinculadas a empleados</span>
+              {previewSueldos.sinMatch > 0 && <span className="text-xs text-amber-600">{previewSueldos.sinMatch} sin empleado (se omiten)</span>}
+              <button onClick={importarSueldos} disabled={importandoSueldos || !previewSueldos.matched}
+                className="ml-auto flex items-center gap-1.5 rounded-lg bg-violet-700 px-4 py-2 text-sm font-medium text-white hover:bg-violet-800 disabled:opacity-50">
+                {importandoSueldos ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                Importar {previewSueldos.matched} sueldos
+              </button>
+            </div>
+            {previewSueldos.periodos?.length > 0 && (
+              <div className="flex flex-wrap gap-2 border-b border-neutral-100 px-4 py-2.5">
+                {previewSueldos.periodos.map((p: any) => (
+                  <span key={p.periodo} className="rounded-full bg-violet-100 px-3 py-1 text-[11px] font-medium text-violet-800">
+                    {p.periodo} · {p.personas} personas · {fmtMoney(p.total, mon)}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="max-h-72 overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-neutral-50">
+                  <tr className="text-left text-[11px] uppercase tracking-wide text-neutral-500">
+                    <th className="px-4 py-2 font-medium">Mes</th><th className="px-4 py-2 font-medium">Empleado</th>
+                    <th className="px-4 py-2 font-medium">Tipo</th><th className="px-4 py-2 text-right font-medium">Costo empresa</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewSueldos.filas.map((f: any, i: number) => (
+                    <tr key={i} className="border-t border-neutral-100">
+                      <td className="px-4 py-1.5 text-xs text-neutral-500">{f.anio}-{String(f.mes).padStart(2, '0')}</td>
+                      <td className="px-4 py-1.5">
+                        {f.employeeId
+                          ? <div className="truncate">{f.nombreEmpleado}</div>
+                          : <div className="truncate text-amber-600">{f.nombreExcel || f.rut || '—'} <span className="text-[10px]">(sin match)</span></div>}
+                      </td>
+                      <td className="px-4 py-1.5 text-xs text-neutral-500">{f.tipoGasto === 'ESTRUCTURA' ? 'Estructura' : 'Operativo'}</td>
+                      <td className="px-4 py-1.5 text-right font-medium">{fmtMoney(f.monto, mon)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {previewSueldos.totalFilas > previewSueldos.filas.length && (
+                <div className="px-4 py-2 text-xs text-neutral-400">… y {previewSueldos.totalFilas - previewSueldos.filas.length} más</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {resultadoSueldos && (
+          <div className="mt-3 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-900">
+            <div className="flex items-center gap-2 font-semibold"><CheckCircle2 size={16} />Sueldos importados</div>
+            <div className="mt-1">
+              {resultadoSueldos.upserted} registros de {resultadoSueldos.empleados} empleados
+              {resultadoSueldos.periodos?.length ? ` · períodos ${resultadoSueldos.periodos.join(', ')}` : ''}
+            </div>
+            <div className="mt-1 text-[11px] text-green-700">Si volvés a subir la misma planilla, los sueldos se actualizan (no se duplican).</div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

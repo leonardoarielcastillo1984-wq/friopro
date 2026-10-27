@@ -403,6 +403,7 @@ model Tenant {
   // RRHH Relations
   trainings Training[]
   employees Employee[]
+  employeeSalaries EmployeeSalary[]
   positions Position[]
 
   // Indicator↔Risk Links
@@ -1921,6 +1922,9 @@ model Employee {
   climaRecipients      ClimaRecipient[]      @relation("ClimaRecipientEmployee")
   climaSuggestions     ClimaSuggestion[]     @relation("ClimaSuggestionEmployee")
 
+  // Sueldos mensuales importados (liquidaciones) — tienen prioridad sobre costoMensual en el mes
+  salaries EmployeeSalary[]
+
   @@unique([tenantId, dni])
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -1929,6 +1933,30 @@ model Employee {
   @@index([supervisorId])
   @@index([reportsToPositionId])
   @@index([status])
+}
+
+// Sueldo mensual de un empleado, importado desde la planilla de liquidaciones.
+// Si existe para (anio, mes), el Resultado de Negocio usa este monto en vez de Employee.costoMensual.
+model EmployeeSalary {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId String   @db.Uuid
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  anio  Int
+  mes   Int // 1-12
+  monto Decimal @db.Decimal(14, 2) // COSTO EMPRESA (sueldo + cargas patronales)
+
+  // Imputación: OPERATIVO (COSTO_OP) o ESTRUCTURA según "Costo Mano Obra" de la planilla
+  tipoGasto String  @default("OPERATIVO")
+  origen    String  @default("IMPORT_SUELDOS")
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@unique([tenantId, employeeId, anio, mes])
+  @@index([tenantId, anio, mes])
 }
 
 model User {

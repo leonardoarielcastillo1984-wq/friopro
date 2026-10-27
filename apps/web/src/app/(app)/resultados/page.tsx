@@ -34,7 +34,7 @@ const TABS: { key: Tab; label: string; icon: any; edit?: boolean }[] = [
   { key: 'proyeccion', label: 'Proyección', icon: Scale },
   { key: 'rentabilidad', label: 'Rentabilidad', icon: TrendingUp },
   { key: 'balance', label: 'Balance', icon: PieChart },
-  { key: 'importar', label: 'Importar SII', icon: Upload, edit: true },
+  { key: 'importar', label: 'Importar', icon: Upload, edit: true },
   { key: 'centros', label: 'Centros de costo', icon: Building2 },
 ];
 
