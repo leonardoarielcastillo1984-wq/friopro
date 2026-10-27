@@ -60,10 +60,14 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
 
   const visibles = useMemo(() => {
     const q = buscar.trim().toLowerCase();
-    return facturas.filter(f =>
-      (filtroEstado !== 'VENCIDA' || f.estado === 'VENCIDA') &&
-      (!q || f.clienteNombre.toLowerCase().includes(q) || (f.numero || '').includes(q) || (f.clienteRut || '').includes(q)));
-  }, [facturas, buscar, filtroEstado]);
+    return facturas.filter(f => {
+      const fecha = (f.fechaEmision || '').slice(0, 10);
+      return (filtroEstado !== 'VENCIDA' || f.estado === 'VENCIDA') &&
+        (!desde || fecha >= desde) &&
+        (!hasta || fecha <= hasta) &&
+        (!q || f.clienteNombre.toLowerCase().includes(q) || (f.numero || '').includes(q) || (f.clienteRut || '').includes(q));
+    });
+  }, [facturas, buscar, filtroEstado, desde, hasta]);
   const tot = visibles.reduce((t, f) => {
     const s = f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
     return { neto: t.neto + s * (f.neto || f.total), iva: t.iva + s * (f.iva || 0), total: t.total + s * f.total, saldo: t.saldo + (s > 0 ? f.saldo : 0) };
