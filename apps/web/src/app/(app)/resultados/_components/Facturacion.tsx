@@ -181,6 +181,11 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
             <button onClick={() => { setDesde(''); setHasta(''); }} className="text-neutral-400 hover:text-neutral-600" title="Limpiar fechas"><X size={13} /></button>
           )}
         </div>
+        {(desde || hasta) && !loading && visibles.length > 0 && (
+          <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700" title={`Neto ${fmtMoney(tot.neto, moneda)} · IVA ${fmtMoney(tot.iva, moneda)} · Saldo ${fmtMoney(tot.saldo, moneda)}`}>
+            {visibles.length} en el rango · Total {fmtMoney(tot.total, moneda)}
+          </span>
+        )}
         {canEdit && (
           <button onClick={abrirNuevo} className="ml-auto flex items-center gap-1.5 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800">
             <Plus size={15} /> Nueva factura
