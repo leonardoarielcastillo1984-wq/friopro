@@ -1345,23 +1345,20 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     }).catch(() => []);
     const sueldoMes = new Map<string, { monto: number; tipoGasto: string }>();
     const conImport = new Set<string>();
-    let maxImpYm = 0;
     for (const s of sueldosImp) {
       sueldoMes.set(`${s.employeeId}:${s.anio}-${s.mes}`, { monto: num(s.monto), tipoGasto: s.tipoGasto || 'ESTRUCTURA' });
       conImport.add(s.employeeId);
-      if (s.anio * 100 + s.mes > maxImpYm) maxImpYm = s.anio * 100 + s.mes;
     }
     for (const e of empleados) {
       const costo = num(e.costoMensual);
       const tieneImport = conImport.has(e.id);
       const concepto = `Sueldo ${`${e.firstName || ''} ${e.lastName || ''}`.trim()}`;
       for (const ms of monthStarts(desde, hasta)) {
-        const msYm = ms.getFullYear() * 100 + ms.getMonth() + 1;
         const imp = sueldoMes.get(`${e.id}:${ms.getFullYear()}-${ms.getMonth() + 1}`);
-        // Si el empleado tiene planilla importada, un mes dentro del rango
-        // importado sin fila propia = no cobró ese mes (alta/baja en el año).
-        // costoMensual solo proyecta meses posteriores al último importado.
-        const importe = imp ? imp.monto : (tieneImport && msYm <= maxImpYm ? 0 : costo);
+        // Si el empleado tiene planilla importada, solo cobra los meses que
+        // figuran en ella — sin proyección por costoMensual (mes sin datos = 0).
+        // costoMensual solo aplica a empleados sin ninguna planilla cargada.
+        const importe = imp ? imp.monto : (tieneImport ? 0 : costo);
         if (importe <= 0 || !ccOk(e.centroCostoId)) continue;
         const grupo = 'ESTRUCTURA';
         add({ fecha: ms, concepto, importe, grupo, fuente: 'PERSONAL', modulo: 'RRHH', origenId: e.id, origenUrl: '/rrhh', centroCostoId: e.centroCostoId });
