@@ -11,6 +11,7 @@ type Mes = {
   mes: number; mesKey: string; facturado: number; ingresosOperativos: number;
   ventas: number; cobrado: number; costosOperativos: number; estructura: number;
   costosTotales: number; resultado: number; margen: number | null; lineas: number;
+  ivaVentas?: number; ivaCostos?: number;
   porRubro: Record<string, number>;
 };
 type Linea = {
@@ -100,6 +101,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   // Metas configuradas (resultadosConfig.metas) y meta-info del consolidado
   const [metas, setMetas] = useState<{ ventasMensual?: number; resultadoMensual?: number; ventasAnual?: number; resultadoAnual?: number } | null>(null);
   const [consol, setConsol] = useState<{ monedaBase: string | null; faltantesTC: { moneda: string; periodo: string }[] } | null>(null);
+  const [conIva, setConIva] = useState(false);
 
   const mesKey = `${anio}-${String(mesSel).padStart(2, '0')}`;
 
@@ -250,7 +252,12 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const conMovimiento = meses.filter(m => m.lineas > 0);
   const mejor = conMovimiento.length ? conMovimiento.reduce((a, b) => (b.resultado > a.resultado ? b : a)) : null;
   const peor = conMovimiento.length ? conMovimiento.reduce((a, b) => (b.resultado < a.resultado ? b : a)) : null;
-  const chartData = meses.map(m => ({ name: MESES[m.mes - 1], mes: m.mes, Ventas: Math.round(m.ventas), Costos: Math.round(m.costosTotales), Resultado: Math.round(m.resultado) }));
+  const chartData = meses.map(m => ({
+    name: MESES[m.mes - 1], mes: m.mes,
+    Ventas: Math.round(m.ventas + (conIva ? (m.ivaVentas || 0) : 0)),
+    Costos: Math.round(m.costosTotales + (conIva ? (m.ivaCostos || 0) : 0)),
+    Resultado: Math.round(m.resultado),
+  }));
   const tip = (v: any) => fmtMoney(Number(v), moneda);
 
   return (
@@ -734,7 +741,13 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
           </div>
         </div>
         <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="grafico-ventas" data-explica-titulo={`Ventas vs costos — ${anio}`}>
-          <div className="mb-2 text-sm font-semibold text-neutral-900">Ventas vs costos{(data as any)?.actualizadoEn && <span className="ml-2 text-[10px] font-normal text-neutral-400">· act. {fmtActualizado((data as any).actualizadoEn)}</span>}</div>
+          <div className="mb-2 flex items-center justify-between gap-2 text-sm font-semibold text-neutral-900">
+            <span>Ventas vs costos{conIva && <span className="ml-1.5 text-[10px] font-normal text-amber-600">con IVA</span>}{(data as any)?.actualizadoEn && <span className="ml-2 text-[10px] font-normal text-neutral-400">· act. {fmtActualizado((data as any).actualizadoEn)}</span>}</span>
+            <div className="flex rounded-lg border border-neutral-200 p-0.5 text-[11px] font-normal" title="Ver los montos de facturas y gastos con o sin impuesto">
+              <button onClick={() => setConIva(false)} className={`rounded-md px-2 py-0.5 ${!conIva ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:text-neutral-700'}`}>sin IVA</button>
+              <button onClick={() => setConIva(true)} className={`rounded-md px-2 py-0.5 ${conIva ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:text-neutral-700'}`}>con IVA</button>
+            </div>
+          </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>

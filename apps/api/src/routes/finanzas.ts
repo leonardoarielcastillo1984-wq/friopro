@@ -1168,7 +1168,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       // Venta = base sin IVA (el IVA no es ingreso de la empresa). Sin neto cargado → total.
       const base = num(f.neto) > 0 ? num(f.neto) : num(f.total);
       const label = f.tipoComprobante === 'NOTA_CREDITO' ? 'Nota de crédito' : 'Factura';
-      add({ fecha: f.fechaEmision, concepto: `${label} ${[f.puntoVenta, f.numero].filter(Boolean).join('-') || 's/n'} — ${f.clienteNombre}`, importe: sign * base, grupo: 'FACTURADO', fuente: 'FACTURA_EMITIDA', modulo: 'Resultados', origenId: f.id, origenUrl: '/resultados?tab=facturacion', centroCostoId: f.centroCostoId, moneda: f.moneda });
+      add({ fecha: f.fechaEmision, concepto: `${label} ${[f.puntoVenta, f.numero].filter(Boolean).join('-') || 's/n'} — ${f.clienteNombre}`, importe: sign * base, iva: sign * num(f.iva), ivaRecuperable: false, grupo: 'FACTURADO', fuente: 'FACTURA_EMITIDA', modulo: 'Resultados', origenId: f.id, origenUrl: '/resultados?tab=facturacion', centroCostoId: f.centroCostoId, moneda: f.moneda });
     }
 
     // Cobros de facturas emitidas (caja)
@@ -1212,7 +1212,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       const sign = f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
       // Costo real = neto cuando el IVA se recupera; si no, el IVA es costo.
       const base = f.ivaRecuperable !== false && num(f.neto) > 0 ? num(f.neto) : num(f.total);
-      add({ fecha: f.fecha, concepto: `${f.concepto || f.categoria}${f.proveedor ? ' — ' + f.proveedor : ''}${veh ? ` (${veh.dominio})` : ''}`, importe: sign * base, grupo: 'COSTO_OP', fuente: `FACTURA_${f.categoria || 'GASTO'}`, modulo: 'Flota 360', origenId: f.id, origenUrl: f.vehiculoId ? `/flota-360/vehiculos/${f.vehiculoId}` : '/flota-360', centroCostoId: cc, iva: num(f.iva), ivaRecuperable: f.ivaRecuperable !== false, moneda: f.moneda });
+      add({ fecha: f.fecha, concepto: `${f.concepto || f.categoria}${f.proveedor ? ' — ' + f.proveedor : ''}${veh ? ` (${veh.dominio})` : ''}`, importe: sign * base, grupo: 'COSTO_OP', fuente: `FACTURA_${f.categoria || 'GASTO'}`, modulo: 'Flota 360', origenId: f.id, origenUrl: f.vehiculoId ? `/flota-360/vehiculos/${f.vehiculoId}` : '/flota-360', centroCostoId: cc, iva: sign * num(f.iva), ivaRecuperable: f.ivaRecuperable !== false, moneda: f.moneda });
       if (f.neumaticoId) facturasNeumaticoIds.add(f.neumaticoId);
     }
     // También marcar neumáticos cubiertos por facturas vinculadas a OT
@@ -1398,7 +1398,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
             const msEnd = new Date(Date.UTC(ms.getUTCFullYear(), ms.getUTCMonth() + 1, 1));
             if (msEnd <= ini || ms > fin) continue;
             const k = (ms.getUTCFullYear() - ini.getUTCFullYear()) * 12 + ms.getUTCMonth() - ini.getUTCMonth() + 1;
-            add({ ...emisor, fecha: ini > ms ? ini : ms, concepto: `${conceptoBase} (amort. ${k}/${meses})`, importe: sign * (base / meses), iva: num(g.iva) / meses });
+            add({ ...emisor, fecha: ini > ms ? ini : ms, concepto: `${conceptoBase} (amort. ${k}/${meses})`, importe: sign * (base / meses), iva: sign * (num(g.iva) / meses) });
           }
         }
       } else if (g.esRecurrente) {
@@ -1414,10 +1414,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
           const k = (ms.getUTCFullYear() - ini.getUTCFullYear()) * 12 + ms.getUTCMonth() - ini.getUTCMonth() + 1;
           const importe = dv !== 0 ? sign * Math.max(0, base + (k - 1) * dv) : sign * base;
           const tag = dv !== 0 ? ` (cuota ${k})` : ' (recurrente)';
-          add({ ...emisor, fecha: ini > ms ? ini : ms, concepto: `${conceptoBase}${tag}`, importe, iva: num(g.iva) });
+          add({ ...emisor, fecha: ini > ms ? ini : ms, concepto: `${conceptoBase}${tag}`, importe, iva: sign * num(g.iva) });
         }
       } else {
-        add({ ...emisor, fecha: new Date(g.fecha), concepto: conceptoBase, importe: sign * base, iva: num(g.iva) });
+        add({ ...emisor, fecha: new Date(g.fecha), concepto: conceptoBase, importe: sign * base, iva: sign * num(g.iva) });
       }
     }
 
@@ -1532,6 +1532,12 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       const cobrado = suma('COBRADO');
       const costosOperativos = suma('COSTO_OP') + suma('GASTO_MANUAL');
       const estructura = suma('ESTRUCTURA');
+      // IVA desagregado por mes: para el toggle "con IVA" del dashboard.
+      // Ventas = débito de facturas emitidas (signado). Costos = IVA solo
+      // cuando el costo registrado es neto (ivaRecuperable); si el IVA ya
+      // venía dentro del importe (ivaRecuperable=false) no se suma de nuevo.
+      const ivaVentas = lineas.filter(l => l.grupo === 'FACTURADO').reduce((s, l) => s + num(l.iva || 0), 0);
+      const ivaCostos = lineas.filter(l => ['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo) && l.ivaRecuperable !== false).reduce((s, l) => s + num(l.iva || 0), 0);
       const ventas = facturado + ingresosOperativos;
       const resultado = ventas - costosOperativos - estructura;
       const margen = ventas > 0 ? Math.round((resultado / ventas) * 1000) / 10 : null;
@@ -1544,7 +1550,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       meses.push({
         mes: m, mesKey: `${anio}-${String(m).padStart(2, '0')}`,
         facturado, ingresosOperativos, ventas, cobrado,
-        costosOperativos, estructura, costosTotales: costosOperativos + estructura,
+        costosOperativos, estructura, costosTotales: costosOperativos + estructura, ivaVentas, ivaCostos,
         resultado, margen, lineas: lineas.length, porRubro,
       });
     }
@@ -2361,7 +2367,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     let ventasNetasYtd = 0, resultadoEjercicio = 0;
     for (const l of lineasAnio) {
       const m = new Date(l.fecha).getUTCMonth() + 1;
-      if (num(l.iva) > 0 && l.ivaRecuperable !== false) creditoPorMes.set(m, (creditoPorMes.get(m) || 0) + num(l.iva));
+      if (num(l.iva) !== 0 && l.ivaRecuperable !== false) creditoPorMes.set(m, (creditoPorMes.get(m) || 0) + num(l.iva));
       if (['FACTURADO', 'INGRESO_OPERATIVO'].includes(l.grupo)) ventasNetasYtd += num(l.importe);
       else if (['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo)) ventasNetasYtd -= 0;
       resultadoEjercicio += ['FACTURADO', 'INGRESO_OPERATIVO'].includes(l.grupo) ? num(l.importe) : ['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo) ? -num(l.importe) : 0;
