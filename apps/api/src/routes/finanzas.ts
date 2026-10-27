@@ -1352,7 +1352,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         const imp = sueldoMes.get(`${e.id}:${ms.getFullYear()}-${ms.getMonth() + 1}`);
         const importe = imp ? imp.monto : costo;
         if (importe <= 0 || !ccOk(e.centroCostoId)) continue;
-        const grupo = imp?.tipoGasto === 'ESTRUCTURA' ? 'ESTRUCTURA' : 'COSTO_OP';
+        const grupo = 'ESTRUCTURA';
         add({ fecha: ms, concepto, importe, grupo, fuente: 'PERSONAL', modulo: 'RRHH', origenId: e.id, origenUrl: '/rrhh', centroCostoId: e.centroCostoId });
       }
     }
@@ -3243,7 +3243,9 @@ ${pregunta
     const porPeriodo = new Map<string, { personas: number; total: number }>();
     const filasOut = filas.map(f => {
       const emp = (f.rut ? porRut.get(f.rut) : undefined) || (f.nombre ? porNombre.get(normNombreEmp(f.nombre)) : undefined);
-      const tipoGasto = /administr/i.test(f.tipoManoObra) ? 'ESTRUCTURA' : 'OPERATIVO';
+      // Todos los sueldos importados se imputan a ESTRUCTURA (total de personal,
+      // sin diferenciar administración/operación).
+      const tipoGasto = 'ESTRUCTURA' as const;
       const p = f.periodo!;
       const key = `${p.anio}-${String(p.mes).padStart(2, '0')}`;
       const agg = porPeriodo.get(key) || { personas: 0, total: 0 };
