@@ -129,6 +129,7 @@ export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChan
   const [cargandoSueldos, setCargandoSueldos] = useState(false);
   const [importandoSueldos, setImportandoSueldos] = useState(false);
   const [resultadoSueldos, setResultadoSueldos] = useState<any>(null);
+  const [crearEmpleados, setCrearEmpleados] = useState(true);
   const sueldosFileRef = useRef<HTMLInputElement>(null);
 
   const cargarSueldos = async (file: File) => {
@@ -151,13 +152,17 @@ export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChan
   };
 
   const importarSueldos = async () => {
-    const filas = (previewSueldos?.filas || []).filter((f: any) => f.employeeId);
+    const todas = previewSueldos?.filas || [];
+    const filas = todas.filter((f: any) => f.employeeId || (crearEmpleados && (f.rut || f.nombreExcel)));
     if (!filas.length) return;
     setImportandoSueldos(true); setError(null);
     try {
       const r = await apiFetch<any>('/finanzas/importar-sueldos/confirm', {
         method: 'POST',
-        json: { filas: filas.map((f: any) => ({ anio: f.anio, mes: f.mes, employeeId: f.employeeId, monto: f.monto, tipoGasto: f.tipoGasto })) },
+        json: {
+          crearEmpleados,
+          filas: filas.map((f: any) => ({ anio: f.anio, mes: f.mes, employeeId: f.employeeId || undefined, rut: f.rut || undefined, nombre: f.nombreExcel || undefined, monto: f.monto, tipoGasto: f.tipoGasto })),
+        },
       });
       setResultadoSueldos(r); setPreviewSueldos(null);
       onChanged();
@@ -430,11 +435,16 @@ export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChan
             <div className="flex flex-wrap items-center gap-3 border-b border-neutral-200 px-4 py-3">
               <span className="text-sm font-semibold">{previewSueldos.totalFilas} filas detectadas</span>
               <span className="text-xs text-emerald-700">{previewSueldos.matched} vinculadas a empleados</span>
-              {previewSueldos.sinMatch > 0 && <span className="text-xs text-amber-600">{previewSueldos.sinMatch} sin empleado (se omiten)</span>}
-              <button onClick={importarSueldos} disabled={importandoSueldos || !previewSueldos.matched}
+              {previewSueldos.sinMatch > 0 && (
+                <label className="flex items-center gap-1.5 text-xs text-amber-700 cursor-pointer">
+                  <input type="checkbox" checked={crearEmpleados} onChange={e => setCrearEmpleados(e.target.checked)} className="accent-violet-700" />
+                  {previewSueldos.sinMatch} sin empleado — {crearEmpleados ? 'crearlos en RRHH' : 'se omiten'}
+                </label>
+              )}
+              <button onClick={importarSueldos} disabled={importandoSueldos || (!previewSueldos.matched && !(crearEmpleados && previewSueldos.sinMatch))}
                 className="ml-auto flex items-center gap-1.5 rounded-lg bg-violet-700 px-4 py-2 text-sm font-medium text-white hover:bg-violet-800 disabled:opacity-50">
                 {importandoSueldos ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                Importar {previewSueldos.matched} sueldos
+                Importar {previewSueldos.matched + (crearEmpleados ? previewSueldos.sinMatch : 0)} sueldos
               </button>
             </div>
             {previewSueldos.periodos?.length > 0 && (
@@ -481,6 +491,7 @@ export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChan
             <div className="flex items-center gap-2 font-semibold"><CheckCircle2 size={16} />Sueldos importados</div>
             <div className="mt-1">
               {resultadoSueldos.upserted} registros de {resultadoSueldos.empleados} empleados
+              {resultadoSueldos.empleadosCreados ? ` · ${resultadoSueldos.empleadosCreados} empleados creados en RRHH` : ''}
               {resultadoSueldos.periodos?.length ? ` · períodos ${resultadoSueldos.periodos.join(', ')}` : ''}
             </div>
             <div className="mt-1 text-[11px] text-green-700">Si volvés a subir la misma planilla, los sueldos se actualizan (no se duplican).</div>

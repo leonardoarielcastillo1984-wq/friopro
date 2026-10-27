@@ -3266,39 +3266,106 @@ ${pregunta
 
   const sueldoFilaSchema = z.object({
     anio: z.number().int().min(2000).max(2100), mes: z.number().int().min(1).max(12),
-    employeeId: z.string().uuid(), monto: z.number().positive(),
+    employeeId: z.string().uuid().optional(),
+    rut: z.string().optional(), nombre: z.string().optional(),
+    monto: z.number().positive(),
     tipoGasto: z.enum(['OPERATIVO', 'ESTRUCTURA']).default('OPERATIVO'),
   });
+
+  // Nombre de planilla de liquidaciones: "APELLIDO1 APELLIDO2 NOMBRE(S)".
+  const splitNombrePlanilla = (nombre: string) => {
+    const toks = String(nombre || '').trim().split(/\s+/).filter(Boolean);
+    if (toks.length >= 3) return { lastName: toks.slice(0, 2).join(' '), firstName: toks.slice(2).join(' ') };
+    if (toks.length === 2) return { lastName: toks[0], firstName: toks[1] };
+    const uno = toks[0] || 'SIN NOMBRE';
+    return { lastName: uno, firstName: uno };
+  };
 
   app.post('/importar-sueldos/confirm', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
-    const body = z.object({ filas: z.array(sueldoFilaSchema).min(1).max(5000) }).safeParse(req.body);
+    const body = z.object({
+      filas: z.array(sueldoFilaSchema).min(1).max(5000),
+      crearEmpleados: z.boolean().optional().default(false),
+    }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
-    // Solo filas matcheadas a un empleado del tenant
+    // Solo filas matcheadas a un empleado del tenant (o creables si se pidió)
     const empIds = new Set((await prisma().employee.findMany({ where: { tenantId }, select: { id: true } })).map((e: any) => e.id));
-    const filas = body.data.filas.filter(f => empIds.has(f.employeeId));
+    const filas = body.data.filas.filter(f =>
+      f.employeeId ? empIds.has(f.employeeId) : (body.data.crearEmpleados && (f.rut || f.nombre)));
     if (!filas.length) return reply.code(400).send({ error: 'Ninguna fila corresponde a un empleado del tenant.' });
+
+    // Crear empleados faltantes (planilla de otro país/legajo no cargado en RRHH)
+    let empleadosCreados = 0;
+    if (body.data.crearEmpleados) {
+      const faltantes = filas.filter(f => !f.employeeId);
+      if (faltantes.length) {
+        const existentes = await prisma().employee.findMany({
+          where: { tenantId }, select: { id: true, dni: true, firstName: true, lastName: true },
+        });
+        const porRut = new Map<string, string>(existentes.map((e: any) => [normRutEmp(e.dni), e.id] as const).filter(([r]: [string, string]) => r));
+        const porNombre = new Map<string, string>(existentes.map((e: any) => [normNombreEmp(`${e.firstName} ${e.lastName}`), e.id] as const));
+        // Personas únicas: por RUT si hay, si no por nombre normalizado
+        const personas = new Map<string, { rut: string; nombre: string; ym: number; anio: number; mes: number }>();
+        for (const f of faltantes) {
+          const key = f.rut ? `r:${normRutEmp(f.rut)}` : `n:${normNombreEmp(f.nombre)}`;
+          const ym = f.anio * 100 + f.mes;
+          const cur = personas.get(key);
+          if (!cur) personas.set(key, { rut: f.rut || '', nombre: f.nombre || '', ym, anio: f.anio, mes: f.mes });
+          else if (ym < cur.ym) { cur.ym = ym; cur.anio = f.anio; cur.mes = f.mes; }
+        }
+        for (const [key, p] of personas) {
+          let id = (p.rut ? porRut.get(normRutEmp(p.rut)) : undefined) || porNombre.get(normNombreEmp(p.nombre));
+          if (!id) {
+            const { firstName, lastName } = splitNombrePlanilla(p.nombre);
+            const slug = normRutEmp(p.rut) || normNombreEmp(p.nombre).replace(/\s+/g, '-').slice(0, 40) || key.slice(0, 40);
+            const created = await prisma().employee.create({
+              data: {
+                tenantId, firstName, lastName,
+                dni: p.rut || `IMP-${slug}`,
+                email: `emp-${slug.toLowerCase()}@import.local`,
+                hireDate: new Date(Date.UTC(p.anio, p.mes - 1, 1)),
+                contractType: 'PERMANENT',
+              },
+              select: { id: true },
+            }).catch(() => null);
+            if (created) {
+              id = created.id; empleadosCreados++;
+              if (p.rut) porRut.set(normRutEmp(p.rut), created.id);
+              if (p.nombre) porNombre.set(normNombreEmp(p.nombre), created.id);
+            }
+          }
+          if (id) {
+            for (const f of faltantes) {
+              const k = f.rut ? `r:${normRutEmp(f.rut)}` : `n:${normNombreEmp(f.nombre)}`;
+              if (k === key) f.employeeId = id;
+            }
+          }
+        }
+      }
+    }
+    const filasOk = filas.filter(f => f.employeeId);
 
     let upserted = 0;
     const ultimoPorEmp = new Map<string, { anio: number; mes: number; monto: number }>();
-    for (const f of filas) {
+    for (const f of filasOk) {
+      const employeeId = f.employeeId!;
       await prisma().employeeSalary.upsert({
-        where: { tenantId_employeeId_anio_mes: { tenantId, employeeId: f.employeeId, anio: f.anio, mes: f.mes } },
-        create: { tenantId, employeeId: f.employeeId, anio: f.anio, mes: f.mes, monto: f.monto, tipoGasto: f.tipoGasto, origen: 'IMPORT_SUELDOS' },
+        where: { tenantId_employeeId_anio_mes: { tenantId, employeeId, anio: f.anio, mes: f.mes } },
+        create: { tenantId, employeeId, anio: f.anio, mes: f.mes, monto: f.monto, tipoGasto: f.tipoGasto, origen: 'IMPORT_SUELDOS' },
         update: { monto: f.monto, tipoGasto: f.tipoGasto, origen: 'IMPORT_SUELDOS' },
       });
       upserted++;
-      const cur = ultimoPorEmp.get(f.employeeId);
-      if (!cur || f.anio * 100 + f.mes > cur.anio * 100 + cur.mes) ultimoPorEmp.set(f.employeeId, { anio: f.anio, mes: f.mes, monto: f.monto });
+      const cur = ultimoPorEmp.get(employeeId);
+      if (!cur || f.anio * 100 + f.mes > cur.anio * 100 + cur.mes) ultimoPorEmp.set(employeeId, { anio: f.anio, mes: f.mes, monto: f.monto });
     }
     // costoMensual queda como fallback de meses sin importar → lo sincronizamos
     // al último sueldo importado de cada empleado.
     for (const [employeeId, u] of ultimoPorEmp) {
       await prisma().employee.update({ where: { id: employeeId }, data: { costoMensual: u.monto } }).catch(() => {});
     }
-    const periodos = [...new Set(filas.map(f => `${f.anio}-${String(f.mes).padStart(2, '0')}`))].sort();
-    return reply.send({ ok: true, upserted, empleados: ultimoPorEmp.size, periodos });
+    const periodos = [...new Set(filasOk.map(f => `${f.anio}-${String(f.mes).padStart(2, '0')}`))].sort();
+    return reply.send({ ok: true, upserted, empleados: ultimoPorEmp.size, empleadosCreados, periodos });
   });
 
   // ═══════════════════════════════════════════════════════════════
