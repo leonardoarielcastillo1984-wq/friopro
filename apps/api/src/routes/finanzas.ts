@@ -1344,13 +1344,24 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       select: { employeeId: true, anio: true, mes: true, monto: true, tipoGasto: true },
     }).catch(() => []);
     const sueldoMes = new Map<string, { monto: number; tipoGasto: string }>();
-    for (const s of sueldosImp) sueldoMes.set(`${s.employeeId}:${s.anio}-${s.mes}`, { monto: num(s.monto), tipoGasto: s.tipoGasto || 'OPERATIVO' });
+    const conImport = new Set<string>();
+    let maxImpYm = 0;
+    for (const s of sueldosImp) {
+      sueldoMes.set(`${s.employeeId}:${s.anio}-${s.mes}`, { monto: num(s.monto), tipoGasto: s.tipoGasto || 'ESTRUCTURA' });
+      conImport.add(s.employeeId);
+      if (s.anio * 100 + s.mes > maxImpYm) maxImpYm = s.anio * 100 + s.mes;
+    }
     for (const e of empleados) {
       const costo = num(e.costoMensual);
+      const tieneImport = conImport.has(e.id);
       const concepto = `Sueldo ${`${e.firstName || ''} ${e.lastName || ''}`.trim()}`;
       for (const ms of monthStarts(desde, hasta)) {
+        const msYm = ms.getFullYear() * 100 + ms.getMonth() + 1;
         const imp = sueldoMes.get(`${e.id}:${ms.getFullYear()}-${ms.getMonth() + 1}`);
-        const importe = imp ? imp.monto : costo;
+        // Si el empleado tiene planilla importada, un mes dentro del rango
+        // importado sin fila propia = no cobró ese mes (alta/baja en el año).
+        // costoMensual solo proyecta meses posteriores al último importado.
+        const importe = imp ? imp.monto : (tieneImport && msYm <= maxImpYm ? 0 : costo);
         if (importe <= 0 || !ccOk(e.centroCostoId)) continue;
         const grupo = 'ESTRUCTURA';
         add({ fecha: ms, concepto, importe, grupo, fuente: 'PERSONAL', modulo: 'RRHH', origenId: e.id, origenUrl: '/rrhh', centroCostoId: e.centroCostoId });
@@ -3361,10 +3372,13 @@ ${pregunta
       const cur = ultimoPorEmp.get(employeeId);
       if (!cur || f.anio * 100 + f.mes > cur.anio * 100 + cur.mes) ultimoPorEmp.set(employeeId, { anio: f.anio, mes: f.mes, monto: f.monto });
     }
-    // costoMensual queda como fallback de meses sin importar → lo sincronizamos
-    // al último sueldo importado de cada empleado.
+    // costoMensual proyecta meses sin importar → lo sincronizamos al último
+    // sueldo de cada empleado. Quien no figura en el último mes de la planilla
+    // queda con costoMensual = 0 (baja: no cobró en el mes más reciente).
+    const maxYm = Math.max(...filasOk.map(f => f.anio * 100 + f.mes));
     for (const [employeeId, u] of ultimoPorEmp) {
-      await prisma().employee.update({ where: { id: employeeId }, data: { costoMensual: u.monto } }).catch(() => {});
+      const activo = u.anio * 100 + u.mes >= maxYm;
+      await prisma().employee.update({ where: { id: employeeId }, data: { costoMensual: activo ? u.monto : 0 } }).catch(() => {});
     }
     const periodos = [...new Set(filasOk.map(f => `${f.anio}-${String(f.mes).padStart(2, '0')}`))].sort();
     return reply.send({ ok: true, upserted, empleados: ultimoPorEmp.size, empleadosCreados, periodos });
