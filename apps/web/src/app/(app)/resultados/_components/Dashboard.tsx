@@ -757,9 +757,13 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
                 <Tooltip formatter={tip} cursor={{ fill: '#f5f5f5' }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="Ventas" fill="#3b82f6" radius={[3, 3, 0, 0]} className="cursor-pointer"
-                  onClick={(d: any) => d?.payload?.mes && A.asistente && A.pedirExplicacion('grafico-mes', `Ventas de ${d.payload.name} ${anio}`, undefined, { mes: d.payload.mes, ventas: d.payload.Ventas }, d.payload.mes)} />
+                  onClick={(d: any) => d?.payload?.mes && (A.asistente
+                    ? A.pedirExplicacion('grafico-mes', `Ventas de ${d.payload.name} ${anio}`, undefined, { mes: d.payload.mes, ventas: d.payload.Ventas }, d.payload.mes)
+                    : abrirDetalle(d.payload.mes))} />
                 <Bar dataKey="Costos" fill="#f59e0b" radius={[3, 3, 0, 0]} className="cursor-pointer"
-                  onClick={(d: any) => d?.payload?.mes && A.asistente && A.pedirExplicacion('grafico-mes', `Costos de ${d.payload.name} ${anio}`, undefined, { mes: d.payload.mes, costos: d.payload.Costos }, d.payload.mes)} />
+                  onClick={(d: any) => d?.payload?.mes && (A.asistente
+                    ? A.pedirExplicacion('grafico-mes', `Costos de ${d.payload.name} ${anio}`, undefined, { mes: d.payload.mes, costos: d.payload.Costos }, d.payload.mes)
+                    : abrirDetalle(d.payload.mes))} />
               </BarChart>
             </ResponsiveContainer>
           </div>
