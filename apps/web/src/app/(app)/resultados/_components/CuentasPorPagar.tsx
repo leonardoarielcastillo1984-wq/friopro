@@ -28,6 +28,8 @@ export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }:
   const [data, setData] = useState<{ items: Item[]; totales: any; ranking: any[]; actualizadoEn?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [soloPendientes, setSoloPendientes] = useState(true);
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
   const [pagando, setPagando] = useState<Item | null>(null);
   const [pagoForm, setPagoForm] = useState({ importe: '', fecha: new Date().toISOString().slice(0, 10), referencia: '', medioPago: 'TRANSFERENCIA' });
   const [saving, setSaving] = useState(false);
@@ -70,14 +72,37 @@ export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }:
   if (!data) return <div className="py-16 text-center text-neutral-400">No se pudo cargar.</div>;
 
   const { items, totales, ranking } = data;
-  const lista = soloPendientes ? items.filter(i => i.saldo > 0.5) : items;
+  // Rango sobre fecha de emisión (mismo criterio que Ventas/facturas).
+  const inRange = (f: string | null | undefined) => {
+    const d = (f || '').slice(0, 10);
+    return (!desde || d >= desde) && (!hasta || d <= hasta);
+  };
+  const filtroActivo = !!(desde || hasta);
+  const base = soloPendientes ? items.filter(i => i.saldo > 0.5) : items;
+  const lista = !filtroActivo ? base : base.filter(i => inRange(i.fechaEmision));
+  const saldoFiltrado = lista.reduce((s, i) => s + (i.saldo || 0), 0);
 
   return (
     <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
       {A.Estilos}
       <div className="-mb-1 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2"><A.Boton /><A.PreguntaBar /></div>
-        {data.actualizadoEn && <span className="text-[10px] text-neutral-400">Datos actualizados {fmtActualizado(data.actualizadoEn)}</span>}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2 py-1" title="Filtrar por fecha de emisión">
+            <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="rounded px-1 py-0.5 text-xs text-neutral-600 focus:outline-none" title="Emitida desde" />
+            <span className="text-[11px] text-neutral-400">→</span>
+            <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="rounded px-1 py-0.5 text-xs text-neutral-600 focus:outline-none" title="Emitida hasta" />
+            {filtroActivo && (
+              <button onClick={() => { setDesde(''); setHasta(''); }} className="text-neutral-400 hover:text-neutral-600" title="Limpiar fechas"><X size={13} /></button>
+            )}
+          </div>
+          {filtroActivo && lista.length > 0 && (
+            <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700" title="Saldo pendiente de las obligaciones emitidas en el rango">
+              {lista.length} en el rango · Saldo {fmtMoney(saldoFiltrado, moneda)}
+            </span>
+          )}
+          {data.actualizadoEn && <span className="text-[10px] text-neutral-400">Datos actualizados {fmtActualizado(data.actualizadoEn)}</span>}
+        </div>
       </div>
       {A.Panel}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

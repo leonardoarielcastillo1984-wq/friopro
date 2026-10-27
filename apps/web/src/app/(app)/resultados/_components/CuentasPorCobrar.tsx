@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Loader2, Wallet, AlertTriangle, Clock, CalendarClock, Paperclip, Landmark } from 'lucide-react';
+import { Loader2, Wallet, AlertTriangle, Clock, CalendarClock, Paperclip, Landmark, X } from 'lucide-react';
 import { fmtMoney, fmtFecha, fmtActualizado } from './fmt';
 import { useAsistente } from './useAsistente';
 import ConciliarCartola from './ConciliarCartola';
@@ -29,6 +29,8 @@ export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: 
   const [error, setError] = useState<string | null>(null);
   const [cartolaOpen, setCartolaOpen] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
 
   useEffect(() => {
     setLoading(true); setError(null);
@@ -40,12 +42,37 @@ export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: 
   if (error || !data) return <div className="py-16 text-center text-neutral-400">{error}</div>;
   const { clientes, totales } = data;
 
+  // Rango sobre fecha de emisión: filtra pendientes y cobradas de cada cliente.
+  const inRange = (f: string | null | undefined) => {
+    const d = (f || '').slice(0, 10);
+    return (!desde || d >= desde) && (!hasta || d <= hasta);
+  };
+  const filtroActivo = !!(desde || hasta);
+  const clientesVisibles = !filtroActivo ? clientes : clientes
+    .map(c => ({ ...c, pendientes: c.pendientes.filter((p: any) => inRange(p.fechaEmision)), cobradas: (c.cobradas || []).filter((p: any) => inRange(p.fechaEmision)) }))
+    .filter(c => c.pendientes.length > 0 || (c.cobradas?.length ?? 0) > 0);
+  const nFiltradas = clientesVisibles.reduce((n, c) => n + c.pendientes.length + (c.cobradas?.length ?? 0), 0);
+  const saldoFiltrado = clientesVisibles.reduce((s, c) => s + c.pendientes.reduce((x: number, p: any) => x + (p.saldo || 0), 0), 0);
+
   return (
     <div className={`space-y-4 ${A.wrap.className}`} onClickCapture={A.onAsistenteClick}>
       {A.Estilos}
       <div className="-mb-1 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2"><A.Boton /><A.PreguntaBar /></div>
         <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2 py-1" title="Filtrar por fecha de emisión">
+          <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="rounded px-1 py-0.5 text-xs text-neutral-600 focus:outline-none" title="Emitida desde" />
+          <span className="text-[11px] text-neutral-400">→</span>
+          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="rounded px-1 py-0.5 text-xs text-neutral-600 focus:outline-none" title="Emitida hasta" />
+          {filtroActivo && (
+            <button onClick={() => { setDesde(''); setHasta(''); }} className="text-neutral-400 hover:text-neutral-600" title="Limpiar fechas"><X size={13} /></button>
+          )}
+        </div>
+        {filtroActivo && nFiltradas > 0 && (
+          <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700" title="Saldo pendiente de las facturas emitidas en el rango">
+            {nFiltradas} en el rango · Saldo {fmtMoney(saldoFiltrado, moneda)}
+          </span>
+        )}
         <button onClick={() => setCartolaOpen(true)}
           className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50">
           <Landmark size={13} className="text-blue-600" /> Conciliar cartola
@@ -70,13 +97,13 @@ export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: 
         </div>
       </div>
 
-      {clientes.length === 0 && (
+      {clientesVisibles.length === 0 && (
         <div className="rounded-xl border border-dashed border-neutral-300 bg-white py-12 text-center text-sm text-neutral-400">
           Sin facturas en {moneda}. <button onClick={onIrFacturacion} className="text-blue-600 hover:underline">Cargá o importá facturas</button> y registrá los cobros para ver cuánto debe cada cliente.
         </div>
       )}
 
-      {clientes.map(c => {
+      {clientesVisibles.map(c => {
         const totalAging = BUCKETS.reduce((s, b) => s + c.aging[b.key], 0);
         return (
           <div key={c.cliente + c.rut} data-explica="cxc-cliente" data-explica-titulo={c.cliente} data-explica-datos={JSON.stringify({ cliente: c.cliente, rut: c.rut, facturado: c.facturado, cobrado: c.cobrado, saldo: c.saldo, tardaEnPagarDias: c.diasPagoPromedio, pagaCadaDias: c.frecuenciaPagoDias, aging: c.aging, pendientes: c.pendientes.length })}

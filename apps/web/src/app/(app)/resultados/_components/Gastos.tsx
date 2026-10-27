@@ -46,6 +46,8 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
   const [filtroTipo, setFiltroTipo] = useState('');
   const [filtroCat, setFiltroCat] = useState('');
   const [filtroMes, setFiltroMes] = useState('');
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
   const [buscar, setBuscar] = useState('');
   const [form, setForm] = useState<Form>(nuevoForm(moneda));
   const [showProv, setShowProv] = useState(false);
@@ -88,8 +90,12 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
 
   const visibles = useMemo(() => {
     const q = buscar.trim().toLowerCase();
-    return gastos.filter(g => !q || g.concepto.toLowerCase().includes(q) || (g.proveedor || '').toLowerCase().includes(q) || (g.proveedorRut || '').includes(q));
-  }, [gastos, buscar]);
+    return gastos.filter(g => {
+      const f = (g.fecha || '').slice(0, 10);
+      return (!desde || f >= desde) && (!hasta || f <= hasta) &&
+        (!q || g.concepto.toLowerCase().includes(q) || (g.proveedor || '').toLowerCase().includes(q) || (g.proveedorRut || '').includes(q));
+    });
+  }, [gastos, buscar, desde, hasta]);
   const totalCosto = visibles.reduce((s, g) => s + costo(g), 0);
 
   const set = (k: keyof Form, v: any) => setForm(f => ({ ...f, [k]: v }));
@@ -198,6 +204,19 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
           <option value="">Todos los tipos</option>
           <option value="OPERATIVO">Operativo</option><option value="ESTRUCTURA">Estructura</option><option value="OTRO">Otro</option>
         </select>
+        <div className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-2 py-1.5" title="Filtrar por fecha del gasto">
+          <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="rounded px-1 py-0.5 text-xs text-neutral-600 focus:outline-none" title="Desde" />
+          <span className="text-[11px] text-neutral-400">→</span>
+          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="rounded px-1 py-0.5 text-xs text-neutral-600 focus:outline-none" title="Hasta" />
+          {(desde || hasta) && (
+            <button onClick={() => { setDesde(''); setHasta(''); }} className="text-neutral-400 hover:text-neutral-600" title="Limpiar fechas"><X size={13} /></button>
+          )}
+        </div>
+        {(desde || hasta) && !loading && visibles.length > 0 && (
+          <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700" title="Costo neto del rango (lo que entra al resultado)">
+            {visibles.length} en el rango · Total {fmtMoney(totalCosto, moneda)}
+          </span>
+        )}
         <div className="ml-auto flex gap-2">
           {canEdit && <button onClick={() => setShowPres(s => !s)} className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"><Tags size={14} /> Presupuesto</button>}
           {canEdit && <button onClick={() => setShowProv(s => !s)} className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"><Tags size={14} /> Clasificar proveedores</button>}
