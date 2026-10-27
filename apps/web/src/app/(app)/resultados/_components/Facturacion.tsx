@@ -38,6 +38,8 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
   const [error, setError] = useState<string | null>(null);
   const [expandId, setExpandId] = useState<string | null>(null);
   const [filtroEstado, setFiltroEstado] = useState('');
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
   const [buscar, setBuscar] = useState('');
   const [cobroForm, setCobroForm] = useState<{ facturaId: string; cobroId?: string; importe: string; fecha: string; medioPago: string; referencia: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -171,6 +173,14 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
           <option value="">Todos los estados</option>
           {Object.entries(ESTADO_FACTURA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
+        <div className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-2 py-1.5" title="Filtrar por fecha de emisión">
+          <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="rounded px-1 py-0.5 text-xs text-neutral-600 focus:outline-none" title="Emitida desde" />
+          <span className="text-[11px] text-neutral-400">→</span>
+          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="rounded px-1 py-0.5 text-xs text-neutral-600 focus:outline-none" title="Emitida hasta" />
+          {(desde || hasta) && (
+            <button onClick={() => { setDesde(''); setHasta(''); }} className="text-neutral-400 hover:text-neutral-600" title="Limpiar fechas"><X size={13} /></button>
+          )}
+        </div>
         {canEdit && (
           <button onClick={abrirNuevo} className="ml-auto flex items-center gap-1.5 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800">
             <Plus size={15} /> Nueva factura
