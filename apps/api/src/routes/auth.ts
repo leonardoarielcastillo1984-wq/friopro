@@ -190,6 +190,23 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       app.log.error(`[REGISTER] Error enviando notificación admin: ${emailErr}`);
     }
 
+    // Notificación in-app para super admin — sobrevive aunque falle SMTP.
+    // Garantiza que el registro quede visible en /admin sin depender del correo.
+    try {
+      await (app.prisma as any).adminNotification.create({
+        data: {
+          type: 'NEW_REGISTRATION',
+          title: 'Nuevo registro en SGI 360',
+          message: `${tenant.name} (${emailLower}) se registró por self-service.`,
+          data: { tenantId: tenant.id, email: emailLower, companyName: tenant.name, source: 'self-register' },
+          actionLabel: 'Ver clientes',
+          actionLink: '/admin/registros',
+        },
+      });
+    } catch (notifErr) {
+      app.log.error(`[REGISTER] Error creando notificación in-app: ${notifErr}`);
+    }
+
     // Auto-login: generate tokens
     const accessToken = app.signAccessToken({
       userId: user.id,

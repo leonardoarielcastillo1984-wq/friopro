@@ -193,6 +193,22 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
       });
       app.log.info(`[REGISTER-COMPANY] Registro auto-aprobado: ${registration.id}`);
 
+      // Notificación in-app para super admin — visible en /admin aunque falle SMTP
+      try {
+        await (app.prisma as any).adminNotification.create({
+          data: {
+            type: 'NEW_REGISTRATION',
+            title: 'Nuevo cliente registrado',
+            message: `${validatedData.companyName} (${emailLower}) se registró desde el formulario.`,
+            data: { tenantId: tenant.id, email: emailLower, companyName: validatedData.companyName, rut: validatedData.rut, source: 'register-company' },
+            actionLabel: 'Ver clientes registrados',
+            actionLink: '/admin/registros',
+          },
+        });
+      } catch (notifErr) {
+        app.log.error(`[REGISTER-COMPANY] Error creando notificación in-app: ${notifErr}`);
+      }
+
       // Enviar email de bienvenida con credenciales al cliente
       const isFlota = validatedData.module === 'flota360';
       const loginUrl = isFlota ? `${appUrl}/flota360/login` : `${appUrl}/login`;
