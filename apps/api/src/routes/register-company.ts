@@ -33,6 +33,10 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
       // Validar datos
       const validatedData = registerCompanySchema.parse(body);
       
+      // Normalizar email a minúsculas: el login hace match exacto y un email
+      // con mayúsculas almacenado impedía ingresar (caso Angel.montero@...)
+      const emailLower = validatedData.email.toLowerCase().trim();
+      
       app.log.info(`[REGISTER-COMPANY] Datos validados: ${validatedData.companyName}`);
       
       // Verificar si ya existe una solicitud con el mismo RUT
@@ -50,7 +54,7 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
       
       // Verificar si ya existe una solicitud con el mismo email
       const existingByEmail = await prismaSuperUser.companyRegistration.findFirst({
-        where: { email: validatedData.email },
+        where: { email: { equals: emailLower, mode: 'insensitive' } },
       });
       
       if (existingByEmail) {
@@ -69,7 +73,7 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
           companyName: validatedData.companyName,
           socialReason: validatedData.socialReason || null,
           rut: validatedData.rut,
-          email: validatedData.email,
+          email: emailLower,
           phone: validatedData.phone,
           website: validatedData.website || null,
           address: validatedData.address,
@@ -114,10 +118,10 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
       const tempPassword = 'TempPassword123!';
       const hashedPassword = await argon2.hash(tempPassword);
 
-      let user = await app.prisma.platformUser.findUnique({ where: { email: validatedData.email } });
+      let user = await app.prisma.platformUser.findUnique({ where: { email: emailLower } });
       if (!user) {
         user = await app.prisma.platformUser.create({
-          data: { email: validatedData.email, passwordHash: hashedPassword, isActive: true },
+          data: { email: emailLower, passwordHash: hashedPassword, isActive: true },
         });
         await (app.prisma as any).passwordHistory.create({
           data: {
@@ -194,7 +198,7 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
       const loginUrl = isFlota ? `${appUrl}/flota360/login` : `${appUrl}/login`;
       try {
         const welcomeResult = await sendEmail(welcomeTenantEmail({
-          to: validatedData.email,
+          to: emailLower,
           companyName: validatedData.companyName,
           password: tempPassword,
           loginUrl,

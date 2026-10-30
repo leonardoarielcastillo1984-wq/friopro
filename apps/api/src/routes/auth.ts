@@ -255,7 +255,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const schema = z.object({ email: z.string().email() });
     const { email } = schema.parse(req.body);
 
-    const user = await app.prisma.platformUser.findUnique({ where: { email } });
+    // Normalizar: usuarios registrados vía register-company pueden haber
+    // quedado con mayúsculas en el email almacenado
+    const user = await app.prisma.platformUser.findUnique({ where: { email: email.toLowerCase().trim() } });
 
     // Always return success to prevent email enumeration
     if (!user) return reply.send({ ok: true });
@@ -332,8 +334,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     const body = bodySchema.parse(req.body);
 
+    // Normalizar email a minúsculas: el lookup es exacto y usuarios con
+    // mayúsculas almacenadas no podían ingresar si escribían en minúsculas
     const user = await app.prisma.platformUser.findUnique({
-      where: { email: body.email },
+      where: { email: body.email.toLowerCase().trim() },
     });
 
     if (!user || !user.isActive || user.deletedAt) {
