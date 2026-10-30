@@ -3,7 +3,7 @@ import { z } from 'zod';
 import argon2 from 'argon2';
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import { get2FAStatus, create2FASession } from '../services/twoFactorAuth.js';
-import { sendEmail, passwordResetEmail } from '../services/email.js';
+import { sendEmail, passwordResetEmail, notificationEmail } from '../services/email.js';
 
 // Stricter rate limits for sensitive auth endpoints
 const authRateLimit = {
@@ -121,9 +121,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       },
     });
 
-    // Auto-assign BASIC plan trial
+    // Auto-assign plan trial — BASIC si existe, si no el primer plan activo
+    // (en prod solo hay PREMIUM activo; sin fallback el tenant quedaba "Sin plan")
     const basicPlan = await app.prisma.plan.findFirst({
       where: { tier: 'BASIC', isActive: true },
+    }) ?? await app.prisma.plan.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: 'asc' },
     });
 
     if (basicPlan) {
@@ -136,6 +140,54 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           endsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
         },
       });
+    }
+
+    // Email de bienvenida al usuario + notificación a admins
+    // (antes no se enviaba nada: el usuario no recibía confirmación
+    // y el admin no se enteraba de nuevos registros)
+    const appUrl = process.env.CORS_ORIGIN || 'https://logismart.ar';
+    try {
+      const welcomeResult = await sendEmail(notificationEmail({
+        userEmail: emailLower,
+        title: `Bienvenido a SGI 360 — ${tenant.name}`,
+        message: `Tu organización <strong>${tenant.name}</strong> ya está lista. ` +
+          `Tenés un período de prueba de 30 días con acceso completo.<br><br>` +
+          `Ingresá con tu email y la contraseña que elegiste al registrarte.`,
+        actionLabel: 'Ingresar a SGI 360',
+        actionUrl: `${appUrl}/login`,
+        type: 'success',
+      }));
+      if (!welcomeResult.success) {
+        app.log.error(`[REGISTER] Error enviando bienvenida a ${emailLower}: ${welcomeResult.error}`);
+      }
+    } catch (emailErr) {
+      app.log.error(`[REGISTER] Error enviando bienvenida a ${emailLower}: ${emailErr}`);
+    }
+
+    try {
+      const fixedRecipients = ['soporte@logismart.ar', 'leonardoarielcastillo@hotmail.com'];
+      const envRecipients = (process.env.ADMIN_NOTIFICATION_EMAILS || process.env.ADMIN_NOTIFICATION_EMAIL || '')
+        .split(',').map((e: string) => e.trim()).filter(Boolean);
+      const adminEmails = Array.from(new Set([...fixedRecipients, ...envRecipients]));
+      for (const adminEmail of adminEmails) {
+        const notifResult = await sendEmail(notificationEmail({
+          userEmail: adminEmail,
+          title: 'Nuevo registro en SGI 360',
+          message: `Se registró una nueva organización por self-service:\n\n` +
+            `<strong>Empresa:</strong> ${tenant.name}\n` +
+            `<strong>Email:</strong> ${emailLower}\n` +
+            `<strong>Fecha:</strong> ${new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}\n\n` +
+            `El usuario ya puede ingresar al sistema con su contraseña.`,
+          actionLabel: 'Ver clientes registrados',
+          actionUrl: `${appUrl}/admin/registros`,
+          type: 'info',
+        }));
+        if (!notifResult.success) {
+          app.log.error(`[REGISTER] Error enviando notificación a ${adminEmail}: ${notifResult.error}`);
+        }
+      }
+    } catch (emailErr) {
+      app.log.error(`[REGISTER] Error enviando notificación admin: ${emailErr}`);
     }
 
     // Auto-login: generate tokens
