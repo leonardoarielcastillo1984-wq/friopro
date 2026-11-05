@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, X, Loader2, Paperclip, Trash2, Repeat, Pencil, Search, Tags } from 'lucide-react';
+import { Plus, X, Loader2, Paperclip, Trash2, Repeat, Pencil, Search, Tags, Download } from 'lucide-react';
 import { fmtMoney, fmtFecha, CATEGORIA_GASTO, TIPO_COMPROBANTE, IVA_DEFAULT, MONEDAS, toDateInput } from './fmt';
 import { useAsistente } from './useAsistente';
 
@@ -60,6 +60,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [buscar, setBuscar] = useState('');
+  const [sel, setSel] = useState<Set<string>>(new Set());
   const [form, setForm] = useState<Form>(nuevoForm(moneda));
   const [showProv, setShowProv] = useState(false);
   const [proveedores, setProveedores] = useState<any[]>([]);
@@ -108,6 +109,35 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
     });
   }, [gastos, buscar, desde, hasta]);
   const totalCosto = visibles.reduce((s, g) => s + costo(g), 0);
+
+  // Selección para exportar a Excel (solicitud de aprobación de pago).
+  const toggleSel = (id: string) => setSel(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const todosSel = visibles.length > 0 && visibles.every(g => sel.has(g.id));
+  const toggleTodos = () => setSel(todosSel ? new Set() : new Set(visibles.map(g => g.id)));
+  const selGastos = visibles.filter(g => sel.has(g.id));
+  const totalSel = selGastos.reduce((s, g) => s + g.total, 0);
+  const exportarSel = async () => {
+    if (!selGastos.length) return;
+    const XLSX = await import('xlsx');
+    const filas = selGastos.map(g => ({
+      Fecha: fmtFecha(g.fecha), Proveedor: g.proveedor || '', 'RUT proveedor': g.proveedorRut || '',
+      Concepto: g.concepto, 'Categoría': CATEGORIA_GASTO[g.categoria] || g.categoria,
+      'Tipo doc': TIPO_COMPROBANTE[g.tipoComprobante || ''] || g.tipoComprobante || '',
+      'N° doc': g.numeroComprobante || '', Moneda: g.moneda,
+      Total: Math.round(g.total), Pagado: Math.round(g.pagado ?? 0), Saldo: Math.round(g.saldo ?? g.total),
+      Vencimiento: g.fechaVencimiento ? fmtFecha(g.fechaVencimiento) : '',
+      Estado: ESTADO_GASTO[g.estado || '']?.label || '', 'Días vencido': g.diasVencidos || 0,
+    }));
+    const ws = XLSX.utils.json_to_sheet(filas);
+    ws['!cols'] = [{ wch: 10 }, { wch: 26 }, { wch: 14 }, { wch: 36 }, { wch: 16 }, { wch: 13 }, { wch: 10 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 9 }, { wch: 10 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Gastos a aprobar');
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `gastos-aprobacion-${hoy()}.xlsx`; a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const set = (k: keyof Form, v: any) => setForm(f => ({ ...f, [k]: v }));
   const setNeto = (v: string) => setForm(f => {
@@ -229,7 +259,13 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
             {visibles.length} en el rango · Total {fmtMoney(totalCosto, moneda)}
           </span>
         )}
+        {sel.size > 0 && (
+          <span className="flex items-center rounded-full bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700" title="Gastos seleccionados para exportar">
+            {sel.size} seleccionados · {fmtMoney(totalSel, moneda)}
+          </span>
+        )}
         <div className="ml-auto flex gap-2">
+          <button onClick={exportarSel} disabled={!sel.size} title="Exportar los gastos seleccionados a Excel para solicitar aprobación de pago" className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"><Download size={14} /> Exportar{sel.size ? ` (${sel.size})` : ''}</button>
           {canEdit && <button onClick={() => setShowPres(s => !s)} className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"><Tags size={14} /> Presupuesto</button>}
           {canEdit && <button onClick={() => setShowProv(s => !s)} className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"><Tags size={14} /> Clasificar proveedores</button>}
           {canEdit && <button onClick={abrirNuevo} className="flex items-center gap-1.5 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"><Plus size={15} /> Nuevo gasto</button>}
@@ -384,11 +420,21 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
         </div>
       )}
 
+      {!loading && visibles.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-neutral-500">
+          <span className="font-medium text-neutral-400">Estado:</span>
+          <span><span className="mr-1 rounded-full bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700">Pagado</span>pagos registrados cubren el total</span>
+          <span><span className="mr-1 rounded-full bg-red-50 px-1.5 py-0.5 font-medium text-red-700">Vencido</span>debe y ya pasó su vencimiento</span>
+          <span><span className="mr-1 rounded-full bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700">Vigente</span>debe, aún no vence</span>
+          <span><span className="mr-1 rounded-full bg-neutral-100 px-1.5 py-0.5 font-medium text-neutral-500">Contado</span>sin pago ni vencimiento registrado: se asume pagado al contado</span>
+        </div>
+      )}
       {loading ? <div className="py-10 text-center text-neutral-400"><Loader2 className="inline animate-spin" size={18} /></div> : (
         <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-neutral-200 bg-neutral-50 text-left text-[11px] uppercase tracking-wide text-neutral-500">
+                <th className="px-3 py-2.5 w-8"><input type="checkbox" checked={todosSel} onChange={toggleTodos} className="accent-neutral-700" title="Seleccionar todos los visibles" /></th>
                 <th className="px-4 py-2.5 font-medium">Fecha</th><th className="px-4 py-2.5 font-medium">Concepto</th>
                 <th className="px-4 py-2.5 font-medium">Categoría</th><th className="px-4 py-2.5 font-medium">Tipo</th>
                 <th className="px-4 py-2.5 text-right font-medium">Costo (neto)</th><th className="px-4 py-2.5 text-right font-medium">Total</th>
@@ -402,7 +448,8 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
                 const c = costo(g);
                 return (
                   <tr key={g.id} data-explica="gasto" data-explica-titulo={g.concepto} data-explica-datos={JSON.stringify({ fecha: fmtFecha(g.fecha), concepto: g.concepto, proveedor: g.proveedor, categoria: CATEGORIA_GASTO[g.categoria] || g.categoria, tipo: t.label, costoNeto: Math.round(c), total: Math.round(g.total), moneda: g.moneda, iva: g.iva, ivaRecuperable: g.ivaRecuperable, origen: g.origen, recurrente: g.esRecurrente, amortizable: g.esAmortizable })}
-                    className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50/60">
+                    className={`border-b border-neutral-100 last:border-0 hover:bg-neutral-50/60 ${sel.has(g.id) ? 'bg-blue-50/50' : ''}`}>
+                    <td className="px-3 py-2.5"><input type="checkbox" checked={sel.has(g.id)} onChange={() => toggleSel(g.id)} className="accent-neutral-700" /></td>
                     <td className="px-4 py-2.5 text-xs text-neutral-500">{fmtFecha(g.fecha)}</td>
                     <td className="px-4 py-2.5">
                       <span className="font-medium text-neutral-900">{g.concepto}</span>
