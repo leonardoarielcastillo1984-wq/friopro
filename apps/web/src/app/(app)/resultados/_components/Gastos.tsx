@@ -37,7 +37,7 @@ const hoy = () => new Date().toISOString().slice(0, 10);
 const nuevoForm = (moneda: string) => ({
   fecha: hoy(), fechaVencimiento: '', proveedor: '', proveedorRut: '', concepto: '', categoria: 'OTRO', tipoGasto: 'OPERATIVO',
   centroCostoId: '', conIva: false, ivaRecuperable: true, neto: '', ivaRate: String(IVA_DEFAULT[moneda] ?? 0), iva: '', total: '', moneda,
-  tipoComprobante: '', numeroComprobante: '',
+  tipoComprobante: '', numeroComprobante: '', estadoSel: '',
   // modo: PUNTUAL | FIJO (repite igual) | CUOTA (varía por mes) | AMORTIZA (divide el total)
   modo: 'PUNTUAL' as 'PUNTUAL' | 'FIJO' | 'CUOTA' | 'AMORTIZA',
   esRecurrente: false, esAmortizable: false, variacionCuota: '', fechaDesde: '', fechaHasta: '',
@@ -160,6 +160,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
       neto: g.neto !== null ? String(g.neto) : '', ivaRate: conIva && g.neto ? String(Math.round(((g.iva || 0) / g.neto) * 1000) / 10) : String(IVA_DEFAULT[g.moneda] ?? 0),
       iva: g.iva !== null ? String(g.iva) : '', total: String(g.total), moneda: g.moneda,
       tipoComprobante: g.tipoComprobante || '', numeroComprobante: g.numeroComprobante || '',
+      estadoSel: g.estado === 'CONTADO' ? 'SIN_DATOS' : (g.estado === 'PARCIAL' ? 'VIGENTE' : g.estado || ''),
       modo: g.esAmortizable ? 'AMORTIZA' : g.esRecurrente ? (g.variacionCuota ? 'CUOTA' : 'FIJO') : 'PUNTUAL',
       esRecurrente: g.esRecurrente, esAmortizable: !!g.esAmortizable, variacionCuota: g.variacionCuota ? String(g.variacionCuota) : '',
       fechaDesde: toDateInput(g.fechaDesde), fechaHasta: toDateInput(g.fechaHasta), vehiculoId: g.vehiculoId || '', notas: g.notas || '',
@@ -181,6 +182,14 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
     if (!Number(form.total)) return setError('El total es obligatorio');
     setSaving(true);
     try {
+      // Marca manual de estado → se traduce a datos reales.
+      const hoyStr = hoy();
+      const menos1 = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      const mas30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+      let fv = form.fechaVencimiento || null;
+      if (form.estadoSel === 'VENCIDO' && (!fv || fv >= hoyStr)) fv = menos1;
+      if (form.estadoSel === 'VIGENTE' && (!fv || fv <= hoyStr)) fv = mas30;
+      if (form.estadoSel === 'SIN_DATOS') fv = null;
       const json = {
         fecha: form.fecha, proveedor: form.proveedor.trim() || null, proveedorRut: form.proveedorRut.trim() || null,
         concepto: form.concepto.trim(), categoria: form.categoria, tipoGasto: form.tipoGasto, centroCostoId: form.centroCostoId || null,
@@ -188,7 +197,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
         ivaRecuperable: form.conIva ? form.ivaRecuperable : true,
         total: Number(form.total), moneda: form.moneda,
         tipoComprobante: form.tipoComprobante || null, numeroComprobante: form.numeroComprobante || null,
-        fechaVencimiento: form.fechaVencimiento || null,
+        fechaVencimiento: fv,
         esRecurrente: form.modo === 'FIJO' || form.modo === 'CUOTA',
         esAmortizable: form.modo === 'AMORTIZA',
         variacionCuota: form.modo === 'CUOTA' && form.variacionCuota !== '' ? Number(form.variacionCuota) : null,
@@ -198,7 +207,18 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
         notas: form.notas || null,
         fileUrl: fileData?.url || null, fileName: fileData?.name || null, mimeType: fileData?.mimeType || null,
       };
-      await apiFetch(editId ? `/finanzas/gastos/${editId}` : '/finanzas/gastos', { method: editId ? 'PATCH' : 'POST', json });
+      const resp = await apiFetch(editId ? `/finanzas/gastos/${editId}` : '/finanzas/gastos', { method: editId ? 'PATCH' : 'POST', json });
+      const gid = editId || (resp as any)?.gasto?.id;
+      const orig = editId ? gastos.find(x => x.id === editId) : null;
+      // Pagado → registra el pago del saldo; otro estado sobre un gasto pagado → borra sus pagos.
+      if (gid && form.estadoSel === 'PAGADO') {
+        const saldoPend = orig ? (orig.saldo ?? orig.total) : Number(form.total);
+        if (saldoPend > 0.5) {
+          await apiFetch(`/finanzas/gastos/${gid}/pagos`, { method: 'POST', json: { fecha: hoyStr, importe: Math.round(saldoPend * 100) / 100, medioPago: 'TRANSFERENCIA', referencia: 'MANUAL', notas: 'Marcado como pagado' } });
+        }
+      } else if (gid && form.estadoSel && orig?.pagos?.length) {
+        for (const p of orig.pagos) await apiFetch(`/finanzas/pagos/${p.id}`, { method: 'DELETE' });
+      }
       setShowForm(false); setEditId(null); setFileData(null);
       await load(); onChanged();
     } catch (e: any) { setError(e?.message || 'Error al guardar'); }
@@ -343,6 +363,14 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
             <div><label className={labelCls}>RUT / CUIT proveedor</label><input value={form.proveedorRut} onChange={e => set('proveedorRut', e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Fecha</label><input type="date" value={form.fecha} onChange={e => set('fecha', e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Vencimiento <span className="font-normal text-neutral-400">(vacío = sin datos)</span></label><input type="date" value={form.fechaVencimiento} onChange={e => set('fechaVencimiento', e.target.value)} className={inputCls} /></div>
+            <div><label className={labelCls}>Estado</label>
+              <select value={form.estadoSel} onChange={e => set('estadoSel', e.target.value)} className={inputCls}>
+                <option value="">Automático (según pagos y vencimiento)</option>
+                <option value="PAGADO">Pagado — registra el pago del saldo</option>
+                <option value="VIGENTE">Vigente — aún no venció</option>
+                <option value="VENCIDO">Vencido — no pagado y venció</option>
+                <option value="SIN_DATOS">Sin datos — quita el vencimiento</option>
+              </select></div>
             <div><label className={labelCls}>Categoría</label>
               <select value={form.categoria} onChange={e => set('categoria', e.target.value)} className={inputCls}>
                 {Object.entries(CATEGORIA_GASTO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
