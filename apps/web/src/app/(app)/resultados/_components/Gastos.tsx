@@ -15,7 +15,7 @@ type Gasto = {
   esAmortizable?: boolean; variacionCuota?: number | null; vehiculoId?: string | null;
   fileUrl: string | null; fileName: string | null; mimeType: string | null; notas: string | null;
   fechaVencimiento?: string | null; pagado?: number; saldo?: number;
-  estado?: 'PAGADO' | 'VENCIDO' | 'VIGENTE' | 'PARCIAL'; diasVencidos?: number;
+  estado?: 'PAGADO' | 'VENCIDO' | 'VIGENTE' | 'PARCIAL' | 'CONTADO'; diasVencidos?: number;
   pagos?: { id: string; fecha: string; importe: number; referencia: string | null }[];
 };
 
@@ -24,6 +24,7 @@ const ESTADO_GASTO: Record<string, { label: string; color: string }> = {
   VENCIDO: { label: 'Vencido', color: 'bg-red-50 text-red-700' },
   VIGENTE: { label: 'Vigente', color: 'bg-amber-50 text-amber-700' },
   PARCIAL: { label: 'Parcial', color: 'bg-blue-50 text-blue-700' },
+  CONTADO: { label: 'Contado', color: 'bg-neutral-100 text-neutral-500' },
 };
 
 const TIPO_LABEL: Record<string, { label: string; color: string }> = {
@@ -423,6 +424,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
                         if (!e) return <span className="text-xs text-neutral-300">—</span>;
                         const det = g.saldo != null && g.saldo > 0.5 && g.estado !== 'PAGADO'
                           ? `Debe ${fmtMoney(g.saldo, g.moneda)}${g.fechaVencimiento ? ` · vence ${fmtFecha(g.fechaVencimiento)}` : ''}`
+                          : g.estado === 'CONTADO' ? 'Sin vencimiento ni pago registrado: se asume pagado al contado'
                           : g.fechaVencimiento ? `vence ${fmtFecha(g.fechaVencimiento)}` : undefined;
                         const label = g.estado === 'VENCIDO' && g.diasVencidos
                           ? `Vencido · ${g.diasVencidos} ${g.diasVencidos === 1 ? 'día' : 'días'}`

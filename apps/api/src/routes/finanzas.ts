@@ -996,12 +996,12 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const gastos = rows.map((g: any) => {
       const pagado = g.pagos.reduce((s: number, p: any) => s + num(p.importe), 0);
       const saldo = Math.max(0, num(g.total) - pagado);
-      // Sin pagos registrados y sin vencimiento se mantiene el comportamiento
-      // previo: se considera pagado (gasto registrado a posteriori).
-      const estado = saldo <= 0.5 ? 'PAGADO'
+      // Sin pagos ni vencimiento se asume pagado al contado, pero se muestra
+      // como CONTADO para no confundirlo con un pago realmente registrado.
+      const estado = saldo <= 0.5 && g.pagos.length ? 'PAGADO'
         : g.fechaVencimiento && new Date(g.fechaVencimiento) < hoy ? 'VENCIDO'
         : g.fechaVencimiento ? 'VIGENTE'
-        : (g.pagos.length ? 'VIGENTE' : 'PAGADO');
+        : (g.pagos.length ? 'VIGENTE' : 'CONTADO');
       const diasVencidos = estado === 'VENCIDO' && g.fechaVencimiento
         ? Math.floor((hoy.getTime() - new Date(g.fechaVencimiento).getTime()) / 86400000)
         : 0;
