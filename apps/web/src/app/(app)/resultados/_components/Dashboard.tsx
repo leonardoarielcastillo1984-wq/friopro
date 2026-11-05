@@ -252,12 +252,16 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const conMovimiento = meses.filter(m => m.lineas > 0);
   const mejor = conMovimiento.length ? conMovimiento.reduce((a, b) => (b.resultado > a.resultado ? b : a)) : null;
   const peor = conMovimiento.length ? conMovimiento.reduce((a, b) => (b.resultado < a.resultado ? b : a)) : null;
-  const chartData = meses.map(m => ({
-    name: MESES[m.mes - 1], mes: m.mes,
-    Ventas: Math.round(m.ventas + (conIva ? (m.ivaVentas || 0) : 0)),
-    Costos: Math.round(m.costosTotales + (conIva ? (m.ivaCostos || 0) : 0)),
-    Resultado: Math.round(m.resultado),
-  }));
+  const chartData = meses.map(m => {
+    const Ventas = Math.round(m.ventas + (conIva ? (m.ivaVentas || 0) : 0));
+    const Costos = Math.round(m.costosTotales + (conIva ? (m.ivaCostos || 0) : 0));
+    return {
+      name: MESES[m.mes - 1], mes: m.mes,
+      Ventas, Costos,
+      Diferencia: Ventas - Costos,
+      Resultado: Math.round(m.resultado),
+    };
+  });
   const tip = (v: any) => fmtMoney(Number(v), moneda);
 
   return (
@@ -756,6 +760,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
                 <YAxis tickFormatter={compact} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={48} />
                 <Tooltip formatter={tip} cursor={{ fill: '#f5f5f5' }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
+                <ReferenceLine y={0} stroke="#d4d4d4" />
                 <Bar dataKey="Ventas" fill="#3b82f6" radius={[3, 3, 0, 0]} className="cursor-pointer"
                   onClick={(d: any) => d?.payload?.mes && (A.asistente
                     ? A.pedirExplicacion('grafico-mes', `Ventas de ${d.payload.name} ${anio}`, undefined, { mes: d.payload.mes, ventas: d.payload.Ventas }, d.payload.mes)
@@ -764,6 +769,12 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
                   onClick={(d: any) => d?.payload?.mes && (A.asistente
                     ? A.pedirExplicacion('grafico-mes', `Costos de ${d.payload.name} ${anio}`, undefined, { mes: d.payload.mes, costos: d.payload.Costos }, d.payload.mes)
                     : abrirDetalle(d.payload.mes))} />
+                <Bar dataKey="Diferencia" radius={[3, 3, 0, 0]} className="cursor-pointer"
+                  onClick={(d: any) => d?.payload?.mes && (A.asistente
+                    ? A.pedirExplicacion('grafico-mes', `Diferencia ventas−costos de ${d.payload.name} ${anio}`, undefined, { mes: d.payload.mes, ventas: d.payload.Ventas, costos: d.payload.Costos, diferencia: d.payload.Diferencia }, d.payload.mes)
+                    : abrirDetalle(d.payload.mes))}>
+                  {chartData.map((d, i) => <Cell key={i} fill={d.Diferencia >= 0 ? '#16a34a' : '#dc2626'} />)}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
