@@ -19,17 +19,22 @@ CREATE TABLE IF NOT EXISTS "growth_events" (
   "ip"         TEXT,
   "createdAt"  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXIST-- Growth engine: eventos de fu"g-- Aplicar: docker exec -i sgi-postgres psql -U sgi -d sgi < growth_engine.sqN 
-ALTER TABLE "marketing_leads"
-  ADD COLUMN IF NOT EXISTS "nurtureStep" INTEGidx  ADD COLUMN IF NOT EXISTS "dA  ADD COLUMN IF NOT EXISTS "lastNurturedAt" TIMESTAMPTZ,
-  ADD COLUID  ADD COLUMN IF NOT EXISTS "unsubscribedAt" TIMESTAMPTZ    ADD COLUMN IF NOT EXISTS "consentedAt" TIMESTAMPTZ;
-CCECREATE INDEX IF NOT EXISTS "marketing_leads_nurtureS  
-ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "referralCode" TEXT;
-CREATE UNIQUE INDEX IF NOT E   CREATE UNIQUE INDEX IF NOT EXISTS "Tenant_referralCode_key" ON "Tea
-CREATE TABLE IF NOT EXISTS "growth_events" (
-  "id"         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "event"      OT   "id"         UUID PRIMARY KN "referrals"("c  "event"      TEXT NOT NULL,
-  "page"       TEXT,
-  "metdx  "page"       TEXT,
-  "meta")  "meta"       JSONOT  "ip"         TEXT,ta  "createdAt"  TIMral);
-CRtatus");
+CREATE INDEX IF NOT EXISTS "growth_events_event_idx" ON "growth_events"("event");
+CREATE INDEX IF NOT EXISTS "growth_events_page_idx" ON "growth_events"("page");
+CREATE INDEX IF NOT EXISTS "growth_events_createdAt_idx" ON "growth_events"("createdAt");
+
+CREATE TABLE IF NOT EXISTS "referrals" (
+  "id"            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "code"          TEXT NOT NULL,
+  "referrerId"    UUID NOT NULL REFERENCES "Tenant"("id") ON DELETE CASCADE,
+  "referredId"    UUID,
+  "referredEmail" TEXT,
+  "status"        TEXT NOT NULL DEFAULT 'CLICKED',
+  "rewardDays"    INTEGER NOT NULL DEFAULT 30,
+  "rewardedAt"    TIMESTAMPTZ,
+  "createdAt"     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updatedAt"     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "referrals_code_idx" ON "referrals"("code");
+CREATE INDEX IF NOT EXISTS "referrals_referrerId_idx" ON "referrals"("referrerId");
+CREATE INDEX IF NOT EXISTS "referrals_status_idx" ON "referrals"("status");
