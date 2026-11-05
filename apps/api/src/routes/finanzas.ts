@@ -467,15 +467,17 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     return `CARTOLA:${f.fecha}:${Math.round(f.monto)}:${h.toString(36)}`;
   };
 
+  const cartolaMovSchema = z.object({
+    fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}/, 'fecha YYYY-MM-DD'),
+    descripcion: z.string().max(400).default(''),
+    monto: z.number().positive(),
+    referencia: z.string().max(120).optional().nullable(),
+  });
   const cartolaSchema = z.object({
     commit: z.boolean().default(false),
     moneda: z.string().max(5).optional().nullable(),
-    filas: z.array(z.object({
-      fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}/, 'fecha YYYY-MM-DD'),
-      descripcion: z.string().max(400).default(''),
-      monto: z.number().positive(),
-      referencia: z.string().max(120).optional().nullable(),
-    })).min(1).max(3000),
+    filas: z.array(cartolaMovSchema).default([]),         // abonos → cobros de facturas
+    cargos: z.array(cartolaMovSchema).default([]),        // cargos → pagos de gastos
   });
 
   app.post('/cartola-conciliar', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -483,25 +485,33 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const body = cartolaSchema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
-    const { commit, moneda, filas } = body.data;
-    // Cierre de período: al commitear, los abonos de meses cerrados se omiten.
+    const { commit, moneda, filas, cargos } = body.data;
+    if (!filas.length && !cargos.length) return reply.code(400).send({ error: 'Sin movimientos: enviá filas (abonos) y/o cargos' });
+    if (filas.length + cargos.length > 6000) return reply.code(400).send({ error: 'Máximo 6000 movimientos por cartola' });
+    // Cierre de período: al commitear, los movimientos de meses cerrados se omiten.
     let filasU = filas;
+    let cargosU = cargos;
     if (commit) {
-      const meses = [...new Set(filas.map(f => f.fecha.slice(0, 7)))];
+      const meses = [...new Set([...filas, ...cargos].map(f => f.fecha.slice(0, 7)))];
       const cerrados = (await Promise.all(meses.map(m => periodoCerrado(tenantId, `${m}-15`)))).filter(Boolean) as string[];
       if (cerrados.length) {
         const setC = new Set(cerrados);
         filasU = filas.filter(f => !setC.has(f.fecha.slice(0, 7)));
-        if (!filasU.length) return reply.code(423).send({ error: `Período(s) cerrado(s): ${cerrados.join(', ')}`, periodosCerrados: cerrados });
+        cargosU = cargos.filter(f => !setC.has(f.fecha.slice(0, 7)));
+        if (!filasU.length && !cargosU.length) return reply.code(423).send({ error: `Período(s) cerrado(s): ${cerrados.join(', ')}`, periodosCerrados: cerrados });
       }
     }
     const user = await resolveUser(app.prisma, (req as any).auth?.userId);
 
-    // Cobros ya aplicados por cartola → dedup por firma
+    // Cobros y pagos ya aplicados por cartola → dedup por firma
     const prev = await prisma().finanzaCobro.findMany({
       where: { tenantId, referencia: { startsWith: 'CARTOLA:' } }, select: { referencia: true },
     });
+    const prevPagos = await prisma().finanzaPago.findMany({
+      where: { tenantId, referencia: { startsWith: 'CARTOLA:' } }, select: { referencia: true },
+    });
     const aplicadas = new Set(prev.map((c: any) => c.referencia));
+    const aplicadasPagos = new Set(prevPagos.map((c: any) => c.referencia));
 
     // Facturas con saldo pendiente, más vencidas primero (orden FIFO de imputación)
     const facts = await prisma().finanzaFactura.findMany({
@@ -622,14 +632,124 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       });
     }
 
+    // ── CARGOS: pagos a proveedores/servicios → FinanzaPago ──
+    // Espejo de los abonos: match por RUT (proveedorRut) o nombre del
+    // proveedor/concepto del gasto, y solo cuando el cargo cuadra exacto
+    // contra el saldo de un gasto o un subconjunto de sus pendientes.
+    const gastosPend = (await prisma().finanzaGasto.findMany({
+      where: { tenantId, deletedAt: null, tipoComprobante: { not: 'NOTA_CREDITO' }, ...(moneda ? { moneda } : {}) },
+      include: { pagos: true },
+      orderBy: [{ fechaVencimiento: 'asc' }, { fecha: 'asc' }],
+    })).map((g: any) => ({
+      id: g.id, numero: g.numeroComprobante || null, proveedor: g.proveedor || g.concepto,
+      rut: g.proveedorRut ? normRutKey(g.proveedorRut) : null,
+      nombreNorm: normTxt(g.proveedor || g.concepto), moneda: g.moneda,
+      fecha: g.fecha,
+      saldo: Math.max(0, num(g.total) - g.pagos.reduce((s: number, p: any) => s + num(p.importe), 0)),
+    })).filter((g: any) => g.saldo > 0.5);
+    const restoG = new Map(gastosPend.map((g: any) => [g.id, g.saldo]));
+    const getRestoG = (g: any) => restoG.get(g.id) ?? g.saldo;
+
+    const subconjuntoExactoG = (cand: any[], target: number): any[] | null => {
+      const items = cand.slice(0, 24).map(g => ({ g, v: getRestoG(g) }));
+      const A = items.slice(0, 12), B = items.slice(12);
+      const sumsA: { s: number; m: number }[] = [];
+      for (let m = 1; m < (1 << A.length); m++) {
+        let s = 0;
+        for (let i = 0; i < A.length; i++) if (m & (1 << i)) s += A[i].v;
+        sumsA.push({ s, m });
+      }
+      sumsA.sort((a, b) => a.s - b.s);
+      let mejor: number | null = null;
+      for (let m = 0; m < (1 << B.length); m++) {
+        let s = 0;
+        for (let i = 0; i < B.length; i++) if (m & (1 << i)) s += B[i].v;
+        const need = target - s;
+        let lo = 0, hi = sumsA.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (sumsA[mid].s < need - 2) lo = mid + 1; else hi = mid; }
+        for (let k = lo; k < sumsA.length && sumsA[k].s <= need + 2; k++) {
+          const mask = sumsA[k].m | (m << A.length);
+          if (mejor === null || contarBits(mask) < contarBits(mejor)) mejor = mask;
+        }
+      }
+      if (mejor === null) return null;
+      return items.filter((_, i) => ((mejor as number) & (1 << i)) !== 0).map(x => x.g);
+    };
+
+    const resCargos: any[] = [];
+    for (const [idx, fl] of cargosU.entries()) {
+      const firma = firmaCobro(fl);
+      const base = { idx, fecha: fl.fecha, descripcion: fl.descripcion, monto: fl.monto, referencia: fl.referencia ?? null, firma };
+      if (aplicadasPagos.has(firma)) { resCargos.push({ ...base, estado: 'ya_aplicado', gastos: [] }); continue; }
+
+      // Nunca se imputa a gastos cargados DESPUÉS del pago.
+      const emitidaAntes = (g: any) => new Date(g.fecha) <= new Date(`${fl.fecha}T23:59:59Z`);
+      const ruts = new Set(rutEnTexto(`${fl.descripcion} ${fl.referencia || ''}`));
+      let candTodas = ruts.size ? gastosPend.filter((g: any) => g.rut && ruts.has(g.rut)) : [];
+      let como = 'rut';
+      if (!candTodas.length) {
+        const d = tokensDe(fl.descripcion);
+        candTodas = gastosPend.filter((g: any) => {
+          const tk = [...tokensDe(g.nombreNorm)];
+          if (!tk.length) return false;
+          const hits = tk.filter(t => d.has(t)).length;
+          return hits === tk.length || (tk.length > 2 && hits / tk.length >= 0.7);
+        });
+        como = 'nombre';
+      }
+      let cand = candTodas.filter(emitidaAntes);
+
+      let aplica: { g: any; aplicar: number }[] = [];
+      if (cand.length) {
+        const exact = cand.find((g: any) => Math.abs(getRestoG(g) - fl.monto) <= 2);
+        const suma = cand.reduce((s: number, g: any) => s + getRestoG(g), 0);
+        if (exact) aplica = [{ g: exact, aplicar: getRestoG(exact) }];
+        else if (Math.abs(suma - fl.monto) <= 2) aplica = cand.map((g: any) => ({ g, aplicar: getRestoG(g) }));
+        else {
+          const sub = subconjuntoExactoG(cand, fl.monto);
+          if (sub?.length) aplica = sub.map(g => ({ g, aplicar: getRestoG(g) }));
+        }
+      } else {
+        const unicos = gastosPend.filter((g: any) => emitidaAntes(g) && Math.abs(getRestoG(g) - fl.monto) <= 2);
+        if (unicos.length === 1) { cand = unicos; candTodas = unicos; aplica = [{ g: unicos[0], aplicar: getRestoG(unicos[0]) }]; como = 'monto'; }
+      }
+
+      if (!aplica.length) {
+        resCargos.push({
+          ...base, estado: 'sin_match', gastos: [],
+          motivo: !candTodas.length
+            ? 'no encontré gastos pendientes de ese beneficiario'
+            : !cand.length
+              ? `${candTodas[0].proveedor}: sus pendientes son posteriores al cargo`
+              : `${cand[0].proveedor}: ninguna combinación de sus ${cand.length} pendiente(s) suma el cargo exacto`,
+        });
+        continue;
+      }
+      const confianza = como === 'monto' ? 'baja' : 'alta';
+      for (const a of aplica) restoG.set(a.g.id, Math.max(0, getRestoG(a.g) - a.aplicar));
+      aplicadasPagos.add(firma);
+      resCargos.push({
+        ...base, estado: 'match', como, confianza,
+        gastos: aplica.map(a => ({
+          id: a.g.id, numero: a.g.numero, proveedor: a.g.proveedor, moneda: a.g.moneda,
+          fecha: a.g.fecha, saldoPrevio: getRestoG(a.g) + a.aplicar, aplicar: a.aplicar,
+        })),
+      });
+    }
+
     if (!commit) {
       const m = resFilas.filter(r => r.estado === 'match');
+      const mc = resCargos.filter(r => r.estado === 'match');
       return reply.send({
         filas: resFilas,
+        cargos: resCargos,
         resumen: {
           total: resFilas.length, matches: m.length, sinMatch: resFilas.filter(r => r.estado === 'sin_match').length,
           yaAplicados: resFilas.filter(r => r.estado === 'ya_aplicado').length,
           montoMatch: m.reduce((s, r) => s + r.facturas.reduce((x: number, f: any) => x + f.aplicar, 0), 0),
+          cargosTotal: resCargos.length, cargosMatch: mc.length, cargosSinMatch: resCargos.filter(r => r.estado === 'sin_match').length,
+          cargosYaAplicados: resCargos.filter(r => r.estado === 'ya_aplicado').length,
+          cargosMontoMatch: mc.reduce((s, r) => s + r.gastos.reduce((x: number, g: any) => x + g.aplicar, 0), 0),
         },
       });
     }
@@ -665,14 +785,16 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const referencia = String((req.body as any)?.referencia || '');
     if (!referencia.startsWith('CARTOLA:')) return reply.code(400).send({ error: 'referencia CARTOLA:* requerida' });
-    const cobros = await prisma().finanzaCobro.findMany({
-      where: { tenantId, referencia }, select: { id: true, facturaId: true },
-    });
-    if (!cobros.length) return reply.send({ eliminados: 0, facturas: 0 });
+    const [cobros, pagos] = await Promise.all([
+      prisma().finanzaCobro.findMany({ where: { tenantId, referencia }, select: { id: true, facturaId: true } }),
+      prisma().finanzaPago.findMany({ where: { tenantId, referencia }, select: { id: true } }),
+    ]);
+    if (!cobros.length && !pagos.length) return reply.send({ eliminados: 0, facturas: 0, gastos: 0 });
     const fids = [...new Set(cobros.map((c: any) => c.facturaId))] as string[];
     await prisma().finanzaCobro.deleteMany({ where: { tenantId, referencia } });
+    await prisma().finanzaPago.deleteMany({ where: { tenantId, referencia } });
     for (const fid of fids) await syncFacturaEstado(app.prisma, fid);
-    return reply.send({ eliminados: cobros.length, facturas: fids.length });
+    return reply.send({ eliminados: cobros.length + pagos.length, facturas: fids.length, gastos: pagos.length });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -848,8 +970,20 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     }
     const take = Math.min(Math.max(Number(q.take) || 1000, 1), 5000);
     const skip = Math.max(Number(q.skip) || 0, 0);
-    const gastos = await prisma().finanzaGasto.findMany({ where, orderBy: { fecha: 'desc' }, take, skip });
-    return reply.send({ gastos, truncado: gastos.length === take });
+    const rows = await prisma().finanzaGasto.findMany({ where, orderBy: { fecha: 'desc' }, take, skip, include: { pagos: { orderBy: { fecha: 'asc' } } } });
+    const hoy = new Date();
+    const gastos = rows.map((g: any) => {
+      const pagado = g.pagos.reduce((s: number, p: any) => s + num(p.importe), 0);
+      const saldo = Math.max(0, num(g.total) - pagado);
+      // Sin pagos registrados y sin vencimiento se mantiene el comportamiento
+      // previo: se considera pagado (gasto registrado a posteriori).
+      const estado = saldo <= 0.5 ? 'PAGADO'
+        : g.fechaVencimiento && new Date(g.fechaVencimiento) < hoy ? 'VENCIDO'
+        : g.fechaVencimiento ? 'VIGENTE'
+        : (g.pagos.length ? 'VIGENTE' : 'PAGADO');
+      return { ...g, pagado, saldo, estado };
+    });
+    return reply.send({ gastos, truncado: rows.length === take });
   });
 
   app.post('/gastos', async (req: FastifyRequest, reply: FastifyReply) => {

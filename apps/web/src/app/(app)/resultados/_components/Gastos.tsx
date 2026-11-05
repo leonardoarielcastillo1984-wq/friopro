@@ -14,6 +14,16 @@ type Gasto = {
   esRecurrente: boolean; fechaDesde: string | null; fechaHasta: string | null;
   esAmortizable?: boolean; variacionCuota?: number | null; vehiculoId?: string | null;
   fileUrl: string | null; fileName: string | null; mimeType: string | null; notas: string | null;
+  fechaVencimiento?: string | null; pagado?: number; saldo?: number;
+  estado?: 'PAGADO' | 'VENCIDO' | 'VIGENTE' | 'PARCIAL';
+  pagos?: { id: string; fecha: string; importe: number; referencia: string | null }[];
+};
+
+const ESTADO_GASTO: Record<string, { label: string; color: string }> = {
+  PAGADO: { label: 'Pagado', color: 'bg-emerald-50 text-emerald-700' },
+  VENCIDO: { label: 'Vencido', color: 'bg-red-50 text-red-700' },
+  VIGENTE: { label: 'Vigente', color: 'bg-amber-50 text-amber-700' },
+  PARCIAL: { label: 'Parcial', color: 'bg-blue-50 text-blue-700' },
 };
 
 const TIPO_LABEL: Record<string, { label: string; color: string }> = {
@@ -379,6 +389,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
                 <th className="px-4 py-2.5 font-medium">Fecha</th><th className="px-4 py-2.5 font-medium">Concepto</th>
                 <th className="px-4 py-2.5 font-medium">Categoría</th><th className="px-4 py-2.5 font-medium">Tipo</th>
                 <th className="px-4 py-2.5 text-right font-medium">Costo (neto)</th><th className="px-4 py-2.5 text-right font-medium">Total</th>
+                <th className="px-4 py-2.5 font-medium">Estado</th>
                 <th className="px-4 py-2.5 w-20"></th>
               </tr>
             </thead>
@@ -404,6 +415,16 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
                     <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${t.color}`}>{t.label}</span></td>
                     <td className={`px-4 py-2.5 text-right font-medium ${c < 0 ? 'text-green-700' : ''}`}>{fmtMoney(c, g.moneda)}</td>
                     <td className="px-4 py-2.5 text-right text-neutral-400">{fmtMoney(g.total, g.moneda)}</td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      {(() => {
+                        const e = g.tipoComprobante === 'NOTA_CREDITO' ? null : (g.estado ? ESTADO_GASTO[g.estado] : null);
+                        if (!e) return <span className="text-xs text-neutral-300">—</span>;
+                        const det = g.saldo != null && g.saldo > 0.5 && g.estado !== 'PAGADO'
+                          ? `Debe ${fmtMoney(g.saldo, g.moneda)}${g.fechaVencimiento ? ` · vence ${fmtFecha(g.fechaVencimiento)}` : ''}`
+                          : g.fechaVencimiento ? `vence ${fmtFecha(g.fechaVencimiento)}` : undefined;
+                        return <span title={det} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${e.color}`}>{e.label}</span>;
+                      })()}
+                    </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-right">
                       {canEdit && <>
                         <button onClick={() => abrirEditar(g)} className="p-1 text-neutral-400 hover:text-blue-600" title="Editar"><Pencil size={14} /></button>
@@ -413,7 +434,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
                   </tr>
                 );
               })}
-              {visibles.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-neutral-400">Sin gastos en {moneda} con estos filtros.</td></tr>}
+              {visibles.length === 0 && <tr><td colSpan={8} className="px-4 py-10 text-center text-neutral-400">Sin gastos en {moneda} con estos filtros.</td></tr>}
             </tbody>
             {visibles.length > 0 && (
               <tfoot>
@@ -421,7 +442,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
                   className="border-t border-neutral-200 bg-neutral-50 text-sm font-semibold">
                   <td colSpan={4} className="px-4 py-2.5 text-neutral-500">{visibles.length} gastos</td>
                   <td className="px-4 py-2.5 text-right">{fmtMoney(totalCosto, moneda)}</td>
-                  <td colSpan={2}></td>
+                  <td colSpan={3}></td>
                 </tr>
               </tfoot>
             )}
