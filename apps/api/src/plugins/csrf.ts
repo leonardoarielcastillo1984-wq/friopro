@@ -41,6 +41,8 @@ function shouldSkip(req: FastifyRequest) {
   if (url.startsWith('/project360')) return true; // Project360 routes
   if (url.startsWith('/register-company')) return true; // Public route: company registration
   if (url.startsWith('/api/leads') || url.startsWith('/leads')) return true; // Public route: lead magnets
+  if (url.startsWith('/api/track') || url.startsWith('/track')) return true; // Growth: funnel events (beacon, sin cookies)
+  if (url.startsWith('/api/referrals/click') || url.startsWith('/referrals/click')) return true; // Growth: referral click
   if (url.startsWith('/company-registrations')) return true; // Public route: get registrations
   if (url.startsWith('/mercadopago-config')) return true; // Public route: MercadoPago config
   if (url.startsWith('/license/activate')) return true; // Testing activation
