@@ -981,7 +981,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         : g.fechaVencimiento && new Date(g.fechaVencimiento) < hoy ? 'VENCIDO'
         : g.fechaVencimiento ? 'VIGENTE'
         : (g.pagos.length ? 'VIGENTE' : 'PAGADO');
-      return { ...g, pagado, saldo, estado };
+      const diasVencidos = estado === 'VENCIDO' && g.fechaVencimiento
+        ? Math.floor((hoy.getTime() - new Date(g.fechaVencimiento).getTime()) / 86400000)
+        : 0;
+      return { ...g, pagado, saldo, estado, diasVencidos };
     });
     return reply.send({ gastos, truncado: rows.length === take });
   });

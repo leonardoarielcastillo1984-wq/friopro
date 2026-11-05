@@ -15,7 +15,7 @@ type Gasto = {
   esAmortizable?: boolean; variacionCuota?: number | null; vehiculoId?: string | null;
   fileUrl: string | null; fileName: string | null; mimeType: string | null; notas: string | null;
   fechaVencimiento?: string | null; pagado?: number; saldo?: number;
-  estado?: 'PAGADO' | 'VENCIDO' | 'VIGENTE' | 'PARCIAL';
+  estado?: 'PAGADO' | 'VENCIDO' | 'VIGENTE' | 'PARCIAL'; diasVencidos?: number;
   pagos?: { id: string; fecha: string; importe: number; referencia: string | null }[];
 };
 
@@ -422,7 +422,10 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
                         const det = g.saldo != null && g.saldo > 0.5 && g.estado !== 'PAGADO'
                           ? `Debe ${fmtMoney(g.saldo, g.moneda)}${g.fechaVencimiento ? ` · vence ${fmtFecha(g.fechaVencimiento)}` : ''}`
                           : g.fechaVencimiento ? `vence ${fmtFecha(g.fechaVencimiento)}` : undefined;
-                        return <span title={det} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${e.color}`}>{e.label}</span>;
+                        const label = g.estado === 'VENCIDO' && g.diasVencidos
+                          ? `Vencido · ${g.diasVencidos} ${g.diasVencidos === 1 ? 'día' : 'días'}`
+                          : e.label;
+                        return <span title={det} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${e.color}`}>{label}</span>;
                       })()}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-right">
