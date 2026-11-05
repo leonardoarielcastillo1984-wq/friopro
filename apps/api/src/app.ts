@@ -124,6 +124,7 @@ import { billingRoutes } from './routes/billing.js';
 import tenantReportRoutes from './routes/tenantReport.js';
 import surveyPublicRoutes from './routes/survey-public.js';
 import { publicRoutes } from './routes/publicRoutes.js';
+import { growthRoutes } from './routes/growth.js';
 import { documentsPublicRoutes } from './routes/documentsPublic.js';
 import { processMapsRoutes } from './routes/processMaps.js';
 import { processTemplatesRoutes } from './routes/processTemplates.js';
@@ -354,6 +355,7 @@ export async function buildApp() {
 
   // Registrar rutas públicas PRIMERO
   await app.register(publicRoutes);
+  await app.register(growthRoutes);
   await app.register(documentsPublicRoutes);
 
   await app.register(multipart, {

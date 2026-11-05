@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Download, Loader2, Mail, CheckCircle2 } from 'lucide-react';
 import { apiPath } from '@/lib/api';
+import { getStoredUtms } from './GrowthTracker';
 
 interface LeadCaptureProps {
   source: string;
@@ -29,16 +30,18 @@ export function LeadCapture({
   const [email, setEmail] = useState('');
   const [empresa, setEmpresa] = useState('');
   const [website, setWebsite] = useState(''); // honeypot
+  const [consented, setConsented] = useState(true); // opt-in novedades
   const [status, setStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [finalDownloadUrl, setFinalDownloadUrl] = useState<string | undefined>(downloadUrl);
 
   const utm = () => {
     if (typeof window === 'undefined') return {};
     const p = new URLSearchParams(window.location.search);
+    const stored = getStoredUtms(); // first-touch UTMs si la URL ya no los tiene
     return {
-      utmSource: p.get('utm_source') || undefined,
-      utmMedium: p.get('utm_medium') || undefined,
-      utmCampaign: p.get('utm_campaign') || undefined,
+      utmSource: p.get('utm_source') || stored.utm_source || undefined,
+      utmMedium: p.get('utm_medium') || stored.utm_medium || undefined,
+      utmCampaign: p.get('utm_campaign') || stored.utm_campaign || undefined,
     };
   };
 
@@ -57,6 +60,7 @@ export function LeadCapture({
           source,
           meta,
           website,
+          consented,
           ...utm(),
         }),
       });
@@ -138,6 +142,17 @@ export function LeadCapture({
           placeholder="Website"
         />
       </div>
+
+      {/* Opt-in novedades — sin esto el backend no envía la secuencia nurture */}
+      <label className="mt-3 flex items-start gap-2 text-xs text-slate-500 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={consented}
+          onChange={(e) => setConsented(e.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-green-600 focus:ring-green-500"
+        />
+        <span>Acepto recibir por email el recurso y novedades/tips de gestión. Me puedo dar de baja en 1 click.</span>
+      </label>
 
       <button
         type="submit"

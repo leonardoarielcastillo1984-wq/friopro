@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
 import { sendEmail, notificationEmail, welcomeTenantEmail } from '../services/email.js';
+import { linkReferralOnRegister } from './growth.js';
 import * as argon2 from 'argon2';
 
 // Cliente Prisma sin RLS para operaciones de CompanyRegistration
@@ -19,6 +20,7 @@ const registerCompanySchema = z.object({
   address: z.string().min(1, 'Dirección requerida'),
   primaryColor: z.string().default('#3B82F6'),
   module: z.string().default('sgi360'),
+  referralCode: z.string().min(4).max(40).optional(), // loop de referidos (?ref=CODE)
 });
 
 export async function registerCompanyRoutes(app: FastifyInstance) {
@@ -192,6 +194,12 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
         },
       });
       app.log.info(`[REGISTER-COMPANY] Registro auto-aprobado: ${registration.id}`);
+
+      // Funnel: registro completado + atribución de referido si vino con ?ref=
+      app.prisma.growthEvent.create({
+        data: { event: 'REGISTER_COMPLETED', page: 'register-company', meta: { tenantId: tenant.id, module: validatedData.module }, ip: req.ip },
+      }).catch(() => {});
+      linkReferralOnRegister(validatedData.referralCode, tenant.id, emailLower, app.log);
 
       // Notificación in-app para super admin — visible en /admin aunque falle SMTP
       try {

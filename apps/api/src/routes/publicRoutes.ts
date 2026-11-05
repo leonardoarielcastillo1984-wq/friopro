@@ -176,6 +176,7 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
     utmSource: z.string().max(100).optional(),
     utmMedium: z.string().max(100).optional(),
     utmCampaign: z.string().max(100).optional(),
+    consented: z.boolean().optional(), // opt-in a novedades (checkbox LeadCapture)
   });
 
   const LEAD_RESOURCES: Record<string, { titulo: string; downloadUrl?: string }> = {
@@ -219,6 +220,7 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
             utmMedium: data.utmMedium || existing.utmMedium,
             utmCampaign: data.utmCampaign || existing.utmCampaign,
             ip: req.ip,
+            ...(data.consented && !existing.consentedAt ? { consentedAt: new Date() } : {}),
           },
         });
       } else {
@@ -234,10 +236,19 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
             utmSource: data.utmSource,
             utmMedium: data.utmMedium,
             utmCampaign: data.utmCampaign,
+            ...(data.consented ? { consentedAt: new Date() } : {}),
           },
         });
       }
       app.log.info(`[LEADS] Lead ${existing ? 'actualizado' : 'creado'}: ${lead.id} source=${data.source}`);
+
+      // Funnel: lead capturado (fire-and-forget)
+      prismaDirect.growthEvent.create({
+        data: {
+          event: 'LEAD_SUBMITTED', page: data.source, ip: req.ip,
+          meta: { utmSource: data.utmSource, utmMedium: data.utmMedium, utmCampaign: data.utmCampaign },
+        },
+      }).catch(() => {});
 
       // Email al lead con el recurso (no bloquea la respuesta)
       const extraHtml = data.meta?.score != null

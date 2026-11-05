@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import ReferralCard from '@/components/marketing/ReferralCard';
 import {
   FileText, BookOpen, AlertTriangle, Shield, TrendingUp, Users,
   GraduationCap, Activity, Target, RefreshCw,
@@ -294,6 +295,9 @@ export default function DashboardPage() {
               href="/calibraciones" color="bg-pink-100 text-pink-600" />
           </div>
         </div>
+
+        {/* Loop de referidos: el tenant comparte su link y gana días gratis */}
+        <ReferralCard />
 
       </div>
     </div>

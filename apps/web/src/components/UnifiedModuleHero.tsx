@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Play, Loader2, Send, CheckCircle2, Eye, EyeOff, Sparkles, Building2, Mail, Phone, User, Lock, AlertCircle } from 'lucide-react';
 import { apiPath } from '@/lib/api';
+import { getReferralCode, clearReferralCode } from '@/components/marketing/GrowthTracker';
 
 interface UnifiedModuleHeroProps {
   moduleKey: string;
@@ -188,7 +189,7 @@ export default function UnifiedModuleHero({
       const res = await fetch(apiPath('/api/register-company'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...registerForm, module: moduleKey })
+        body: JSON.stringify({ ...registerForm, module: moduleKey, referralCode: getReferralCode() })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -196,6 +197,7 @@ export default function UnifiedModuleHero({
         return;
       }
       // Mostrar confirmación; el usuario cierra manualmente con "Aceptar"
+      clearReferralCode();
       setRegisterSuccess(true);
     } catch (err) {
       setRegisterError('Error de conexión. Intentá nuevamente.');

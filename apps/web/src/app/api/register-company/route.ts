@@ -32,6 +32,10 @@ export async function POST(req: NextRequest) {
     if (data.logo) {
       requestBody.append('logo', data.logo as File);
     }
+    const referralCode = formData.get('referralCode');
+    if (referralCode) {
+      requestBody.append('referralCode', referralCode as string);
+    }
 
     const response = await fetch(`${getServerApiBase()}/register-company`, {
       method: 'POST',

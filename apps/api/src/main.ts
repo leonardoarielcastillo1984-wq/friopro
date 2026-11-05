@@ -9,6 +9,7 @@ import { subscriptionMonitor } from './services/subscriptionMonitor.js';
 import { healthMonitor, HealthMonitor } from './services/healthMonitor.js';
 import { databaseMonitor } from './services/databaseMonitor.js';
 import { absenceScheduler } from './services/absenceScheduler.js';
+import { growthNurtureJob } from './jobs/growthNurtureJob.js';
 
 const app = await buildApp();
 
@@ -59,4 +60,9 @@ if (process.env.NODE_ENV === 'production') {
   const absenceInterval = parseInt(process.env.ABSENCE_SCHEDULER_INTERVAL || '6', 10);
   absenceScheduler.startMonitoring(absenceInterval);
   app.log.info(`[ABSENCE_SCHEDULER] Started with ${absenceInterval} hour intervals`);
+
+  // Nurture emails a leads (3 pasos, respeta unsubscribe y registro)
+  const nurtureInterval = parseInt(process.env.NURTURE_INTERVAL || '6', 10);
+  growthNurtureJob.startMonitoring(nurtureInterval);
+  app.log.info(`[NURTURE] Started with ${nurtureInterval} hour intervals`);
 }

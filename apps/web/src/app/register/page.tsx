@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch, setCsrfToken } from '@/lib/api';
+import { getReferralCode, clearReferralCode } from '@/components/marketing/GrowthTracker';
 import { Globe, Building2, Mail, Lock, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 export default function RegisterPage() {
@@ -43,9 +44,10 @@ export default function RegisterPage() {
         csrfToken: string;
       }>('/auth/register', {
         method: 'POST',
-        json: { email, password, organizationName },
+        json: { email, password, organizationName, referralCode: getReferralCode() },
       });
       setCsrfToken(res.csrfToken);
+      clearReferralCode();
       router.push('/dashboard');
     } catch (err: any) {
       setError(err?.message ?? 'Error al registrar');

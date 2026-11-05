@@ -7,6 +7,8 @@ import { Inter } from 'next/font/google';
 import Providers from './providers';
 import Analytics from '@/components/Analytics';
 import CookieConsent from '@/components/CookieConsent';
+import GrowthTracker from '@/components/marketing/GrowthTracker';
+import { Suspense } from 'react';
 
 // La app es 100% autenticada/dinámica: evitamos el prerender estático en build
 // (que falla con useSearchParams sin Suspense y APIs client-only).
@@ -83,6 +85,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {/* Google Ads solo carga si el usuario acepta cookies (Analytics) */}
         <Analytics />
         <CookieConsent />
+        {/* Funnel propio: pageviews públicos + captura ?ref= (sin cookies) */}
+        <Suspense fallback={null}><GrowthTracker /></Suspense>
       </body>
     </html>
   );

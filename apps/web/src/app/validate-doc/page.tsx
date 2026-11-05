@@ -167,6 +167,17 @@ export default function ValidateDocPage() {
           <p className="text-xs text-neutral-300 mt-1">
             Este documento ha sido verificado electrónicamente mediante código QR
           </p>
+          {/* Powered-by: cada validación QR es una impresión de marca (loop Calendly) */}
+          <a
+            href="/sgi360-landing?utm_source=validate-doc&utm_medium=powered-by"
+            target="_blank"
+            rel="noopener"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] text-neutral-500 transition-colors hover:border-brand-300 hover:text-brand-600"
+          >
+            <span className="font-semibold text-brand-600">SGI 360</span>
+            <span>· Gestión documental con QR por</span>
+            <span className="font-medium">LOGISMART</span>
+          </a>
         </div>
       </div>
     </div>

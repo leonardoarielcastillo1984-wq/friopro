@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import PaymentManagement from './payment-management';
@@ -1132,13 +1133,21 @@ export default function AdminPage() {
             <p className="text-sm text-neutral-500">Gestión de tenants, planes y suscripciones</p>
           </div>
         </div>
-        <button
-          onClick={() => { setShowCreateTenant(!showCreateTenant); setError(''); }}
-          className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
-        >
-          {showCreateTenant ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-          {showCreateTenant ? 'Cancelar' : 'Nuevo Tenant'}
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/admin/growth"
+            className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-sm hover:bg-neutral-50 transition-colors"
+          >
+            <TrendingUp className="h-4 w-4 text-emerald-600" /> Growth
+          </Link>
+          <button
+            onClick={() => { setShowCreateTenant(!showCreateTenant); setError(''); }}
+            className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
+          >
+            {showCreateTenant ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {showCreateTenant ? 'Cancelar' : 'Nuevo Tenant'}
+          </button>
+        </div>
       </div>
 
       {/* Alerts */}

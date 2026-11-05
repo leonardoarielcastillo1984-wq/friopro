@@ -4,6 +4,7 @@ import argon2 from 'argon2';
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import { get2FAStatus, create2FASession } from '../services/twoFactorAuth.js';
 import { sendEmail, passwordResetEmail, notificationEmail } from '../services/email.js';
+import { linkReferralOnRegister } from './growth.js';
 
 // Stricter rate limits for sensitive auth endpoints
 const authRateLimit = {
@@ -72,6 +73,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       email: z.string().email('Email inválido'),
       password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
       organizationName: z.string().min(2, 'El nombre de la organización es requerido'),
+      referralCode: z.string().min(4).max(40).optional(), // loop de referidos (?ref=CODE)
     });
 
     const body = registerSchema.parse(req.body);
@@ -141,6 +143,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         },
       });
     }
+
+    // Funnel: registro completado + atribución de referido si vino con ?ref=
+    // (fire-and-forget: no debe bloquear ni romper el alta si falla)
+    app.prisma.growthEvent.create({
+      data: { event: 'REGISTER_COMPLETED', page: 'register', meta: { tenantId: tenant.id }, ip: req.ip },
+    }).catch(() => {});
+    linkReferralOnRegister(body.referralCode, tenant.id, emailLower, app.log);
 
     // Email de bienvenida al usuario + notificación a admins
     // (antes no se enviaba nada: el usuario no recibía confirmación

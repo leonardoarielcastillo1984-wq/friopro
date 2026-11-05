@@ -352,6 +352,9 @@ model Tenant {
   demoStartedAt DateTime? @db.Timestamptz
   demoExpiresAt DateTime? @db.Timestamptz
 
+  // Programa de referidos — código único por tenant para invitar
+  referralCode String? @unique
+
   // LLM config (per-tenant overrides)
   llmProvider String?
   llmModel    String?
@@ -384,6 +387,7 @@ model Tenant {
   deletedAt DateTime? @db.Timestamptz
 
   memberships          TenantMembership[]
+  referralsMade        Referral[]         @relation("Referrer")
   subscriptions        TenantSubscription[]
   features             TenantFeature[]
   auditEvents          AuditEvent[]
@@ -13552,10 +13556,59 @@ model MarketingLead {
 
   createdAt DateTime @default(now()) @db.Timestamptz
 
+  // Nurture automático (growthNurtureJob): pasos de la secuencia de emails
+  nurtureStep    Int       @default(0) // 0=sin nurture, 1..3=emails enviados
+  lastNurturedAt DateTime? @db.Timestamptz
+  unsubscribedAt DateTime? @db.Timestamptz // baja voluntaria — nunca más escribir
+  consentedAt    DateTime? @db.Timestamptz // opt-in a novedades (checkbox en LeadCapture) — sin esto NO se envía la secuencia
+
   @@index([email])
   @@index([source])
   @@index([createdAt])
+  @@index([nurtureStep])
   @@map("marketing_leads")
+}
+
+// ── Growth engine ────────────────────────────────────────────────
+// Eventos de funnel sin auth: page_view en landings, tool_use en
+// herramientas gratuitas, register_started/completed, validate_doc…
+// Ligero a propósito: sin FKs, solo índices para agregados rápidos.
+model GrowthEvent {
+  id    String @id @default(uuid()) @db.Uuid
+  event String // PAGE_VIEW | TOOL_VIEW | LEAD_SUBMITTED | REGISTER_STARTED | REGISTER_COMPLETED | REFERRAL_CLICK | VALIDATE_DOC | UNSUBSCRIBE
+  page  String? // path o slug de la página donde ocurrió
+  meta  Json?   // extras (utm, source, referrer-domain…)
+  ip    String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([event])
+  @@index([page])
+  @@index([createdAt])
+  @@map("growth_events")
+}
+
+// Programa de referidos (loop estilo Dropbox):
+// cada tenant tiene referralCode; cuando un nuevo tenant se registra
+// con ese código, ambos reciben recompensa (días extra de trial).
+model Referral {
+  id            String    @id @default(uuid()) @db.Uuid
+  code          String    // código del tenant que refiere (único por referrer)
+  referrerId    String    @db.Uuid
+  referrer      Tenant    @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referredId    String?   @db.Uuid // tenant creado gracias al código
+  referredEmail String?   // email que se registró
+  status        String    @default("CLICKED") // CLICKED | REGISTERED | REWARDED
+  rewardDays    Int       @default(30)
+  rewardedAt    DateTime? @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([code])
+  @@index([referrerId])
+  @@index([status])
+  @@map("referrals")
 }
 
 // ═══════════════════════════════════════════════════════════════
