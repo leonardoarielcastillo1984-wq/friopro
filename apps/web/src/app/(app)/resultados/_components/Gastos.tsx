@@ -24,7 +24,7 @@ const ESTADO_GASTO: Record<string, { label: string; color: string }> = {
   VENCIDO: { label: 'Vencido', color: 'bg-red-50 text-red-700' },
   VIGENTE: { label: 'Vigente', color: 'bg-amber-50 text-amber-700' },
   PARCIAL: { label: 'Parcial', color: 'bg-blue-50 text-blue-700' },
-  CONTADO: { label: 'Contado', color: 'bg-neutral-100 text-neutral-500' },
+  CONTADO: { label: 'Sin datos', color: 'bg-neutral-100 text-neutral-500' },
 };
 
 const TIPO_LABEL: Record<string, { label: string; color: string }> = {
@@ -342,7 +342,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
             <div><label className={labelCls}>Proveedor</label><input value={form.proveedor} onChange={e => set('proveedor', e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>RUT / CUIT proveedor</label><input value={form.proveedorRut} onChange={e => set('proveedorRut', e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Fecha</label><input type="date" value={form.fecha} onChange={e => set('fecha', e.target.value)} className={inputCls} /></div>
-            <div><label className={labelCls}>Vencimiento <span className="font-normal text-neutral-400">(vacío = contado)</span></label><input type="date" value={form.fechaVencimiento} onChange={e => set('fechaVencimiento', e.target.value)} className={inputCls} /></div>
+            <div><label className={labelCls}>Vencimiento <span className="font-normal text-neutral-400">(vacío = sin datos)</span></label><input type="date" value={form.fechaVencimiento} onChange={e => set('fechaVencimiento', e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Categoría</label>
               <select value={form.categoria} onChange={e => set('categoria', e.target.value)} className={inputCls}>
                 {Object.entries(CATEGORIA_GASTO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -426,7 +426,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
           <span><span className="mr-1 rounded-full bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700">Pagado</span>pagos registrados cubren el total</span>
           <span><span className="mr-1 rounded-full bg-red-50 px-1.5 py-0.5 font-medium text-red-700">Vencido</span>debe y ya pasó su vencimiento</span>
           <span><span className="mr-1 rounded-full bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700">Vigente</span>debe, aún no vence</span>
-          <span><span className="mr-1 rounded-full bg-neutral-100 px-1.5 py-0.5 font-medium text-neutral-500">Contado</span>sin pago ni vencimiento registrado: se asume pagado al contado</span>
+          <span><span className="mr-1 rounded-full bg-neutral-100 px-1.5 py-0.5 font-medium text-neutral-500">Sin datos</span>sin pago ni vencimiento cargados</span>
         </div>
       )}
       {loading ? <div className="py-10 text-center text-neutral-400"><Loader2 className="inline animate-spin" size={18} /></div> : (
@@ -471,7 +471,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
                         if (!e) return <span className="text-xs text-neutral-300">—</span>;
                         const det = g.saldo != null && g.saldo > 0.5 && g.estado !== 'PAGADO'
                           ? `Debe ${fmtMoney(g.saldo, g.moneda)}${g.fechaVencimiento ? ` · vence ${fmtFecha(g.fechaVencimiento)}` : ''}`
-                          : g.estado === 'CONTADO' ? 'Sin vencimiento ni pago registrado: se asume pagado al contado'
+                          : g.estado === 'CONTADO' ? 'Sin vencimiento ni pago registrado: no hay datos para evaluar'
                           : g.fechaVencimiento ? `vence ${fmtFecha(g.fechaVencimiento)}` : undefined;
                         const label = g.estado === 'VENCIDO' && g.diasVencidos
                           ? `Vencido · ${g.diasVencidos} ${g.diasVencidos === 1 ? 'día' : 'días'}`
