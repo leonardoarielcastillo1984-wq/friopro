@@ -775,7 +775,28 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       }
     }
     for (const fid of tocadas) await syncFacturaEstado(app.prisma, fid);
-    return reply.send({ creados, facturasAfectadas: tocadas.size, errores, filas: resFilas });
+
+    // Pagos a proveedores: cada cargo matcheado crea FinanzaPago (dedup CARTOLA:*).
+    let pagosCreados = 0;
+    for (const r of resCargos.filter(x => x.estado === 'match')) {
+      for (const a of r.gastos) {
+        try {
+          await prisma().finanzaPago.create({
+            data: {
+              tenantId, gastoId: a.id, fecha: new Date(`${r.fecha}T12:00:00Z`),
+              importe: a.aplicar, moneda: a.moneda || moneda || 'CLP',
+              referencia: r.firma, medioPago: 'TRANSFERENCIA',
+              notas: `Cartola: ${r.descripcion}`.slice(0, 500),
+              createdById: user.id, createdByNombre: user.nombre,
+            },
+          });
+          pagosCreados++;
+        } catch (e: any) {
+          errores.push(`${r.fecha} $${r.monto}: ${e?.message?.slice(0, 120) || 'error'}`);
+        }
+      }
+    }
+    return reply.send({ creados, pagosCreados, facturasAfectadas: tocadas.size, errores, filas: resFilas, cargos: resCargos });
   });
 
   // POST /cartola-deshacer {referencia} — revierte un abono ya conciliado:

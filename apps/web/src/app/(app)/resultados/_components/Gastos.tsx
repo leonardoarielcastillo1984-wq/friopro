@@ -34,7 +34,7 @@ const TIPO_LABEL: Record<string, { label: string; color: string }> = {
 
 const hoy = () => new Date().toISOString().slice(0, 10);
 const nuevoForm = (moneda: string) => ({
-  fecha: hoy(), proveedor: '', proveedorRut: '', concepto: '', categoria: 'OTRO', tipoGasto: 'OPERATIVO',
+  fecha: hoy(), fechaVencimiento: '', proveedor: '', proveedorRut: '', concepto: '', categoria: 'OTRO', tipoGasto: 'OPERATIVO',
   centroCostoId: '', conIva: false, ivaRecuperable: true, neto: '', ivaRate: String(IVA_DEFAULT[moneda] ?? 0), iva: '', total: '', moneda,
   tipoComprobante: '', numeroComprobante: '',
   // modo: PUNTUAL | FIJO (repite igual) | CUOTA (varía por mes) | AMORTIZA (divide el total)
@@ -124,7 +124,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
     const conIva = g.neto !== null && g.iva !== null && g.iva > 0;
     setEditId(g.id);
     setForm({
-      fecha: toDateInput(g.fecha), proveedor: g.proveedor || '', proveedorRut: g.proveedorRut || '', concepto: g.concepto,
+      fecha: toDateInput(g.fecha), fechaVencimiento: toDateInput(g.fechaVencimiento || null), proveedor: g.proveedor || '', proveedorRut: g.proveedorRut || '', concepto: g.concepto,
       categoria: g.categoria, tipoGasto: g.tipoGasto, centroCostoId: g.centroCostoId || '', conIva, ivaRecuperable: g.ivaRecuperable !== false,
       neto: g.neto !== null ? String(g.neto) : '', ivaRate: conIva && g.neto ? String(Math.round(((g.iva || 0) / g.neto) * 1000) / 10) : String(IVA_DEFAULT[g.moneda] ?? 0),
       iva: g.iva !== null ? String(g.iva) : '', total: String(g.total), moneda: g.moneda,
@@ -157,6 +157,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
         ivaRecuperable: form.conIva ? form.ivaRecuperable : true,
         total: Number(form.total), moneda: form.moneda,
         tipoComprobante: form.tipoComprobante || null, numeroComprobante: form.numeroComprobante || null,
+        fechaVencimiento: form.fechaVencimiento || null,
         esRecurrente: form.modo === 'FIJO' || form.modo === 'CUOTA',
         esAmortizable: form.modo === 'AMORTIZA',
         variacionCuota: form.modo === 'CUOTA' && form.variacionCuota !== '' ? Number(form.variacionCuota) : null,
@@ -304,6 +305,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
             <div><label className={labelCls}>Proveedor</label><input value={form.proveedor} onChange={e => set('proveedor', e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>RUT / CUIT proveedor</label><input value={form.proveedorRut} onChange={e => set('proveedorRut', e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Fecha</label><input type="date" value={form.fecha} onChange={e => set('fecha', e.target.value)} className={inputCls} /></div>
+            <div><label className={labelCls}>Vencimiento <span className="font-normal text-neutral-400">(vacío = contado)</span></label><input type="date" value={form.fechaVencimiento} onChange={e => set('fechaVencimiento', e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Categoría</label>
               <select value={form.categoria} onChange={e => set('categoria', e.target.value)} className={inputCls}>
                 {Object.entries(CATEGORIA_GASTO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
