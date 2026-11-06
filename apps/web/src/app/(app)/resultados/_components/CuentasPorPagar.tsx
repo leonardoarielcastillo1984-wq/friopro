@@ -51,10 +51,10 @@ export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }:
       if (pagando.origen === 'GASTO') {
         await apiFetch(`/finanzas/gastos/${pagando.id}/pagos`, {
           method: 'POST',
-          body: JSON.stringify({ importe: Number(pagoForm.importe), fecha: pagoForm.fecha, referencia: pagoForm.referencia || null, medioPago: pagoForm.medioPago, moneda: pagando.moneda }),
+          json: { importe: Number(pagoForm.importe), fecha: pagoForm.fecha, referencia: pagoForm.referencia || null, medioPago: pagoForm.medioPago, moneda: pagando.moneda },
         });
       } else {
-        await apiFetch(`/finanzas/flota-facturas/${pagando.id}/pagar`, { method: 'POST', body: JSON.stringify({ fecha: pagoForm.fecha }) });
+        await apiFetch(`/finanzas/flota-facturas/${pagando.id}/pagar`, { method: 'POST', json: { fecha: pagoForm.fecha } });
       }
       setPagando(null);
       setPagoForm({ importe: '', fecha: new Date().toISOString().slice(0, 10), referencia: '', medioPago: 'TRANSFERENCIA' });

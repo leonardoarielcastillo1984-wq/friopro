@@ -933,13 +933,15 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       prisma().finanzaCobro.findMany({ where: { tenantId, referencia }, select: { id: true, facturaId: true } }),
       prisma().finanzaPago.findMany({ where: { tenantId, referencia }, select: { id: true } }),
     ]);
-    if (!cobros.length && !pagos.length) return reply.send({ eliminados: 0, facturas: 0, gastos: 0 });
-    const fids = [...new Set(cobros.map((c: any) => c.facturaId))] as string[];
-    await prisma().finanzaCobro.deleteMany({ where: { tenantId, referencia } });
-    await prisma().finanzaPago.deleteMany({ where: { tenantId, referencia } });
-    for (const fid of fids) await syncFacturaEstado(app.prisma, fid);
-    // El movimiento queda registrado como deshecho (auditoría), no vuelve a
-    // sin_match: si se re-importa la cartola se re-conciliará de nuevo.
+    let fids: string[] = [];
+    if (cobros.length || pagos.length) {
+      fids = [...new Set(cobros.map((c: any) => c.facturaId))] as string[];
+      await prisma().finanzaCobro.deleteMany({ where: { tenantId, referencia } });
+      await prisma().finanzaPago.deleteMany({ where: { tenantId, referencia } });
+      for (const fid of fids) await syncFacturaEstado(app.prisma, fid);
+    }
+    // El movimiento queda registrado como deshecho (auditoría) aunque ya no
+    // haya cobros/pagos que borrar: si se re-importa se re-conciliará de nuevo.
     await prisma().finanzaCartolaMov.updateMany({
       where: { tenantId, firma: referencia },
       data: { estado: 'deshecho', vinculos: [] },

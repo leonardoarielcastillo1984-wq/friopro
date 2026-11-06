@@ -5,12 +5,19 @@
 -- Idempotente: ON CONFLICT DO NOTHING + safe para correr más de una vez.
 -- Los movimientos que quedaron sin match en su momento no se pueden
 -- reconstruir (no dejaron cobros/pagos) — solo aparecen los conciliados.
+-- OJO: `firma` se guarda CON el prefijo 'CARTOLA:' (igual que
+-- cobros/pagos.referencia) — es la llave de /cartola-deshacer y del dedupe.
+
+-- Correctivo idempotente por si corrió una versión que recortaba el prefijo:
+UPDATE finanza_cartola_movs
+SET firma = 'CARTOLA:' || firma, "updatedAt" = now()
+WHERE firma NOT LIKE 'CARTOLA:%';
 
 -- ABONOS: cobros aplicados a facturas
 WITH agr AS (
   SELECT
     c."tenantId",
-    substring(c.referencia from 9) AS firma,
+    c.referencia                 AS firma,
     min(c.fecha)                 AS fecha,
     sum(c.importe)               AS monto,
     min(c.moneda)                AS moneda,
@@ -25,7 +32,7 @@ WITH agr AS (
   FROM finanza_cobros c
   JOIN finanza_facturas f ON f.id = c."facturaId"
   WHERE c.referencia LIKE 'CARTOLA:%'
-  GROUP BY c."tenantId", substring(c.referencia from 9)
+  GROUP BY c."tenantId", c.referencia
 )
 INSERT INTO finanza_cartola_movs
   (id, "tenantId", tipo, origen, firma, fecha, descripcion, referencia,
@@ -44,7 +51,7 @@ ON CONFLICT ("tenantId", "firma", "origen") DO NOTHING;
 WITH agr AS (
   SELECT
     p."tenantId",
-    substring(p.referencia from 9) AS firma,
+    p.referencia                 AS firma,
     min(p.fecha)                 AS fecha,
     sum(p.importe)               AS monto,
     min(p.moneda)                AS moneda,
@@ -59,7 +66,7 @@ WITH agr AS (
   FROM finanza_pagos p
   JOIN finanza_gastos g ON g.id = p."gastoId"
   WHERE p.referencia LIKE 'CARTOLA:%'
-  GROUP BY p."tenantId", substring(p.referencia from 9)
+  GROUP BY p."tenantId", p.referencia
 )
 INSERT INTO finanza_cartola_movs
   (id, "tenantId", tipo, origen, firma, fecha, descripcion, referencia,
