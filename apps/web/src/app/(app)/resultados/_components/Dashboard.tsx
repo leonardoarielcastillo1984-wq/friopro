@@ -6,6 +6,7 @@ import { TrendingUp, TrendingDown, DollarSign, Wallet, Building2, ChevronRight, 
 import { useAsistente } from './useAsistente';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ReferenceLine, CartesianGrid, Legend } from 'recharts';
 import { fmtMoney, fmtPct, fmtFecha, fmtActualizado, MESES, GRUPO_LABEL, labelRubro } from './fmt';
+import ExpandableCard from '@/components/ExpandableCard';
 
 type Mes = {
   mes: number; mesKey: string; facturado: number; ingresosOperativos: number;
@@ -724,9 +725,10 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="grafico-resultado" data-explica-titulo={`Resultado por mes — ${anio}`}>
-          <div className="mb-2 text-sm font-semibold text-neutral-900">Resultado por mes <span className="font-normal text-neutral-400">— verde ganó, rojo perdió · clic para ver el detalle</span>{(data as any)?.actualizadoEn && <span className="ml-2 text-[10px] font-normal text-neutral-400">· act. {fmtActualizado((data as any).actualizadoEn)}</span>}</div>
-          <div className="h-64">
+        <ExpandableCard explica="grafico-resultado" explicaTitulo={`Resultado por mes — ${anio}`}
+          titulo={<>Resultado por mes <span className="font-normal text-neutral-400">— verde ganó, rojo perdió · clic para ver el detalle</span>{(data as any)?.actualizadoEn && <span className="ml-2 text-[10px] font-normal text-neutral-400">· act. {fmtActualizado((data as any).actualizadoEn)}</span>}</>}>
+          {(expandido) => (
+          <div className={expandido ? 'h-[70vh]' : 'h-64'}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
@@ -743,16 +745,18 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </div>
-        <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="grafico-ventas" data-explica-titulo={`Ventas vs costos — ${anio}`}>
-          <div className="mb-2 flex items-center justify-between gap-2 text-sm font-semibold text-neutral-900">
-            <span>Ventas vs costos{conIva && <span className="ml-1.5 text-[10px] font-normal text-amber-600">con IVA</span>}{(data as any)?.actualizadoEn && <span className="ml-2 text-[10px] font-normal text-neutral-400">· act. {fmtActualizado((data as any).actualizadoEn)}</span>}</span>
+          )}
+        </ExpandableCard>
+        <ExpandableCard explica="grafico-ventas" explicaTitulo={`Ventas vs costos — ${anio}`}
+          titulo={<>Ventas vs costos{conIva && <span className="ml-1.5 text-[10px] font-normal text-amber-600">con IVA</span>}{(data as any)?.actualizadoEn && <span className="ml-2 text-[10px] font-normal text-neutral-400">· act. {fmtActualizado((data as any).actualizadoEn)}</span>}</>}
+          acciones={
             <div className="flex rounded-lg border border-neutral-200 p-0.5 text-[11px] font-normal" title="Ver los montos de facturas y gastos con o sin impuesto">
               <button onClick={() => setConIva(false)} className={`rounded-md px-2 py-0.5 ${!conIva ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:text-neutral-700'}`}>sin IVA</button>
               <button onClick={() => setConIva(true)} className={`rounded-md px-2 py-0.5 ${conIva ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:text-neutral-700'}`}>con IVA</button>
             </div>
-          </div>
-          <div className="h-64">
+          }>
+          {(expandido) => (
+          <div className={expandido ? 'h-[70vh]' : 'h-64'}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
@@ -778,7 +782,8 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </div>
+          )}
+        </ExpandableCard>
       </div>
 
       <Rubros porRubro={totales.porRubro || {}} moneda={moneda} titulo={`¿En qué se fue la plata en ${anio}?`} act={(data as any)?.actualizadoEn} />
