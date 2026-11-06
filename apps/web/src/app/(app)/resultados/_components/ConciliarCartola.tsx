@@ -175,7 +175,7 @@ export default function ConciliarCartola({ moneda, onClose, onDone }: { moneda: 
     if (f.estado === 'ya_aplicado') return <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium text-neutral-500">ya aplicado</span>;
     if (f.estado === 'sin_match') return <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">sin match</span>;
     const col = f.confianza === 'alta' ? 'bg-emerald-100 text-emerald-700' : f.confianza === 'media' ? 'bg-amber-100 text-amber-700' : 'bg-orange-100 text-orange-700';
-    const lbl = f.como === 'rut' ? 'por RUT' : f.como === 'nombre' ? 'por nombre' : 'por monto';
+    const lbl = f.como === 'folio' ? 'por folio' : f.como === 'rut' ? 'por RUT' : f.como === 'nombre' ? 'por nombre' : 'por monto';
     return <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${col}`}>{lbl}{f.confianza !== 'alta' ? ` (${f.confianza})` : ''}</span>;
   };
 

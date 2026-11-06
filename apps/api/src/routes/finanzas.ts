@@ -467,6 +467,38 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     return `CARTOLA:${f.fecha}:${Math.round(f.monto)}:${h.toString(36)}`;
   };
 
+  // Folios mencionados en la descripción/referencia: la llave documental
+  // más fuerte. Requiere palabra clave (factura, fact, f, folio, nro, n°)
+  // seguida de números; soporta listas ("fact 1234 y 5678") y rangos
+  // ("facturas 1234-1240", expansión ≤50). Los números extraídos son solo
+  // candidatos — el match final exige que los saldos cuadren con el monto.
+  const foliosEnTexto = (t: string): number[] => {
+    const out = new Set<number>();
+    // Crudo (no normTxt): se preservan guiones (rangos) y °/º.
+    const up = t.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+    const re = /\b(?:FACTURAS?|FACS?|FACT|FCT|FOLIOS?|NRO|N°|Nº|N\.|F)[\s:.\-°º#]*(\d[\d\s,.\-YA]{0,60})/g;
+    for (const m of up.matchAll(re)) {
+      const part = m[1];
+      const rango = part.match(/^\s*(\d{2,9})\s*-\s*(\d{2,9})/);
+      if (rango) {
+        const a = Number(rango[1]), b = Number(rango[2]);
+        if (b > a && b - a <= 50) { for (let n = a; n <= b; n++) out.add(n); continue; }
+      }
+      for (const g of part.matchAll(/\d+/g)) { const n = Number(g[0]); if (n >= 10 && n <= 999999999) out.add(n); }
+    }
+    return [...out];
+  };
+  // Grupos de dígitos del número de comprobante (folio SII "12834", o
+  // "0001-12345678" con punto de venta) normalizados sin ceros a la izquierda.
+  const folioNumsDe = (numero: string | null | undefined): number[] => {
+    const out = new Set<number>();
+    for (const g of String(numero || '').matchAll(/\d+/g)) {
+      const n = Number(g[0]);
+      if (n >= 10 && n <= 999999999) out.add(n);
+    }
+    return [...out];
+  };
+
   const cartolaMovSchema = z.object({
     fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}/, 'fecha YYYY-MM-DD'),
     descripcion: z.string().max(400).default(''),
@@ -524,6 +556,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     });
     const pend = facts.map((f: any) => ({
       id: f.id, numero: [f.puntoVenta, f.numero].filter(Boolean).join('-') || null,
+      folioNums: folioNumsDe(f.numero),
       cliente: f.clienteNombre, rut: f.clienteRut ? normRutKey(f.clienteRut) : null,
       nombreNorm: normTxt(f.clienteNombre), moneda: f.moneda,
       fechaEmision: f.fechaEmision,
@@ -591,21 +624,44 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       // facturas aún no cargadas). Sin repartos parciales arbitrarios.
       let aplica: { f: any; aplicar: number }[] = [];
       let excedente = 0;
-      if (cand.length) {
-        const exact = cand.find((f: any) => Math.abs(getResto(f) - fl.monto) <= 2);
-        const suma = cand.reduce((s: number, f: any) => s + getResto(f), 0);
-        if (exact) aplica = [{ f: exact, aplicar: getResto(exact) }];
-        else if (Math.abs(suma - fl.monto) <= 2) aplica = cand.map((f: any) => ({ f, aplicar: getResto(f) }));
-        else if (suma < fl.monto - 2) {
-          aplica = cand.map((f: any) => ({ f, aplicar: getResto(f) }));
-          excedente = fl.monto - suma;
-        } else {
-          const sub = subconjuntoExacto(cand, fl.monto);
-          if (sub?.length) aplica = sub.map(f => ({ f, aplicar: getResto(f) }));
+
+      // Folios explícitos en el texto del movimiento: llave documental
+      // exacta (el pagador indicó qué factura paga). Se valida igual que el
+      // resto — los saldos de las facturas citadas deben cuadrar (±$2).
+      const foliosTxt = foliosEnTexto(`${fl.descripcion} ${fl.referencia || ''}`);
+      if (foliosTxt.length) {
+        const pool = cand.length ? cand : pend.filter(emitidaAntes);
+        const porFolio = pool.filter((f: any) => f.folioNums.some((n: number) => foliosTxt.includes(n)));
+        if (porFolio.length) {
+          const exact = porFolio.find((f: any) => Math.abs(getResto(f) - fl.monto) <= 2);
+          const sumaF = porFolio.reduce((s: number, f: any) => s + getResto(f), 0);
+          if (exact) aplica = [{ f: exact, aplicar: getResto(exact) }];
+          else if (Math.abs(sumaF - fl.monto) <= 2) aplica = porFolio.map((f: any) => ({ f, aplicar: getResto(f) }));
+          else {
+            const sub = subconjuntoExacto(porFolio, fl.monto);
+            if (sub?.length) aplica = sub.map((f: any) => ({ f, aplicar: getResto(f) }));
+          }
+          if (aplica.length) { como = 'folio'; cand = porFolio; if (!candTodas.length) candTodas = porFolio; }
         }
-      } else {
-        const unicos = pend.filter((f: any) => emitidaAntes(f) && Math.abs(getResto(f) - fl.monto) <= 2);
-        if (unicos.length === 1) { cand = unicos; candTodas = unicos; aplica = [{ f: unicos[0], aplicar: getResto(unicos[0]) }]; como = 'monto'; }
+      }
+
+      if (!aplica.length) {
+        if (cand.length) {
+          const exact = cand.find((f: any) => Math.abs(getResto(f) - fl.monto) <= 2);
+          const suma = cand.reduce((s: number, f: any) => s + getResto(f), 0);
+          if (exact) aplica = [{ f: exact, aplicar: getResto(exact) }];
+          else if (Math.abs(suma - fl.monto) <= 2) aplica = cand.map((f: any) => ({ f, aplicar: getResto(f) }));
+          else if (suma < fl.monto - 2) {
+            aplica = cand.map((f: any) => ({ f, aplicar: getResto(f) }));
+            excedente = fl.monto - suma;
+          } else {
+            const sub = subconjuntoExacto(cand, fl.monto);
+            if (sub?.length) aplica = sub.map(f => ({ f, aplicar: getResto(f) }));
+          }
+        } else {
+          const unicos = pend.filter((f: any) => emitidaAntes(f) && Math.abs(getResto(f) - fl.monto) <= 2);
+          if (unicos.length === 1) { cand = unicos; candTodas = unicos; aplica = [{ f: unicos[0], aplicar: getResto(unicos[0]) }]; como = 'monto'; }
+        }
       }
 
       if (!aplica.length) {
@@ -700,6 +756,27 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       let cand = candTodas.filter(emitidaAntes);
 
       let aplica: { g: any; aplicar: number }[] = [];
+
+      // Folios explícitos en el texto del cargo (el pagador indicó qué
+      // factura/comprobante pagó). Mismo criterio que en abonos: cuadre ±$2.
+      const foliosTxt = foliosEnTexto(`${fl.descripcion} ${fl.referencia || ''}`);
+      if (foliosTxt.length) {
+        const pool = cand.length ? cand : gastosPend.filter(emitidaAntes);
+        const porFolio = pool.filter((g: any) => g.folioNums.some((n: number) => foliosTxt.includes(n)));
+        if (porFolio.length) {
+          const exact = porFolio.find((g: any) => Math.abs(getRestoG(g) - fl.monto) <= 2);
+          const sumaF = porFolio.reduce((s: number, g: any) => s + getRestoG(g), 0);
+          if (exact) aplica = [{ g: exact, aplicar: getRestoG(exact) }];
+          else if (Math.abs(sumaF - fl.monto) <= 2) aplica = porFolio.map((g: any) => ({ g, aplicar: getRestoG(g) }));
+          else {
+            const sub = subconjuntoExactoG(porFolio, fl.monto);
+            if (sub?.length) aplica = sub.map((g: any) => ({ g, aplicar: getRestoG(g) }));
+          }
+          if (aplica.length) { como = 'folio'; cand = porFolio; if (!candTodas.length) candTodas = porFolio; }
+        }
+      }
+
+      if (!aplica.length)
       if (cand.length) {
         const exact = cand.find((g: any) => Math.abs(getRestoG(g) - fl.monto) <= 2);
         const suma = cand.reduce((s: number, g: any) => s + getRestoG(g), 0);
