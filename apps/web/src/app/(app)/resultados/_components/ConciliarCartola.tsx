@@ -128,7 +128,8 @@ async function leerArchivo(file: File): Promise<{ abonos: Fila[]; cargos: Fila[]
 }
 
 // ── Modal ──────────────────────────────────────────────────────────────────
-export default function ConciliarCartola({ moneda, onClose, onDone }: { moneda: string; onClose: () => void; onDone: () => void }) {
+export default function ConciliarCartola({ moneda, origen = 'CARTOLA', onClose, onDone }: { moneda: string; origen?: 'CARTOLA' | 'CAJA_CHICA'; onClose: () => void; onDone: () => void }) {
+  const esCaja = origen === 'CAJA_CHICA';
   const [archivo, setArchivo] = useState<string | null>(null);
   const [filas, setFilas] = useState<Fila[]>([]);
   const [cargos, setCargos] = useState<Fila[]>([]);
@@ -145,7 +146,7 @@ export default function ConciliarCartola({ moneda, onClose, onDone }: { moneda: 
       if (!abonos.length && !cs.length) { setError('No encontré movimientos en el archivo. Revisá que tenga columnas Fecha / Abono / Cargo (o Monto con signo).'); return; }
       setFilas(abonos); setCargos(cs);
       setBusy('analizar');
-      const r = await apiFetch<any>('/finanzas/cartola-conciliar', { method: 'POST', json: { commit: false, moneda, filas: abonos, cargos: cs } });
+      const r = await apiFetch<any>('/finanzas/cartola-conciliar', { method: 'POST', json: { commit: false, moneda, origen, filas: abonos, cargos: cs } });
       setPreview(r);
     } catch (e: any) { setError(e?.message || 'No se pudo leer el archivo'); }
     finally { setBusy(null); }
@@ -154,7 +155,7 @@ export default function ConciliarCartola({ moneda, onClose, onDone }: { moneda: 
   const aplicar = async () => {
     setBusy('commit'); setError(null);
     try {
-      const r = await apiFetch<any>('/finanzas/cartola-conciliar', { method: 'POST', json: { commit: true, moneda, filas, cargos } });
+      const r = await apiFetch<any>('/finanzas/cartola-conciliar', { method: 'POST', json: { commit: true, moneda, origen, filas, cargos } });
       setResultado(r); onDone();
     } catch (e: any) { setError(e?.message || 'Error al registrar los cobros'); }
     finally { setBusy(null); }
@@ -165,7 +166,7 @@ export default function ConciliarCartola({ moneda, onClose, onDone }: { moneda: 
     setBusy('commit'); setError(null);
     try {
       await apiFetch('/finanzas/cartola-deshacer', { method: 'POST', json: { referencia: firma } });
-      const r = await apiFetch<any>('/finanzas/cartola-conciliar', { method: 'POST', json: { commit: false, moneda, filas, cargos } });
+      const r = await apiFetch<any>('/finanzas/cartola-conciliar', { method: 'POST', json: { commit: false, moneda, origen, filas, cargos } });
       setPreview(r); onDone();
     } catch (e: any) { setError(e?.message || 'Error al deshacer'); }
     finally { setBusy(null); }
@@ -186,7 +187,7 @@ export default function ConciliarCartola({ moneda, onClose, onDone }: { moneda: 
       <div className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-white shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2 border-b border-neutral-200 px-5 py-3.5">
           <Landmark size={16} className="text-blue-600" />
-          <h2 className="text-sm font-semibold text-neutral-900">Conciliar cartola bancaria</h2>
+          <h2 className="text-sm font-semibold text-neutral-900">{esCaja ? 'Conciliar caja chica' : 'Conciliar cartola bancaria'}</h2>
           <button onClick={onClose} className="ml-auto rounded p-1 text-neutral-400 hover:bg-neutral-100"><X size={16} /></button>
         </div>
 
@@ -194,12 +195,14 @@ export default function ConciliarCartola({ moneda, onClose, onDone }: { moneda: 
           {!resultado && (
             <>
               <p className="mb-3 text-xs text-neutral-500">
-                Subí la cartola del banco (Excel o CSV). Los <b>abonos</b> se cruzan con las facturas de clientes pendientes y los <b>cargos</b> con los gastos de proveedores pendientes, por RUT o nombre — solo se imputa cuando un documento (o una combinación) suma <b>exactamente</b> el movimiento, y nunca a documentos emitidos después del pago. Re-subir el mismo archivo no duplica registros, y lo ya aplicado se puede <b>deshacer</b>.
+                {esCaja
+                  ? <>Subí el registro de caja chica (Excel o CSV). Los <b>abonos</b> (reposiciones de fondo) se cruzan con facturas pendientes y los <b>cargos</b> con gastos pendientes — solo se imputa cuando cuadra <b>exactamente</b> el monto, y los pagos quedan con medio <b>CAJA_CHICA</b>. Re-subir no duplica, y lo aplicado se puede <b>deshacer</b>.</>
+                  : <>Subí la cartola del banco (Excel o CSV). Los <b>abonos</b> se cruzan con las facturas de clientes pendientes y los <b>cargos</b> con los gastos de proveedores pendientes, por RUT o nombre — solo se imputa cuando un documento (o una combinación) suma <b>exactamente</b> el movimiento, y nunca a documentos emitidos después del pago. Re-subir el mismo archivo no duplica registros, y lo ya aplicado se puede <b>deshacer</b>.</>}
               </p>
               <button onClick={() => fileRef.current?.click()} disabled={!!busy}
                 className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-neutral-300 py-7 text-neutral-500 hover:border-neutral-400 hover:bg-neutral-50 disabled:opacity-50">
                 {busy === 'parse' || busy === 'analizar' ? <Loader2 size={20} className="animate-spin" /> : <Upload size={20} />}
-                <span className="text-sm">{archivo ? <><FileSpreadsheet size={14} className="mr-1 inline" />{archivo} — clic para cambiar</> : 'Subir cartola (.xlsx, .xls, .csv)'}</span>
+                <span className="text-sm">{archivo ? <><FileSpreadsheet size={14} className="mr-1 inline" />{archivo} — clic para cambiar</> : esCaja ? 'Subir caja chica (.xlsx, .xls, .csv)' : 'Subir cartola (.xlsx, .xls, .csv)'}</span>
                 {busy === 'analizar' && <span className="text-xs">Cruzando con facturas y gastos pendientes…</span>}
               </button>
               <input ref={fileRef} type="file" accept=".csv,.txt,.tsv,.xls,.xlsx" className="hidden" onChange={e => { if (e.target.files?.[0]) cargar(e.target.files[0]); e.target.value = ''; }} />

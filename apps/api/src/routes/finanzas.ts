@@ -207,6 +207,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     tipoComprobante: z.enum(['FACTURA', 'NOTA_CREDITO', 'NOTA_DEBITO', 'BOLETA', 'OTRO']).default('FACTURA'),
     fechaEmision: z.string().optional(),
     fechaVencimiento: z.string().optional().nullable(),
+    fechaCobroEstimada: z.string().optional().nullable(), // cuándo prometió pagar el cliente
     clienteId: z.string().uuid().optional().nullable(),
     clienteNombre: z.string().min(1).max(200),
     clienteRut: z.string().max(20).optional().nullable(),
@@ -286,6 +287,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         ...data, tenantId,
         fechaEmision: data.fechaEmision ? new Date(data.fechaEmision) : new Date(),
         fechaVencimiento: data.fechaVencimiento ? new Date(data.fechaVencimiento) : null,
+        fechaCobroEstimada: data.fechaCobroEstimada ? new Date(data.fechaCobroEstimada) : null,
         uploadedById: user.id, uploadedByNombre: user.nombre,
         items: items?.length ? { create: items } : undefined,
       },
@@ -306,6 +308,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const update: any = { ...data };
     if (data.fechaEmision) update.fechaEmision = new Date(data.fechaEmision);
     if (data.fechaVencimiento !== undefined) update.fechaVencimiento = data.fechaVencimiento ? new Date(data.fechaVencimiento) : null;
+    if (data.fechaCobroEstimada !== undefined) update.fechaCobroEstimada = data.fechaCobroEstimada ? new Date(data.fechaCobroEstimada) : null;
     // Cierre de período: no se edita un doc de un mes cerrado ni se lo mueve a uno.
     const prev = await prisma().finanzaFactura.findFirst({ where: { id, tenantId, deletedAt: null }, select: { fechaEmision: true } });
     if (!prev) return reply.code(404).send({ error: 'Factura no encontrada' });
@@ -508,6 +511,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   const cartolaSchema = z.object({
     commit: z.boolean().default(false),
     moneda: z.string().max(5).optional().nullable(),
+    origen: z.enum(['CARTOLA', 'CAJA_CHICA']).default('CARTOLA'), // caja chica se concilia igual pero con medio propio
     filas: z.array(cartolaMovSchema).default([]),         // abonos → cobros de facturas
     cargos: z.array(cartolaMovSchema).default([]),        // cargos → pagos de gastos
   });
@@ -517,7 +521,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const body = cartolaSchema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
-    const { commit, moneda, filas, cargos } = body.data;
+    const { commit, moneda, origen, filas, cargos } = body.data;
+    const medioOrigen = origen === 'CAJA_CHICA' ? 'CAJA_CHICA' : 'TRANSFERENCIA';
     if (!filas.length && !cargos.length) return reply.code(400).send({ error: 'Sin movimientos: enviá filas (abonos) y/o cargos' });
     if (filas.length + cargos.length > 6000) return reply.code(400).send({ error: 'Máximo 6000 movimientos por cartola' });
     // Cierre de período: al commitear, los movimientos de meses cerrados se omiten.
@@ -569,7 +574,11 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     // Meet-in-the-middle O(2^(n/2)), n acotado a 24; prefiere menos facturas.
     const contarBits = (x: number) => { let c = 0; while (x) { c += x & 1; x >>>= 1; } return c; };
     const subconjuntoExacto = (cand: any[], target: number): any[] | null => {
-      const items = cand.slice(0, 24).map(f => ({ f, v: getResto(f) }));
+      // Desempate por antigüedad: a igualdad de combinaciones ganan los
+      // índices menores (mask < mejor), así que ordenamos por emisión.
+      const items = [...cand]
+        .sort((a, b) => +new Date(a.fechaEmision) - +new Date(b.fechaEmision))
+        .slice(0, 24).map(f => ({ f, v: getResto(f) }));
       const A = items.slice(0, 12), B = items.slice(12);
       const sumsA: { s: number; m: number }[] = [];
       for (let m = 1; m < (1 << A.length); m++) {
@@ -587,7 +596,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         while (lo < hi) { const mid = (lo + hi) >> 1; if (sumsA[mid].s < need - 2) lo = mid + 1; else hi = mid; }
         for (let k = lo; k < sumsA.length && sumsA[k].s <= need + 2; k++) {
           const mask = sumsA[k].m | (m << A.length);
-          if (mejor === null || contarBits(mask) < contarBits(mejor)) mejor = mask;
+          if (mejor === null || contarBits(mask) < contarBits(mejor) || (contarBits(mask) === contarBits(mejor) && mask < mejor)) mejor = mask;
         }
       }
       if (mejor === null) return null;
@@ -697,7 +706,9 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       include: { pagos: true },
       orderBy: [{ fechaVencimiento: 'asc' }, { fecha: 'asc' }],
     })).map((g: any) => ({
-      id: g.id, numero: g.numeroComprobante || null, proveedor: g.proveedor || g.concepto,
+      id: g.id, numero: g.numeroComprobante || null,
+      folioNums: folioNumsDe(g.numeroComprobante),
+      proveedor: g.proveedor || g.concepto,
       rut: g.proveedorRut ? normRutKey(g.proveedorRut) : null,
       nombreNorm: normTxt(g.proveedor || g.concepto), moneda: g.moneda,
       fecha: g.fecha,
@@ -707,7 +718,9 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const getRestoG = (g: any) => restoG.get(g.id) ?? g.saldo;
 
     const subconjuntoExactoG = (cand: any[], target: number): any[] | null => {
-      const items = cand.slice(0, 24).map(g => ({ g, v: getRestoG(g) }));
+      const items = [...cand]
+        .sort((a, b) => +new Date(a.fecha) - +new Date(b.fecha))
+        .slice(0, 24).map(g => ({ g, v: getRestoG(g) }));
       const A = items.slice(0, 12), B = items.slice(12);
       const sumsA: { s: number; m: number }[] = [];
       for (let m = 1; m < (1 << A.length); m++) {
@@ -725,7 +738,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         while (lo < hi) { const mid = (lo + hi) >> 1; if (sumsA[mid].s < need - 2) lo = mid + 1; else hi = mid; }
         for (let k = lo; k < sumsA.length && sumsA[k].s <= need + 2; k++) {
           const mask = sumsA[k].m | (m << A.length);
-          if (mejor === null || contarBits(mask) < contarBits(mejor)) mejor = mask;
+          if (mejor === null || contarBits(mask) < contarBits(mejor) || (contarBits(mask) === contarBits(mejor) && mask < mejor)) mejor = mask;
         }
       }
       if (mejor === null) return null;
@@ -776,7 +789,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         }
       }
 
-      if (!aplica.length)
+      if (!aplica.length) {
       if (cand.length) {
         const exact = cand.find((g: any) => Math.abs(getRestoG(g) - fl.monto) <= 2);
         const suma = cand.reduce((s: number, g: any) => s + getRestoG(g), 0);
@@ -789,6 +802,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       } else {
         const unicos = gastosPend.filter((g: any) => emitidaAntes(g) && Math.abs(getRestoG(g) - fl.monto) <= 2);
         if (unicos.length === 1) { cand = unicos; candTodas = unicos; aplica = [{ g: unicos[0], aplicar: getRestoG(unicos[0]) }]; como = 'monto'; }
+      }
       }
 
       if (!aplica.length) {
@@ -840,8 +854,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
             data: {
               tenantId, facturaId: a.id, fecha: new Date(`${r.fecha}T12:00:00Z`),
               importe: a.aplicar, moneda: a.moneda || moneda || 'CLP',
-              referencia: firmaCobro(r), medioPago: 'TRANSFERENCIA',
-              notas: `Cartola: ${r.descripcion}`.slice(0, 500),
+              referencia: firmaCobro(r), medioPago: medioOrigen,
+              notas: `${origen === 'CAJA_CHICA' ? 'Caja chica' : 'Cartola'}: ${r.descripcion}`.slice(0, 500),
               createdById: user.id, createdByNombre: user.nombre,
             },
           });
@@ -862,8 +876,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
             data: {
               tenantId, gastoId: a.id, fecha: new Date(`${r.fecha}T12:00:00Z`),
               importe: a.aplicar, moneda: a.moneda || moneda || 'CLP',
-              referencia: r.firma, medioPago: 'TRANSFERENCIA',
-              notas: `Cartola: ${r.descripcion}`.slice(0, 500),
+              referencia: r.firma, medioPago: medioOrigen,
+              notas: `${origen === 'CAJA_CHICA' ? 'Caja chica' : 'Cartola'}: ${r.descripcion}`.slice(0, 500),
               createdById: user.id, createdByNombre: user.nombre,
             },
           });
@@ -871,6 +885,38 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         } catch (e: any) {
           errores.push(`${r.fecha} $${r.monto}: ${e?.message?.slice(0, 120) || 'error'}`);
         }
+      }
+    }
+
+    // Persiste cada movimiento para auditoría: conciliados con sus vínculos
+    // (qué factura/gasto se pagó y cuánto) y huérfanos con el motivo, para
+    // resolverlos a mano desde el tab Conciliación. Idempotente por firma.
+    const movRows = [
+      ...resFilas.map((r: any) => ({ r, tipo: 'ABONO', vinc: (r.facturas || []).map((f: any) => ({ tipo: 'factura', ...f })) })),
+      ...resCargos.map((r: any) => ({ r, tipo: 'CARGO', vinc: (r.gastos || []).map((g: any) => ({ tipo: 'gasto', ...g })) })),
+    ].filter(({ r }) => r.estado === 'match' || r.estado === 'sin_match');
+    for (const { r, tipo, vinc } of movRows) {
+      const data: any = {
+        estado: r.estado === 'match' ? 'conciliado' : 'sin_match',
+        como: r.como || null, confianza: r.confianza || null, motivo: r.motivo || null,
+        excedente: r.excedente ?? null,
+        vinculos: vinc.length ? vinc : undefined,
+        appliedAt: r.estado === 'match' ? new Date() : null,
+      };
+      try {
+        await prisma().finanzaCartolaMov.upsert({
+          where: { tenantId_firma_origen: { tenantId, firma: r.firma, origen } },
+          create: {
+            tenantId, firma: r.firma, origen, tipo,
+            fecha: new Date(`${r.fecha}T12:00:00Z`), descripcion: r.descripcion || '',
+            monto: r.monto, moneda: moneda || 'CLP', referencia: r.referencia,
+            createdById: user.id, createdByNombre: user.nombre,
+            ...data,
+          },
+          update: { ...data, resueltoPor: user.nombre },
+        });
+      } catch (e: any) {
+        errores.push(`mov ${r.fecha} $${r.monto}: ${e?.message?.slice(0, 120) || 'error'}`);
       }
     }
     return reply.send({ creados, pagosCreados, facturasAfectadas: tocadas.size, errores, filas: resFilas, cargos: resCargos });
@@ -892,7 +938,140 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     await prisma().finanzaCobro.deleteMany({ where: { tenantId, referencia } });
     await prisma().finanzaPago.deleteMany({ where: { tenantId, referencia } });
     for (const fid of fids) await syncFacturaEstado(app.prisma, fid);
+    // El movimiento queda registrado como deshecho (auditoría), no vuelve a
+    // sin_match: si se re-importa la cartola se re-conciliará de nuevo.
+    await prisma().finanzaCartolaMov.updateMany({
+      where: { tenantId, firma: referencia },
+      data: { estado: 'deshecho', vinculos: [] },
+    });
     return reply.send({ eliminados: cobros.length + pagos.length, facturas: fids.length, gastos: pagos.length });
+  });
+
+  // GET /cartola-movs — auditoría de movimientos importados: conciliados con
+  // sus vínculos y huérfanos (sin_match) con el motivo para resolver a mano.
+  app.get('/cartola-movs', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const where: any = { tenantId };
+    if (q.tipo) where.tipo = q.tipo;
+    if (q.estado) where.estado = q.estado;
+    if (q.origen) where.origen = q.origen;
+    if (q.desde || q.hasta) {
+      where.fecha = {};
+      if (q.desde) where.fecha.gte = new Date(q.desde);
+      if (q.hasta) where.fecha.lt = new Date(q.hasta);
+    }
+    const movs = await prisma().finanzaCartolaMov.findMany({
+      where, orderBy: { fecha: 'desc' }, take: Math.min(Number(q.limit) || 500, 2000),
+    });
+    const resumen = { total: movs.length, conciliados: 0, sinMatch: 0, manuales: 0, deshechos: 0 };
+    for (const m of movs) {
+      if (m.estado === 'conciliado') resumen.conciliados++;
+      else if (m.estado === 'sin_match') resumen.sinMatch++;
+      else if (m.estado === 'vinculado_manual') resumen.manuales++;
+      else if (m.estado === 'deshecho') resumen.deshechos++;
+    }
+    return reply.send({ movs, resumen });
+  });
+
+  // POST /cartola-movs/:id/vincular {docTipo:'factura'|'gasto', docId, aplicar?}
+  // Vincula a mano un movimiento huérfano: crea el cobro/pago real y deja la
+  // trazabilidad en el movimiento. El importe default es el saldo del doc o
+  // el restante del movimiento, el menor.
+  app.post('/cartola-movs/:id/vincular', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const body = z.object({
+      docTipo: z.enum(['factura', 'gasto']),
+      docId: z.string().uuid(),
+      aplicar: z.number().positive().optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const { docTipo, docId, aplicar } = body.data;
+    const mov = await prisma().finanzaCartolaMov.findFirst({ where: { id, tenantId } });
+    if (!mov) return reply.code(404).send({ error: 'Movimiento no encontrado' });
+    if (['deshecho', 'ignorado'].includes(mov.estado)) return reply.code(409).send({ error: `Movimiento ${mov.estado}: no se puede vincular` });
+    // Período cerrado: no se crea un cobro/pago en un mes cerrado.
+    if (await rechazarSiCerrado(tenantId, mov.fecha, reply)) return;
+    const vinculado = ((mov.vinculos as any[]) || []).reduce((s: number, v: any) => s + num(v.aplicar), 0);
+    const restante = Math.max(0, num(mov.monto) - vinculado);
+    if (restante <= 0.5) return reply.code(409).send({ error: 'Movimiento ya imputado por completo' });
+    const user = await resolveUser(app.prisma, (req as any).auth?.userId);
+    const notasPrefijo = mov.origen === 'CAJA_CHICA' ? 'Caja chica' : 'Cartola';
+
+    let importe: number, vinculo: any;
+    if (docTipo === 'factura') {
+      if (mov.tipo !== 'ABONO') return reply.code(400).send({ error: 'Un cargo se vincula a un gasto, no a una factura' });
+      const f = await prisma().finanzaFactura.findFirst({ where: { id: docId, tenantId, deletedAt: null }, include: { cobros: true } });
+      if (!f) return reply.code(404).send({ error: 'Factura no encontrada' });
+      const saldo = Math.max(0, num(f.total) - f.cobros.reduce((s: number, c: any) => s + num(c.importe), 0));
+      if (saldo <= 0.5) return reply.code(409).send({ error: 'La factura no tiene saldo pendiente' });
+      importe = Math.min(aplicar ?? Infinity, saldo, restante);
+      if (importe <= 0.5) return reply.code(400).send({ error: 'Nada que imputar' });
+      await prisma().finanzaCobro.create({
+        data: {
+          tenantId, facturaId: f.id, fecha: mov.fecha, importe,
+          moneda: mov.moneda || f.moneda || 'CLP', referencia: mov.firma,
+          medioPago: mov.origen === 'CAJA_CHICA' ? 'CAJA_CHICA' : 'TRANSFERENCIA',
+          notas: `${notasPrefijo} (manual): ${mov.descripcion}`.slice(0, 500),
+          createdById: user.id, createdByNombre: user.nombre,
+        },
+      });
+      await syncFacturaEstado(app.prisma, f.id);
+      vinculo = { tipo: 'factura', id: f.id, numero: [f.puntoVenta, f.numero].filter(Boolean).join('-') || null, cliente: f.clienteNombre, aplicar: importe, moneda: mov.moneda };
+    } else {
+      if (mov.tipo !== 'CARGO') return reply.code(400).send({ error: 'Un abono se vincula a una factura, no a un gasto' });
+      const g = await prisma().finanzaGasto.findFirst({ where: { id: docId, tenantId, deletedAt: null }, include: { pagos: true } });
+      if (!g) return reply.code(404).send({ error: 'Gasto no encontrado' });
+      const saldo = Math.max(0, num(g.total) - g.pagos.reduce((s: number, p: any) => s + num(p.importe), 0));
+      if (saldo <= 0.5) return reply.code(409).send({ error: 'El gasto no tiene saldo pendiente' });
+      importe = Math.min(aplicar ?? Infinity, saldo, restante);
+      if (importe <= 0.5) return reply.code(400).send({ error: 'Nada que imputar' });
+      await prisma().finanzaPago.create({
+        data: {
+          tenantId, gastoId: g.id, fecha: mov.fecha, importe,
+          moneda: mov.moneda || g.moneda || 'CLP', referencia: mov.firma,
+          medioPago: mov.origen === 'CAJA_CHICA' ? 'CAJA_CHICA' : 'TRANSFERENCIA',
+          notas: `${notasPrefijo} (manual): ${mov.descripcion}`.slice(0, 500),
+          createdById: user.id, createdByNombre: user.nombre,
+        },
+      });
+      vinculo = { tipo: 'gasto', id: g.id, numero: g.numeroComprobante, proveedor: g.proveedor || g.concepto, aplicar: importe, moneda: mov.moneda };
+    }
+
+    const vinculos = [...((mov.vinculos as any[]) || []), vinculo];
+    const cubierto = vinculado + importe >= num(mov.monto) - 0.5;
+    await prisma().finanzaCartolaMov.update({
+      where: { id: mov.id },
+      data: {
+        estado: cubierto ? 'vinculado_manual' : mov.estado,
+        como: 'manual', vinculos,
+        excedente: Math.max(0, num(mov.monto) - vinculado - importe),
+        appliedAt: mov.appliedAt || new Date(), resueltoPor: user.nombre,
+      },
+    });
+    return reply.send({ ok: true, aplicado: importe, restante: Math.max(0, num(mov.monto) - vinculado - importe), vinculo });
+  });
+
+  // POST /cartola-movs/:id/ignorar {ignorar:boolean} — saca un huérfano de la
+  // cola sin imputar nada (ej. movimientos internos del banco). Reversible.
+  app.post('/cartola-movs/:id/ignorar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const ignorar = (req.body as any)?.ignorar !== false;
+    const mov = await prisma().finanzaCartolaMov.findFirst({ where: { id, tenantId }, select: { id: true, estado: true } });
+    if (!mov) return reply.code(404).send({ error: 'Movimiento no encontrado' });
+    if (mov.estado !== 'sin_match' && mov.estado !== 'ignorado')
+      return reply.code(409).send({ error: 'Solo movimientos sin match se pueden ignorar' });
+    const user = await resolveUser(app.prisma, (req as any).auth?.userId);
+    await prisma().finanzaCartolaMov.update({
+      where: { id: mov.id },
+      data: { estado: ignorar ? 'ignorado' : 'sin_match', resueltoPor: ignorar ? user.nombre : null },
+    });
+    return reply.send({ ok: true, estado: ignorar ? 'ignorado' : 'sin_match' });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -1038,6 +1217,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     numeroComprobante: z.string().max(50).optional().nullable(),
     proveedorRut: z.string().max(20).optional().nullable(),
     fechaVencimiento: z.string().optional().nullable(),
+    fechaPagoEstimada: z.string().optional().nullable(), // cuándo planeamos pagarlo
     claseCosto: z.enum(['FIJO', 'VARIABLE', 'MIXTO']).optional().nullable(),
     esRecurrente: z.boolean().default(false),
     fechaDesde: z.string().optional().nullable(),
@@ -1109,6 +1289,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         ...body.data, tenantId,
         fecha: body.data.fecha ? new Date(body.data.fecha) : new Date(),
         fechaVencimiento: body.data.fechaVencimiento ? new Date(body.data.fechaVencimiento) : null,
+        fechaPagoEstimada: body.data.fechaPagoEstimada ? new Date(body.data.fechaPagoEstimada) : null,
         fechaDesde: body.data.fechaDesde ? new Date(body.data.fechaDesde) : null,
         fechaHasta: body.data.fechaHasta ? new Date(body.data.fechaHasta) : null,
         uploadedById: user.id, uploadedByNombre: user.nombre,
@@ -1128,6 +1309,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const data: any = { ...body.data };
     if (data.fecha) data.fecha = new Date(data.fecha);
     if (data.fechaVencimiento !== undefined) data.fechaVencimiento = data.fechaVencimiento ? new Date(data.fechaVencimiento) : null;
+    if (data.fechaPagoEstimada !== undefined) data.fechaPagoEstimada = data.fechaPagoEstimada ? new Date(data.fechaPagoEstimada) : null;
     if (data.fechaDesde !== undefined) data.fechaDesde = data.fechaDesde ? new Date(data.fechaDesde) : null;
     if (data.fechaHasta !== undefined) data.fechaHasta = data.fechaHasta ? new Date(data.fechaHasta) : null;
     // Cierre de período: no se edita un gasto de un mes cerrado ni se mueve a uno.
@@ -1137,6 +1319,94 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (data.fecha && await rechazarSiCerrado(tenantId, data.fecha, reply)) return;
     const r = await prisma().finanzaGasto.updateMany({ where: { id, tenantId, deletedAt: null }, data });
     return reply.send({ ok: true });
+  });
+
+  // GET /gastos-sugerencia?proveedor=RUT_O_NOMBRE — categoría y concepto más
+  // usados históricamente con ese proveedor, para pre-llenar el formulario.
+  app.get('/gastos-sugerencia', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = (req.query as any).proveedor || '';
+    if (!q.trim()) return reply.send({ sugerencias: [] });
+    const esRut = /^[0-9.kK-]+$/.test(q.trim());
+    const where: any = esRut
+      ? { tenantId, deletedAt: null, proveedorRut: q.trim() }
+      : { tenantId, deletedAt: null, proveedor: { equals: q.trim(), mode: 'insensitive' } };
+    const gastos = await prisma().finanzaGasto.findMany({
+      where, orderBy: { fecha: 'desc' }, take: 200,
+      select: { categoria: true, concepto: true, tipoComprobante: true, tipoGasto: true, centroCostoId: true, moneda: true, ivaRecuperable: true },
+    }).catch(() => []);
+    // Frecuencia ponderada por antigüedad (los recientes pesan un poco más).
+    const score = new Map<string, number>();
+    const meta = new Map<string, any>();
+    gastos.forEach((g: any, i: number) => {
+      const k = `${g.categoria}|||${g.concepto}`;
+      score.set(k, (score.get(k) || 0) + 1 + (i < 5 ? 0.5 : 0));
+      if (!meta.has(k)) meta.set(k, g);
+    });
+    const sugerencias = [...score.entries()]
+      .sort((a, b) => b[1] - a[1]).slice(0, 5)
+      .map(([k, freq]) => {
+        const [categoria, concepto] = k.split('|||');
+        const g = meta.get(k);
+        return { categoria, concepto, tipoGasto: g.tipoGasto, tipoComprobante: g.tipoComprobante, centroCostoId: g.centroCostoId, moneda: g.moneda, ivaRecuperable: g.ivaRecuperable, usos: Math.floor(freq) };
+      });
+    return reply.send({ sugerencias, historial: gastos.length });
+  });
+
+  // GET /resumen-gastos?anio&mes — gastos del mes agrupados por categoría (y
+  // top conceptos dentro de cada una), con variación vs el mes anterior.
+  app.get('/resumen-gastos', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const hoy = new Date();
+    const anio = Math.min(2100, Math.max(2000, Number(q.anio) || hoy.getUTCFullYear()));
+    const mes = Math.min(12, Math.max(1, Number(q.mes) || hoy.getUTCMonth() + 1));
+    const moneda = q.moneda || null;
+    const desde = new Date(Date.UTC(anio, mes - 1, 1));
+    const hasta = new Date(Date.UTC(anio, mes, 1));
+    const desdePrev = new Date(Date.UTC(anio, mes - 2, 1));
+    const sel = { categoria: true, concepto: true, proveedor: true, total: true, tipoComprobante: true };
+    const [actuales, previos] = await Promise.all([
+      prisma().finanzaGasto.findMany({ where: { tenantId, deletedAt: null, fecha: { gte: desde, lt: hasta }, ...(moneda ? { moneda } : {}) }, select: sel }).catch(() => []),
+      prisma().finanzaGasto.findMany({ where: { tenantId, deletedAt: null, fecha: { gte: desdePrev, lt: desde }, ...(moneda ? { moneda } : {}) }, select: { categoria: true, total: true, tipoComprobante: true } }).catch(() => []),
+    ]);
+    const signo = (g: any) => g.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
+    const porCat = new Map<string, { total: number; docs: number; conceptos: Map<string, number>; proveedores: Map<string, number> }>();
+    let totalMes = 0;
+    for (const g of actuales) {
+      const imp = num(g.total) * signo(g);
+      totalMes += imp;
+      const cat = g.categoria || 'OTRO';
+      const r = porCat.get(cat) || { total: 0, docs: 0, conceptos: new Map(), proveedores: new Map() };
+      r.total += imp; r.docs += 1;
+      const c = (g.concepto || 'Sin concepto').slice(0, 80);
+      r.conceptos.set(c, (r.conceptos.get(c) || 0) + imp);
+      const p = g.proveedor || 'Sin proveedor';
+      r.proveedores.set(p, (r.proveedores.get(p) || 0) + imp);
+      porCat.set(cat, r);
+    }
+    const prevCat = new Map<string, number>(); let totalPrev = 0;
+    for (const g of previos) { const imp = num(g.total) * signo(g); totalPrev += imp; prevCat.set(g.categoria || 'OTRO', (prevCat.get(g.categoria || 'OTRO') || 0) + imp); }
+    const top = (m: Map<string, number>, n: number) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => ({ nombre: k, total: v }));
+    const cats = new Set([...porCat.keys(), ...prevCat.keys()]);
+    const categorias = [...cats].map(cat => {
+      const actual = porCat.get(cat)?.total || 0;
+      const previo = prevCat.get(cat) || 0;
+      return {
+        categoria: cat, total: actual, docs: porCat.get(cat)?.docs || 0, previo,
+        variacion: previo !== 0 ? Math.round(((actual - previo) / Math.abs(previo)) * 1000) / 10 : actual !== 0 ? null : 0,
+        topConceptos: top(porCat.get(cat)?.conceptos || new Map(), 5),
+        topProveedores: top(porCat.get(cat)?.proveedores || new Map(), 3),
+      };
+    }).sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
+    return reply.send({
+      anio, mes, moneda,
+      total: totalMes, totalPrevio: totalPrev,
+      variacion: totalPrev !== 0 ? Math.round(((totalMes - totalPrev) / Math.abs(totalPrev)) * 1000) / 10 : null,
+      categorias,
+    });
   });
 
   // Reclasifica en bloque todos los gastos de un proveedor (por RUT o nombre).
@@ -1914,7 +2184,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       else c.aging.d90 += saldo;
       c.pendientes.push({
         id: f.id, numero: [f.puntoVenta, f.numero].filter(Boolean).join('-') || null, fechaEmision: f.fechaEmision,
-        fechaVencimiento: f.fechaVencimiento, total, cobrado, saldo, diasAtraso: Math.max(0, atraso), moneda: f.moneda,
+        fechaVencimiento: f.fechaVencimiento, fechaCobroEstimada: f.fechaCobroEstimada, total, cobrado, saldo, diasAtraso: Math.max(0, atraso), moneda: f.moneda,
         fileUrl: f.fileUrl, diasDesdeEmision: Math.floor((hoy - new Date(f.fechaEmision).getTime()) / DIA),
       });
     }
@@ -1986,7 +2256,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       items.push({
         id: g.id, origen: 'GASTO', proveedor: g.proveedor || 'Sin proveedor', proveedorRut: g.proveedorRut,
         comprobante: [g.tipoComprobante, g.numeroComprobante].filter(Boolean).join(' ') || null,
-        concepto: g.concepto, fechaEmision: g.fecha, fechaVencimiento: g.fechaVencimiento,
+        concepto: g.concepto, fechaEmision: g.fecha, fechaVencimiento: g.fechaVencimiento, fechaPagoEstimada: g.fechaPagoEstimada,
         total: num(g.total), pagado, saldo, moneda: g.moneda, centroCostoId: g.centroCostoId,
         estado, diasVencimiento: diasVenc, categoria: g.categoria,
         pagos: g.pagos.map((x: any) => ({ id: x.id, fecha: x.fecha, importe: num(x.importe), moneda: x.moneda, referencia: x.referencia, medioPago: x.medioPago })),
@@ -2008,7 +2278,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         origenUrl: f.vehiculoId ? `/flota-360/vehiculos/${f.vehiculoId}` : '/flota-360', modulo: 'Flota 360',
       });
     }
-    items.sort((a, b) => new Date(a.fechaVencimiento || a.fechaEmision).getTime() - new Date(b.fechaVencimiento || b.fechaEmision).getTime());
+    items.sort((a, b) => new Date(a.fechaPagoEstimada || a.fechaVencimiento || a.fechaEmision).getTime() - new Date(b.fechaPagoEstimada || b.fechaVencimiento || b.fechaEmision).getTime());
     return items;
   }
 
@@ -2147,15 +2417,19 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         const cobrado = f.cobros.reduce((s: number, c: any) => s + num(c.importe), 0);
         const saldo = Math.max(0, num(f.total) - cobrado);
         const lag = lagCliente.get((f.clienteNombre || '').toLowerCase().trim());
-        let fecha = lag != null ? new Date(new Date(f.fechaEmision).getTime() + lag * 86400000) : new Date(f.fechaVencimiento || f.fechaEmision);
+        // Prioridad: fecha prometida manual > lag histórico del cliente > vencimiento.
+        const via = f.fechaCobroEstimada ? 'ESTIMADA' : lag != null ? 'HISTORIAL' : 'VENCIMIENTO';
+        let fecha = f.fechaCobroEstimada ? new Date(f.fechaCobroEstimada)
+          : lag != null ? new Date(new Date(f.fechaEmision).getTime() + lag * 86400000)
+          : new Date(f.fechaVencimiento || f.fechaEmision);
         if (fecha < hoy) fecha = hoy; // la estimación ya pasó y sigue sin cobrarse
-        return { fecha, importe: saldo, concepto: `Cobro ${[f.puntoVenta, f.numero].filter(Boolean).join('-')} — ${f.clienteNombre}`, tipo: 'FACTURA', via: lag != null ? 'HISTORIAL' : 'VENCIMIENTO' };
+        return { fecha, importe: saldo, concepto: `Cobro ${[f.puntoVenta, f.numero].filter(Boolean).join('-')} — ${f.clienteNombre}`, tipo: 'FACTURA', via };
       }).filter((x: any) => x.importe > 0.5 && x.fecha <= horizonte),
       ...ingresosPend.map((i: any) => ({ fecha: new Date(i.fechaCobroEstimada), importe: num(i.monto), concepto: `${i.concepto}${i.cliente ? ' — ' + i.cliente : ''}`, tipo: 'INGRESO_FLOTA' })),
     ];
     const pendCxP = await obtenerCxPInterno(p, tenantId, moneda).catch(() => [] as any[]);
     const proximosPagos = pendCxP.filter((i: any) => i.saldo > 0.5)
-      .map((i: any) => ({ fecha: new Date(i.fechaVencimiento || i.fechaEmision), importe: i.saldo, concepto: `${i.proveedor} — ${i.concepto}`, tipo: i.origen }));
+      .map((i: any) => ({ fecha: new Date(i.fechaPagoEstimada || i.fechaVencimiento || i.fechaEmision), importe: i.saldo, concepto: `${i.proveedor} — ${i.concepto}`, tipo: i.origen }));
 
     const bucket = (lista: any[], dias: number) => lista.filter(x => x.fecha >= hoy && x.fecha <= new Date(hoy.getTime() + dias * 86400000));
     const suma = (lista: any[]) => lista.reduce((s, x) => s + x.importe, 0);
@@ -2387,7 +2661,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
 
     // Compromisos conocidos: CxP que vence dentro del resto del mes
     const compromisosPago = pendCxP
-      .filter((i: any) => i.saldo > 0.5 && new Date(i.fechaVencimiento || i.fechaEmision) >= corte && new Date(i.fechaVencimiento || i.fechaEmision) < hasta)
+      .filter((i: any) => { const d = new Date(i.fechaPagoEstimada || i.fechaVencimiento || i.fechaEmision); return i.saldo > 0.5 && d >= corte && d < hasta; })
       .reduce((s: number, i: any) => s + i.saldo, 0);
 
     // Ritmo histórico: promedio diario de los últimos 3 meses con datos
@@ -2411,7 +2685,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const ventasCompSig = lineasSig.filter(esIng).reduce((s, l) => s + l.importe, 0);
     const costosCompSig = lineasSig.filter(esCosto).reduce((s, l) => s + l.importe, 0)
       + pendCxP
-        .filter((i: any) => i.saldo > 0.5 && new Date(i.fechaVencimiento || i.fechaEmision) >= hasta && new Date(i.fechaVencimiento || i.fechaEmision) < hastaSig)
+        .filter((i: any) => { const d = new Date(i.fechaPagoEstimada || i.fechaVencimiento || i.fechaEmision); return i.saldo > 0.5 && d >= hasta && d < hastaSig; })
         .reduce((s: number, i: any) => s + i.saldo, 0);
     const ventasBaseMes = ventasPrev / mesesPrevConDatos;
     const costosBaseMes = costosPrev / mesesPrevConDatos;

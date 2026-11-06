@@ -8,7 +8,7 @@ import { useAsistente } from './useAsistente';
 
 type Item = {
   id: string; origen: 'GASTO' | 'FLOTA'; proveedor: string; proveedorRut: string | null;
-  comprobante: string | null; concepto: string; fechaEmision: string; fechaVencimiento: string | null;
+  comprobante: string | null; concepto: string; fechaEmision: string; fechaVencimiento: string | null; fechaPagoEstimada?: string | null;
   total: number; pagado: number; saldo: number; moneda: string; centroCostoId: string | null;
   estado: 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'VENCIDO'; diasVencimiento: number;
   categoria: string; pagadaAt?: string | null;
@@ -60,6 +60,17 @@ export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }:
       setPagoForm({ importe: '', fecha: new Date().toISOString().slice(0, 10), referencia: '', medioPago: 'TRANSFERENCIA' });
       load(); onChanged();
     } finally { setSaving(false); }
+  };
+
+  // Fecha en que planeamos pagar: alimenta la proyección de pagos
+  // (tiene prioridad sobre el vencimiento contractual).
+  const guardarEstimada = async (item: Item, fecha: string) => {
+    if (item.origen !== 'GASTO') return;
+    try {
+      await apiFetch(`/finanzas/gastos/${item.id}`, { method: 'PATCH', json: { fechaPagoEstimada: fecha || null } });
+      setData(d => d ? { ...d, items: d.items.map(x => x.id === item.id && x.origen === 'GASTO' ? { ...x, fechaPagoEstimada: fecha || null } : x) } : d);
+      onChanged();
+    } catch {}
   };
 
   const despagar = async (item: Item) => {
@@ -155,6 +166,12 @@ export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }:
                       {i.fechaVencimiento ? fmtFecha(i.fechaVencimiento) : <span className="text-neutral-300">—</span>}
                       {i.saldo > 0.5 && i.diasVencimiento < 0 && <div className="text-[11px] font-medium text-red-600">venció hace {-i.diasVencimiento} días</div>}
                       {i.saldo > 0.5 && i.diasVencimiento >= 0 && i.diasVencimiento <= 7 && <div className="text-[11px] font-medium text-amber-600">en {i.diasVencimiento} días</div>}
+                      {canEdit && i.origen === 'GASTO' && i.saldo > 0.5 && (
+                        <input type="date" value={(i.fechaPagoEstimada || '').slice(0, 10)} onChange={e => guardarEstimada(i, e.target.value)}
+                          title="Fecha de pago planificada — la proyección usa esta fecha si está"
+                          className={`mt-0.5 block rounded border px-1 py-0.5 text-[10px] focus:outline-none ${i.fechaPagoEstimada ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-neutral-200 text-neutral-400'}`} />
+                      )}
+                      {!canEdit && i.fechaPagoEstimada && <div className="text-[10px] text-blue-600">pago est. {fmtFecha(i.fechaPagoEstimada)}</div>}
                     </td>
                     <td className="px-4 py-2.5 text-right">{fmtMoney(i.total, i.moneda)}</td>
                     <td className="px-4 py-2.5 text-right font-semibold text-neutral-900">{fmtMoney(i.saldo, i.moneda)}</td>
@@ -220,7 +237,7 @@ export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }:
                 <select value={pagoForm.medioPago} onChange={e => setPagoForm(f => ({ ...f, medioPago: e.target.value }))}
                   className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm">
                   <option value="TRANSFERENCIA">Transferencia</option><option value="EFECTIVO">Efectivo</option>
-                  <option value="CHEQUE">Cheque</option><option value="OTRO">Otro</option>
+                  <option value="CHEQUE">Cheque</option><option value="CAJA_CHICA">Caja chica</option><option value="OTRO">Otro</option>
                 </select></label>
               <label className="text-xs font-medium text-neutral-600">Referencia
                 <input value={pagoForm.referencia} onChange={e => setPagoForm(f => ({ ...f, referencia: e.target.value }))}

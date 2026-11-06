@@ -22,7 +22,7 @@ const BUCKETS: { key: keyof Cliente['aging']; label: string; color: string }[] =
   { key: 'd90', label: '+90 días', color: 'bg-red-700' },
 ];
 
-export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: string; onIrFacturacion: () => void }) {
+export default function CuentasPorCobrar({ moneda, canEdit = false, onIrFacturacion }: { moneda: string; canEdit?: boolean; onIrFacturacion: () => void }) {
   const A = useAsistente({ moneda });
   const [data, setData] = useState<{ clientes: Cliente[]; totales: { saldo: number; vencido: number; d90: number }; actualizadoEn?: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,6 +37,20 @@ export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: 
     apiFetch<any>(`/finanzas/cuentas-por-cobrar?moneda=${moneda}`)
       .then(setData).catch((e: any) => setError(e?.message || 'No se pudo cargar')).finally(() => setLoading(false));
   }, [moneda, reloadTick]);
+
+  // Fecha en que el cliente prometió pagar: alimenta la proyección de
+  // cobros con prioridad sobre el lag histórico y el vencimiento.
+  const guardarEstimada = async (facturaId: string, clienteKey: string, fecha: string) => {
+    try {
+      await apiFetch(`/finanzas/facturas/${facturaId}`, { method: 'PATCH', json: { fechaCobroEstimada: fecha || null } });
+      setData(d => d ? {
+        ...d,
+        clientes: d.clientes.map((c: Cliente) => c.cliente === clienteKey
+          ? { ...c, pendientes: c.pendientes.map((p: any) => p.id === facturaId ? { ...p, fechaCobroEstimada: fecha || null } : p) }
+          : c),
+      } : d);
+    } catch {}
+  };
 
   if (loading) return <div className="py-16 text-center text-neutral-400"><Loader2 className="inline animate-spin" size={18} /></div>;
   if (error || !data) return <div className="py-16 text-center text-neutral-400">{error}</div>;
@@ -168,7 +182,15 @@ export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: 
                         {p.fileUrl && <a href={p.fileUrl} target="_blank" rel="noreferrer" className="ml-1.5 inline-block text-blue-500" title="Ver factura"><Paperclip size={12} /></a>}
                       </td>
                       <td className="px-4 py-2 text-xs text-neutral-500">{fmtFecha(p.fechaEmision)}</td>
-                      <td className="px-4 py-2 text-xs text-neutral-500">{fmtFecha(p.fechaVencimiento)}</td>
+                      <td className="px-4 py-2 text-xs text-neutral-500">
+                        {fmtFecha(p.fechaVencimiento)}
+                        {canEdit && (
+                          <input type="date" value={(p.fechaCobroEstimada || '').slice(0, 10)} onChange={e => guardarEstimada(p.id, c.cliente, e.target.value)}
+                            title="Fecha prometida de pago por el cliente — la proyección usa esta fecha si está"
+                            className={`mt-0.5 block rounded border px-1 py-0.5 text-[10px] focus:outline-none ${p.fechaCobroEstimada ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-neutral-200 text-neutral-400'}`} />
+                        )}
+                        {!canEdit && p.fechaCobroEstimada && <div className="text-[10px] text-blue-600">prometió {fmtFecha(p.fechaCobroEstimada)}</div>}
+                      </td>
                       <td className="px-4 py-2 text-right">{fmtMoney(p.total, p.moneda)}</td>
                       <td className="px-4 py-2 text-right font-medium text-amber-700">{fmtMoney(p.saldo, p.moneda)}</td>
                       <td className={`px-4 py-2 text-right text-xs font-medium ${p.diasAtraso > 60 ? 'text-red-600' : p.diasAtraso > 0 ? 'text-amber-600' : 'text-neutral-400'}`}>

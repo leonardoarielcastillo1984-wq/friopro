@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { apiFetch, apiPath } from '@/lib/api';
 import { useModulePermission } from '@/hooks/useModulePermission';
-import { TrendingUp, Receipt, Wallet, Building2, HandCoins, Upload, Eye, Pin, Landmark, LineChart, Scale, PieChart, Settings } from 'lucide-react';
+import { TrendingUp, Receipt, Wallet, Building2, HandCoins, Upload, Eye, Pin, Landmark, LineChart, Scale, PieChart, Settings, ListChecks } from 'lucide-react';
 import Dashboard from './_components/Dashboard';
 import Facturacion from './_components/Facturacion';
 import Gastos from './_components/Gastos';
@@ -17,9 +17,10 @@ import Proyeccion from './_components/Proyeccion';
 import Balance from './_components/Balance';
 import ImportarSII from './_components/ImportarSII';
 import ConfigResultados from './_components/ConfigResultados';
+import Conciliacion from './_components/Conciliacion';
 import { MESES } from './_components/fmt';
 
-type Tab = 'resultados' | 'facturacion' | 'cobrar' | 'gastos' | 'pagar' | 'caja' | 'proyeccion' | 'rentabilidad' | 'balance' | 'importar' | 'centros';
+type Tab = 'resultados' | 'facturacion' | 'cobrar' | 'gastos' | 'pagar' | 'caja' | 'conciliacion' | 'proyeccion' | 'rentabilidad' | 'balance' | 'importar' | 'centros';
 
 // Tabs donde el consolidado multi-moneda (TODAS) está soportado por el backend.
 const TABS_TODAS: Tab[] = ['resultados'];
@@ -31,6 +32,7 @@ const TABS: { key: Tab; label: string; icon: any; edit?: boolean }[] = [
   { key: 'gastos', label: 'Gastos', icon: Wallet },
   { key: 'pagar', label: 'Cuentas por pagar', icon: Landmark },
   { key: 'caja', label: 'Flujo de caja', icon: LineChart },
+  { key: 'conciliacion', label: 'Conciliación', icon: ListChecks },
   { key: 'proyeccion', label: 'Proyección', icon: Scale },
   { key: 'rentabilidad', label: 'Rentabilidad', icon: TrendingUp },
   { key: 'balance', label: 'Balance', icon: PieChart },
@@ -177,10 +179,11 @@ function ResultadosPageInner() {
         <div key={moneda}>
           {tab === 'resultados' && <Dashboard anio={anio} moneda={moneda} centroCostoId={centroCostoId} canEdit={canEdit} />}
           {tab === 'facturacion' && <Facturacion centros={centros} moneda={moneda} monedas={opcionesMoneda} canEdit={canEdit} onChanged={onChanged} />}
-          {tab === 'cobrar' && <CuentasPorCobrar moneda={moneda} onIrFacturacion={() => setTab('facturacion')} />}
+          {tab === 'cobrar' && <CuentasPorCobrar moneda={moneda} canEdit={canEdit} onIrFacturacion={() => setTab('facturacion')} />}
           {tab === 'gastos' && <Gastos centros={centros} moneda={moneda} monedas={opcionesMoneda} canEdit={canEdit} onChanged={onChanged} />}
           {tab === 'pagar' && <CuentasPorPagar moneda={moneda} centros={centros} canEdit={canEdit} onChanged={onChanged} />}
           {tab === 'caja' && <FlujoCaja moneda={moneda} canEdit={canEdit} />}
+          {tab === 'conciliacion' && <Conciliacion moneda={moneda} canEdit={canEdit} onChanged={onChanged} />}
           {tab === 'proyeccion' && <Proyeccion anio={anio} moneda={moneda} centroCostoId={centroCostoId} />}
           {tab === 'rentabilidad' && <Rentabilidad anio={anio} moneda={moneda} centroCostoId={centroCostoId} />}
           {tab === 'balance' && <Balance anio={anio} moneda={moneda} />}

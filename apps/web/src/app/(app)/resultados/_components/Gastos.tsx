@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Plus, X, Loader2, Paperclip, Trash2, Repeat, Pencil, Search, Tags, Download } from 'lucide-react';
-import { fmtMoney, fmtFecha, CATEGORIA_GASTO, TIPO_COMPROBANTE, IVA_DEFAULT, MONEDAS, toDateInput } from './fmt';
+import { fmtMoney, fmtFecha, CATEGORIA_GASTO, TIPO_COMPROBANTE, IVA_DEFAULT, MONEDAS, MESES, toDateInput } from './fmt';
 import { useAsistente } from './useAsistente';
 
 type Gasto = {
@@ -62,6 +62,10 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
   const [buscar, setBuscar] = useState('');
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [form, setForm] = useState<Form>(nuevoForm(moneda));
+  const [sugerencias, setSugerencias] = useState<any[]>([]);
+  const [resumenMes, setResumenMes] = useState<any>(null);
+  const [resumenOpen, setResumenOpen] = useState(false);
+  const [resumenCat, setResumenCat] = useState<string | null>(null);
   const [showProv, setShowProv] = useState(false);
   const [proveedores, setProveedores] = useState<any[]>([]);
   const [vehiculos, setVehiculos] = useState<{ id: string; dominio: string }[]>([]);
@@ -88,6 +92,15 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
   };
   const loadProv = () => apiFetch<{ proveedores: any[] }>('/finanzas/proveedores').then(d => setProveedores(d.proveedores)).catch(() => {});
   useEffect(() => { load(); }, [filtroTipo, filtroCat, filtroMes, moneda]);
+
+  // Resumen del mes por categoría (filtroMes si está, si no el mes en curso).
+  useEffect(() => {
+    const hoy = new Date();
+    const [y, m] = filtroMes ? filtroMes.split('-').map(Number) : [hoy.getUTCFullYear(), hoy.getUTCMonth() + 1];
+    setResumenCat(null);
+    apiFetch(`/finanzas/resumen-gastos?anio=${y}&mes=${m}&moneda=${moneda}`)
+      .then(setResumenMes).catch(() => setResumenMes(null));
+  }, [filtroMes, moneda]);
   useEffect(() => { if (showProv) loadProv(); }, [showProv]);
   useEffect(() => {
     apiFetch<{ vehiculos: any[] }>('/flota/vehiculos').then(d => setVehiculos((d.vehiculos || []).map((v: any) => ({ id: v.id, dominio: v.dominio })))).catch(() => {});
@@ -150,7 +163,23 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
     return { ...f, total: v, neto: v ? String(n) : '', iva: v ? String(Math.round((t - n) * 100) / 100) : '' };
   });
 
-  const abrirNuevo = () => { setEditId(null); setForm(nuevoForm(moneda)); setFileData(null); setShowForm(true); setError(null); };
+  const abrirNuevo = () => { setEditId(null); setForm(nuevoForm(moneda)); setSugerencias([]); setFileData(null); setShowForm(true); setError(null); };
+
+  // Al salir del campo proveedor/RUT, trae lo que se usó históricamente con
+  // él (concepto, categoría, tipo) y lo ofrece como chips clicables.
+  const buscarSugerencias = async (prov: string, rut: string) => {
+    const q = (rut || prov).trim();
+    if (!q || q.length < 3) { setSugerencias([]); return; }
+    try {
+      const d = await apiFetch<{ sugerencias: any[] }>(`/finanzas/gastos-sugerencia?proveedor=${encodeURIComponent(q)}`);
+      setSugerencias(d.sugerencias || []);
+    } catch { setSugerencias([]); }
+  };
+  const aplicarSugerencia = (s: any) => setForm(f => ({
+    ...f, concepto: s.concepto || f.concepto, categoria: s.categoria || f.categoria,
+    tipoGasto: s.tipoGasto || f.tipoGasto, tipoComprobante: s.tipoComprobante || f.tipoComprobante,
+    centroCostoId: s.centroCostoId || f.centroCostoId, ivaRecuperable: s.ivaRecuperable !== false,
+  }));
   const abrirEditar = (g: Gasto) => {
     const conIva = g.neto !== null && g.iva !== null && g.iva > 0;
     setEditId(g.id);
@@ -274,6 +303,10 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
             <button onClick={() => { setDesde(''); setHasta(''); }} className="text-neutral-400 hover:text-neutral-600" title="Limpiar fechas"><X size={13} /></button>
           )}
         </div>
+        <button onClick={() => setResumenOpen(o => !o)} title="Resumen del mes por categoría vs el mes anterior"
+          className={`rounded-lg px-3 py-1.5 text-xs font-medium ${resumenOpen ? 'bg-neutral-900 text-white' : 'border border-neutral-200 text-neutral-600 hover:bg-neutral-50'}`}>
+          Resumen del mes
+        </button>
         {(desde || hasta) && !loading && visibles.length > 0 && (
           <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700" title="Costo neto del rango (lo que entra al resultado)">
             {visibles.length} en el rango · Total {fmtMoney(totalCosto, moneda)}
@@ -298,6 +331,70 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
       </p>
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
       {A.Panel}
+
+      {resumenOpen && resumenMes && (
+        <div className="rounded-xl border border-neutral-200 bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 px-4 py-3">
+            <span className="text-sm font-semibold text-neutral-900">Resumen {MESES[resumenMes.mes - 1]} {resumenMes.anio}</span>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="text-neutral-500">Total {fmtMoney(resumenMes.total, moneda)}</span>
+              <span className="text-neutral-400">vs {fmtMoney(resumenMes.totalPrevio, moneda)} mes anterior</span>
+              {resumenMes.variacion !== null && (
+                <span className={`rounded-full px-2 py-0.5 font-medium ${resumenMes.variacion <= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                  {resumenMes.variacion > 0 ? '+' : ''}{resumenMes.variacion}%
+                </span>
+              )}
+            </div>
+          </div>
+          {resumenMes.categorias.length === 0 ? (
+            <div className="px-4 py-8 text-center text-sm text-neutral-400">Sin gastos en este mes.</div>
+          ) : (
+            <table className="w-full text-sm">
+              <tbody>
+                {resumenMes.categorias.map((c: any) => (
+                  <Fragment key={c.categoria}>
+                    <tr onClick={() => setResumenCat(resumenCat === c.categoria ? null : c.categoria)}
+                      className="cursor-pointer border-b border-neutral-100 last:border-0 hover:bg-neutral-50/60">
+                      <td className="px-4 py-2.5 font-medium text-neutral-800">{CATEGORIA_GASTO[c.categoria] || c.categoria}</td>
+                      <td className="w-20 px-4 py-2.5 text-right text-xs text-neutral-400">{c.docs} doc.</td>
+                      <td className="w-32 px-4 py-2.5 text-right text-xs text-neutral-400">{c.previo ? fmtMoney(c.previo, moneda) : '—'}</td>
+                      <td className="w-36 px-4 py-2.5 text-right font-semibold text-neutral-900">{fmtMoney(c.total, moneda)}</td>
+                      <td className="w-24 px-4 py-2.5 text-right">
+                        {c.variacion === null ? <span className="text-[10px] font-medium text-blue-600">nuevo</span> : (
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${c.variacion <= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                            {c.variacion > 0 ? '+' : ''}{c.variacion}%
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                    {resumenCat === c.categoria && (
+                      <tr className="border-b border-neutral-100 bg-neutral-50/50">
+                        <td colSpan={5} className="px-6 py-2.5">
+                          <div className="grid gap-2 text-xs md:grid-cols-2">
+                            <div>
+                              <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-neutral-400">Conceptos</div>
+                              {c.topConceptos.map((t: any) => (
+                                <div key={t.nombre} className="flex justify-between gap-2 py-0.5"><span className="truncate text-neutral-600">{t.nombre}</span><span className="tabular-nums text-neutral-500">{fmtMoney(t.total, moneda)}</span></div>
+                              ))}
+                            </div>
+                            <div>
+                              <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-neutral-400">Proveedores</div>
+                              {c.topProveedores.map((t: any) => (
+                                <div key={t.nombre} className="flex justify-between gap-2 py-0.5"><span className="truncate text-neutral-600">{t.nombre}</span><span className="tabular-nums text-neutral-500">{fmtMoney(t.total, moneda)}</span></div>
+                              ))}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="border-t border-neutral-100 px-4 py-2 text-[10px] text-neutral-400">Columna chica = mismo rubro del mes anterior. Las notas de crédito restan.</p>
+        </div>
+      )}
 
       {showProv && (
         <div className="rounded-xl border border-neutral-200 bg-white" data-explica="gasto-proveedores" data-explica-titulo="Clasificar por proveedor">
@@ -359,8 +456,19 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
           </div>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <div className="col-span-2"><label className={labelCls}>Concepto *</label><input value={form.concepto} onChange={e => set('concepto', e.target.value)} placeholder="Ej. Sueldos marzo, Seguro camiones, Flete subcontratado" className={inputCls} /></div>
-            <div><label className={labelCls}>Proveedor</label><input value={form.proveedor} onChange={e => set('proveedor', e.target.value)} className={inputCls} /></div>
-            <div><label className={labelCls}>RUT / CUIT proveedor</label><input value={form.proveedorRut} onChange={e => set('proveedorRut', e.target.value)} className={inputCls} /></div>
+            <div><label className={labelCls}>Proveedor</label><input value={form.proveedor} onChange={e => set('proveedor', e.target.value)} onBlur={e => buscarSugerencias(e.target.value, form.proveedorRut)} className={inputCls} /></div>
+            <div><label className={labelCls}>RUT / CUIT proveedor</label><input value={form.proveedorRut} onChange={e => set('proveedorRut', e.target.value)} onBlur={e => buscarSugerencias(form.proveedor, e.target.value)} className={inputCls} /></div>
+            {sugerencias.length > 0 && !editId && (
+              <div className="col-span-2 -mt-1 flex flex-wrap items-center gap-1.5 lg:col-span-4">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">Histórico:</span>
+                {sugerencias.map((s, i) => (
+                  <button key={i} type="button" onClick={() => aplicarSugerencia(s)} title={`Usado ${s.usos} vez(es) con este proveedor`}
+                    className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] text-blue-700 hover:bg-blue-100">
+                    {CATEGORIA_GASTO[s.categoria] || s.categoria} · {s.concepto.length > 40 ? s.concepto.slice(0, 40) + '…' : s.concepto}
+                  </button>
+                ))}
+              </div>
+            )}
             <div><label className={labelCls}>Fecha</label><input type="date" value={form.fecha} onChange={e => set('fecha', e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Vencimiento <span className="font-normal text-neutral-400">(vacío = sin datos)</span></label><input type="date" value={form.fechaVencimiento} onChange={e => set('fechaVencimiento', e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Estado</label>

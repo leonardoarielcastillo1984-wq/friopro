@@ -13314,6 +13314,9 @@ model FinanzaFactura {
   tipoComprobante String   @default("FACTURA") // FACTURA, NOTA_CREDITO, BOLETA, OTRO
   fechaEmision    DateTime @default(now()) @db.Timestamptz
   fechaVencimiento DateTime? @db.Timestamptz
+  // Cuándo prometió pagar el cliente (proyección de cobros). Si está,
+  // la proyección usa esta fecha en vez de fechaVencimiento.
+  fechaCobroEstimada DateTime? @db.Timestamptz
 
   // Cliente: vínculo al maestro (Customer) + snapshot para histórico
   clienteId     String? @db.Uuid // escalar, sin FK dura
@@ -13443,6 +13446,9 @@ model FinanzaGasto {
   // Cuentas por pagar: fecha de vencimiento del compromiso + pagos parciales
   // (saldo y estado PENDIENTE/PARCIAL/PAGADO/VENCIDO se derivan de FinanzaPago)
   fechaVencimiento DateTime? @db.Timestamptz
+  // Cuándo planeamos pagarlo (proyección de pagos). Si está, la
+  // proyección usa esta fecha en vez de fechaVencimiento.
+  fechaPagoEstimada DateTime? @db.Timestamptz
   pagos            FinanzaPago[]
 
   // Clasificación de costo para punto de equilibrio / proyección:
@@ -13515,6 +13521,49 @@ model FinanzaPago {
   @@index([gastoId])
   @@index([fecha])
   @@map("finanza_pagos")
+}
+
+// Movimiento bancario/caja chica importado y el resultado de su conciliación.
+// `firma` deduplica entre importaciones (re-subir la misma cartola no duplica
+// el movimiento). `vinculos` guarda el detalle JSON de a qué facturas/gastos
+// se aplicó y cuánto, dando trazabilidad bidireccional movimiento ↔ documento.
+model FinanzaCartolaMov {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  tipo   String // ABONO (cobro recibido) | CARGO (pago realizado)
+  origen String @default("CARTOLA") // CARTOLA | CAJA_CHICA
+  firma  String // firmaCobro(fila): dedupe entre importaciones y con cobros/pagos
+
+  fecha       DateTime @db.Timestamptz
+  descripcion String
+  referencia  String?
+  monto       Decimal  @db.Decimal(14, 2)
+  moneda      String   @default("CLP")
+
+  estado    String // match | sin_match | ya_aplicado | vinculado_manual | deshecho
+  como      String? // folio | rut | nombre | monto | manual
+  confianza String? // alta | baja
+  motivo    String? // por qué quedó sin_match
+  excedente Decimal? @db.Decimal(14, 2) // parte del abono que no se imputó
+
+  // [{ doc:'factura'|'gasto', id, numero, cliente|proveedor, aplicar, moneda }]
+  vinculos Json?
+
+  appliedAt   DateTime? @db.Timestamptz // cuándo se aplicaron cobros/pagos
+  resueltoPor String?                   // quién lo resolvió a mano (vinculado_manual)
+
+  createdById     String? @db.Uuid
+  createdByNombre String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@unique([tenantId, firma, origen])
+  @@index([tenantId, tipo])
+  @@index([tenantId, estado])
+  @@index([tenantId, fecha])
+  @@map("finanza_cartola_movs")
 }
 
 // Comentario gerencial de un período (mesKey "2026-10" + centroCosto opcional).

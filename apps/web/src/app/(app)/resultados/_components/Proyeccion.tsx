@@ -69,6 +69,25 @@ export default function Proyeccion({ anio, moneda, centroCostoId }: { anio: numb
   const cortes = caja?.proximosCobros.filter(c => new Date(c.fecha) <= new Date(Date.now() + horizonte * 86400000)) || [];
   const cortesP = caja?.proximosPagos.filter(c => new Date(c.fecha) <= new Date(Date.now() + horizonte * 86400000)) || [];
 
+  // Vista quincenal: agrupa cobros/pagos del horizonte por quincena calendario.
+  const quincenas = (() => {
+    const map = new Map<string, { key: string; label: string; desdeMs: number; cobros: number; pagos: number }>();
+    const add = (fecha: string, importe: number, k: 'cobros' | 'pagos') => {
+      const d = new Date(fecha);
+      const primera = d.getUTCDate() <= 15;
+      const key = `${d.getUTCFullYear()}-${d.getUTCMonth()}-${primera ? 'q1' : 'q2'}`;
+      const e = map.get(key) || {
+        key, label: `${MESES[d.getUTCMonth()]} ${primera ? '1-15' : '16-fin'}`,
+        desdeMs: Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), primera ? 1 : 16), cobros: 0, pagos: 0,
+      };
+      e[k] += importe;
+      map.set(key, e);
+    };
+    cortes.forEach(c => add(c.fecha, c.importe, 'cobros'));
+    cortesP.forEach(p => add(p.fecha, p.importe, 'pagos'));
+    return [...map.values()].sort((a, b) => a.desdeMs - b.desdeMs).slice(0, 6);
+  })();
+
   const cardMes = (b: BloqueMes, titulo: string, sub: string) => (
     <div className="rounded-xl border border-neutral-200 bg-white p-4" data-explica="proyeccion-mes" data-explica-titulo={titulo} data-explica-datos={JSON.stringify(b)}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -211,8 +230,32 @@ export default function Proyeccion({ anio, moneda, centroCostoId }: { anio: numb
               <div className={`mt-1 font-semibold ${(proy?.saldoProyectado ?? 0) >= 0 ? 'text-blue-700' : 'text-red-700'}`}>{fmtMoney(proy?.saldoProyectado || 0, moneda)}</div>
             </div>
           </div>
+          {quincenas.length > 0 && (
+            <div className="mt-3 overflow-hidden rounded-lg border border-neutral-100">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-neutral-50 text-left text-[10px] uppercase tracking-wide text-neutral-500">
+                    <th className="px-3 py-1.5 font-medium">Quincena</th>
+                    <th className="px-3 py-1.5 text-right font-medium text-emerald-700">Cobros</th>
+                    <th className="px-3 py-1.5 text-right font-medium text-amber-700">Pagos</th>
+                    <th className="px-3 py-1.5 text-right font-medium">Neto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {quincenas.map(q => (
+                    <tr key={q.key} className="border-t border-neutral-100">
+                      <td className="px-3 py-1.5 font-medium text-neutral-700">{q.label}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-emerald-700">{q.cobros ? `+${fmtMoney(q.cobros, moneda)}` : '—'}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-amber-700">{q.pagos ? `−${fmtMoney(q.pagos, moneda)}` : '—'}</td>
+                      <td className={`px-3 py-1.5 text-right font-medium tabular-nums ${q.cobros - q.pagos >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmtMoney(q.cobros - q.pagos, moneda)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           {caja.recurrentesMensual > 0 && <p className="mt-2 text-[11px] text-neutral-400">Además hay {fmtMoney(caja.recurrentesMensual, moneda)}/mes de gastos recurrentes comprometidos.</p>}
-          <p className="mt-1 text-[11px] text-neutral-400">Los cobros de facturas se fechan con el hábito de pago real del cliente (emisión + días que suele demorar); sin historial se usa el vencimiento.</p>
+          <p className="mt-1 text-[11px] text-neutral-400">Los cobros se fechan por: fecha prometida cargada a mano → hábito de pago real del cliente → vencimiento.</p>
         </div>
       )}
 
@@ -229,6 +272,7 @@ export default function Proyeccion({ anio, moneda, centroCostoId }: { anio: numb
                     <td className="w-24 px-4 py-2 text-xs text-neutral-400">
                       {fmtFecha(c.fecha)}
                       {c.via === 'HISTORIAL' && <span className="block text-[9px] text-sky-600" title="Estimado por hábito de pago del cliente">historial</span>}
+                      {c.via === 'ESTIMADA' && <span className="block text-[9px] text-blue-600" title="Fecha prometida de pago cargada a mano">prometida</span>}
                     </td>
                     <td className="max-w-60 truncate px-4 py-2 text-neutral-700" title={c.concepto}>{c.concepto}</td>
                     <td className="w-32 px-4 py-2 text-right font-medium text-emerald-700">{fmtMoney(c.importe, moneda)}</td>
