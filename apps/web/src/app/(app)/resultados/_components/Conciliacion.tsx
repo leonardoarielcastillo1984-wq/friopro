@@ -258,8 +258,8 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
         ) : visibles.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-14 text-neutral-400">
             <CheckCircle2 size={28} className="text-emerald-400" />
-            <p className="text-sm">{fEstado === 'sin_match' ? 'No hay movimientos sin conciliar. Todo cuadrado.' : 'No hay movimientos en este filtro.'}</p>
-            <p className="text-xs">Importá una cartola desde Cuentas por cobrar → “Conciliar cartola”.</p>
+            <p className="text-sm">{fEstado === 'sin_match' ? 'No hay movimientos sin conciliar.' : 'No hay movimientos en este filtro.'}</p>
+            <p className="text-xs">{fEstado === 'sin_match' ? 'Revisá “Docs sin match” para ver facturas y gastos pendientes de movimiento.' : 'Importá una cartola desde Cuentas por cobrar → “Conciliar cartola”.'}</p>
           </div>
         ) : (
           <table className="w-full text-sm">
