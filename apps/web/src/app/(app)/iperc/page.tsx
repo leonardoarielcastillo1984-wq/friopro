@@ -4,9 +4,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   HardHat, AlertTriangle, ShieldAlert, CheckCircle2, Clock,
   ChevronLeft, Plus, X, Loader2, Search, BrainCircuit, FileWarning,
-  TrendingDown, ShieldCheck, AlertOctagon, Wrench, Eye, Ban
+  TrendingDown, ShieldCheck, AlertOctagon, Wrench, Eye, Ban, Upload, FileSpreadsheet
 } from 'lucide-react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, apiPath } from '@/lib/api';
 import DocCodeBadge from '@/components/DocCodeBadge';
 
 // Types
@@ -122,6 +122,10 @@ export default function IPERCPage() {
   const [showAiModal, setShowAiModal] = useState(false);
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [showReviewsModal, setShowReviewsModal] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ created: number; skipped: number; failed: number; errors: { fila: number; error: string }[] } | null>(null);
+  const [importError, setImportError] = useState('');
   const [employees, setEmployees] = useState<{ id: string; firstName: string; lastName: string; email: string }[]>([]);
 
   const [form, setForm] = useState<Partial<Hazard>>({
@@ -265,6 +269,39 @@ export default function IPERCPage() {
     } finally { setAiLoading(false); }
   }
 
+  // Importa la matriz IPERC en Excel (la misma plantilla descargable del
+  // sitio): cada fila queda como un riesgo con sus controles y plan de acción.
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true); setImportError(''); setImportResult(null);
+    try {
+      const token = window.localStorage.getItem('accessToken');
+      const tenantId = window.localStorage.getItem('tenantId');
+      const csrf = window.localStorage.getItem('csrfToken');
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(apiPath('/api/hazards/import'), {
+        method: 'POST', credentials: 'include',
+        headers: {
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+          ...(tenantId ? { 'x-tenant-id': tenantId } : {}),
+          ...(csrf ? { 'x-csrf-token': csrf } : {}),
+        },
+        body: fd,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { setImportError(data?.error || `Error ${res.status}`); return; }
+      setImportResult(data?.result || { created: 0, skipped: 0, failed: 0, errors: [] });
+      await loadItems(); await loadAlerts();
+    } catch (err: any) {
+      setImportError(err?.message || 'Error al importar');
+    } finally {
+      setImporting(false);
+      if (e.target) e.target.value = '';
+    }
+  }
+
   async function handleAutoNc(item: Hazard) {
     try {
       const res = await apiFetch<{ created: boolean; reason?: string; ncr?: any }>(`/hazards/${item.id}/auto-nc`, { method: 'POST' });
@@ -311,6 +348,9 @@ export default function IPERCPage() {
         </div>
         <div className="flex items-center gap-2">
           <DocCodeBadge outputKey="seguridad.iperc" title="IPERC — Peligros SST" module="seguridad" subModule="iperc" outputType="LIST" />
+          <button onClick={() => { setShowImport(true); setImportResult(null); setImportError(''); }} className="inline-flex items-center gap-2 px-4 py-2 border text-sm rounded-lg hover:bg-emerald-50 text-emerald-700 border-emerald-200">
+            <Upload className="w-4 h-4" /> Importar Excel
+          </button>
           <button onClick={openCreate} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
             <Plus className="w-4 h-4" /> Nuevo riesgo
           </button>
@@ -458,6 +498,44 @@ export default function IPERCPage() {
           onSave={saveReview}
           onClose={() => setShowReviewsModal(false)}
         />
+      )}
+
+      {/* Import Modal */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[80vh] overflow-y-auto p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-emerald-600" /> Importar matriz IPERC
+              </h3>
+              <button onClick={() => setShowImport(false)} className="p-1 hover:bg-neutral-100 rounded"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="border-2 border-dashed border-neutral-300 rounded-lg p-6 text-center space-y-3">
+              <FileSpreadsheet className="mx-auto h-10 w-10 text-neutral-400" />
+              <p className="text-sm text-neutral-600">Subí la <strong>plantilla IPERC de SGI360</strong> u otro Excel con columnas equivalentes.</p>
+              <p className="text-xs text-neutral-400">Cada fila se crea como riesgo con controles y plan de acción. Se detecta la fila de encabezados automáticamente.</p>
+              <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer transition-colors ${importing ? 'bg-neutral-400 pointer-events-none' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                <Upload className="w-4 h-4" /> {importing ? 'Importando…' : 'Seleccionar archivo'}
+                <input type="file" accept=".xlsx,.xls" onChange={handleImport} className="hidden" disabled={importing} />
+              </label>
+            </div>
+            {importing && <p className="text-sm text-neutral-500 text-center"><Loader2 className="w-4 h-4 animate-spin inline mr-2" />Procesando filas…</p>}
+            {importError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{importError}</p>}
+            {importResult && (
+              <div className="text-sm space-y-2">
+                <p className="font-medium text-neutral-800">
+                  {importResult.created} riesgo(s) creados{importResult.skipped ? ` · ${importResult.skipped} filas vacías omitidas` : ''}{importResult.failed ? ` · ${importResult.failed} con error` : ''}
+                </p>
+                {importResult.errors?.length > 0 && (
+                  <ul className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 space-y-1 max-h-40 overflow-y-auto">
+                    {importResult.errors.map((er, i) => <li key={i}>Fila {er.fila}: {er.error}</li>)}
+                  </ul>
+                )}
+                {importResult.created > 0 && <p className="text-xs text-neutral-500">Los controles existentes quedaron como control administrativo y el plan de acción como acción pendiente con su responsable y fecha límite.</p>}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* AI Modal */}

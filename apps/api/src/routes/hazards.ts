@@ -5,6 +5,7 @@ import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
  */
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import XLSX from 'xlsx';
 import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
 
 function parseBody(req: FastifyRequest): any {
@@ -195,6 +196,185 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
       });
     });
     return reply.send({ item });
+  });
+
+  // --- IMPORT ---
+  // POST /hazards/import — sube la matriz IPERC en Excel (la misma plantilla
+  // que se descarga del sitio u otra con headers equivalentes) y crea un
+  // Hazard por fila con sus acciones de tratamiento.
+  app.post('/import', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const data = await (req as any).file();
+    if (!data) return reply.code(400).send({ error: 'No se recibió archivo' });
+    const mimeOk = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+    ].includes(data.mimetype);
+    if (!mimeOk) return reply.code(400).send({ error: 'Solo se aceptan archivos Excel (.xlsx, .xls)' });
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of data.file) chunks.push(chunk);
+    const wb = XLSX.read(Buffer.concat(chunks), { type: 'buffer' });
+
+    const norm = (h: string) => String(h || '').trim().toLowerCase()
+      .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+      .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+    // La plantilla tiene título + datos de encabezado antes de la fila de
+    // headers: se detecta la hoja y fila correctas buscando la columna
+    // "peligro" — funciona también con Excels a mano donde headers van en 1.
+    let wsSheet: XLSX.WorkSheet | null = null;
+    let headerRowIdx = -1;
+    for (const name of wb.SheetNames) {
+      const ws = wb.Sheets[name];
+      const grid = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
+      const idx = grid.findIndex(row => row.some((c: any) => norm(String(c)).includes('peligro')));
+      if (idx >= 0) { wsSheet = ws; headerRowIdx = idx; break; }
+    }
+    if (!wsSheet || headerRowIdx < 0) {
+      return reply.code(400).send({ error: 'No se encontró la fila de encabezados (columna "Peligro")' });
+    }
+
+    // Campo "Área / Proceso:" de la fila de encabezado de la plantilla (si vino completo).
+    const gridTop = XLSX.utils.sheet_to_json<any[]>(wsSheet, { header: 1, defval: '', range: 0, blankrows: true });
+    let areaGlobal = '';
+    for (const row of gridTop.slice(0, headerRowIdx)) {
+      for (let i = 0; i < row.length - 1; i++) {
+        const cell = norm(String(row[i]));
+        if (cell === 'area_proceso' || cell === 'area') {
+          const v = String(row[i + 1] || '').trim();
+          if (v) areaGlobal = v;
+        }
+      }
+    }
+
+    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(wsSheet, { defval: '', range: headerRowIdx });
+    if (!rows.length) return reply.code(400).send({ error: 'La hoja no contiene filas de datos' });
+
+    const getVal = (row: Record<string, any>, keys: string[]) => {
+      for (const k of keys) {
+        for (const ok of Object.keys(row)) {
+          if (norm(ok) === k) return row[ok];
+        }
+      }
+      return undefined;
+    };
+    const toInt = (v: any, fb?: number) => {
+      const n = Number(String(v ?? '').toString().trim());
+      return Number.isFinite(n) ? Math.trunc(n) : fb;
+    };
+    const toBool = (v: any) => {
+      const s = String(v ?? '').trim().toLowerCase();
+      if (['si', 'sí', 's', 'true', '1', 'yes', 'y'].includes(s)) return true;
+      if (['no', 'n', 'false', '0'].includes(s)) return false;
+      return undefined;
+    };
+    const toDate = (v: any) => {
+      if (v == null || v === '') return undefined;
+      if (v instanceof Date && !isNaN(+v)) return v;
+      if (typeof v === 'number') { // serial Excel
+        const d = XLSX.SSF.parse_date_code(v);
+        if (d) return new Date(Date.UTC(d.y, d.m - 1, d.d));
+      }
+      const d = new Date(String(v));
+      return isNaN(+d) ? undefined : d;
+    };
+
+    // Responsables: match difuso por nombre completo contra empleados.
+    const employees = await app.runWithDbContext(req, async (tx: any) =>
+      tx.employee.findMany({ where: { tenantId, status: 'ACTIVE' }, select: { id: true, firstName: true, lastName: true } })
+    );
+    const normName = (s: string) => norm(s).replace(/_/g, ' ').trim();
+    const matchEmployee = (nombre: string) => {
+      const n = normName(nombre);
+      if (!n) return null;
+      return employees.find((e: any) => normName(`${e.firstName} ${e.lastName}`) === n)
+          || employees.find((e: any) => n.includes(normName(e.lastName)) || normName(`${e.firstName} ${e.lastName}`).includes(n))
+          || null;
+    };
+
+    const year = new Date().getFullYear();
+    let codeSeq = await app.prisma.hazard.count({
+      where: { tenantId, code: { startsWith: `IPERC-${year}-` } },
+    });
+
+    let created = 0, skipped = 0;
+    const errors: { fila: number; error: string }[] = [];
+
+    await app.runWithDbContext(req, async (tx: any) => {
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const actividad = String(getVal(r, ['proceso_tarea', 'proceso', 'tarea', 'actividad', 'actividad_tarea', 'puesto', 'area_puesto', 'area_actividad']) ?? '').trim();
+        const peligro = String(getVal(r, ['peligro_identificado', 'peligro', 'hazard']) ?? '').trim();
+        if (!actividad && !peligro) { skipped++; continue; }
+
+        const tipo = String(getVal(r, ['tipo_de_peligro', 'tipo_peligro', 'tipo', 'clasificacion']) ?? '').trim();
+        const expuestos = String(getVal(r, ['personas_expuestas', 'expuestos', 'trabajadores_expuestos']) ?? '').trim();
+        const prob = toInt(getVal(r, ['probabilidad_1_5', 'probabilidad', 'probability']), undefined);
+        const sev = toInt(getVal(r, ['impacto_severidad_1_5', 'severidad_1_5', 'severidad', 'impacto', 'severity', 'impact']), undefined);
+        if (prob == null || sev == null || prob < 1 || prob > 5 || sev < 1 || sev > 5) {
+          errors.push({ fila: headerRowIdx + 2 + i, error: 'Probabilidad e Impacto/Severidad (1-5) son requeridos' });
+          continue;
+        }
+
+        const controles = String(getVal(r, ['controles_existentes', 'controles', 'medidas_de_control', 'control_existente']) ?? '').trim();
+        const suficiente = toBool(getVal(r, ['suficiente_s_n', 'suficiente', 'controles_suficientes']));
+        const plan = String(getVal(r, ['plan_de_accion', 'plan_accion', 'acciones', 'medidas_correctivas']) ?? '').trim();
+        const responsableTxt = String(getVal(r, ['responsable', 'responsable_del_control']) ?? '').trim();
+        const fechaLimite = toDate(getVal(r, ['fecha_limite', 'fecha', 'vencimiento', 'plazo']));
+        const probPost = toInt(getVal(r, ['prob_post', 'probabilidad_post', 'p_post']), undefined);
+        const impPost = toInt(getVal(r, ['imp_post', 'impacto_post', 'i_post']), undefined);
+        const exposure = toInt(getVal(r, ['exposicion', 'exposure']), 1) ?? 1;
+
+        const level = prob * sev * exposure;
+        const residual = (probPost != null && impPost != null) ? probPost * impPost : null;
+        const emp = matchEmployee(responsableTxt);
+
+        try {
+          codeSeq += 1;
+          const item = await tx.hazard.create({
+            data: {
+              tenantId,
+              code: `IPERC-${year}-${String(codeSeq).padStart(3, '0')}`,
+              area: areaGlobal || actividad || 'Sin área',
+              activity: actividad || 'Sin actividad',
+              hazard: peligro || actividad,
+              risk: [tipo ? `Tipo: ${tipo}` : '', expuestos ? `Expuestos: ${expuestos}` : ''].filter(Boolean).join('. ') || 'Riesgo ocupacional',
+              probability: prob, severity: sev, exposure,
+              riskLevel: level, riskCategory: getRiskCategory(level),
+              // El control existente del Excel es un bucket único: se registra
+              // como administrativo (el tipo más frecuente) y la evaluación
+              // ¿Suficiente? pasa a su flag de eficacia.
+              administrative: controles || null,
+              administrativeImplemented: controles ? true : false,
+              administrativeEffective: suficiente ?? null,
+              residualRiskLevel: residual,
+              residualRiskCategory: residual != null ? getRiskCategory(residual) : null,
+              responsibleId: emp?.id || null,
+              status: plan ? 'IN_TREATMENT' : 'OPEN',
+            },
+          });
+          if (plan) {
+            await tx.riskAction.create({
+              data: {
+                tenantId, hazardId: item.id,
+                description: plan + (responsableTxt && !emp ? ` (Responsable: ${responsableTxt})` : ''),
+                responsibleId: emp?.id || null,
+                dueDate: fechaLimite || null,
+                status: 'PENDING', effectiveness: 'PENDING',
+              },
+            });
+          }
+          created++;
+        } catch (e: any) {
+          errors.push({ fila: headerRowIdx + 2 + i, error: e?.message || 'Error al crear' });
+        }
+      }
+    });
+
+    return reply.send({ result: { created, skipped, failed: errors.length, errors: errors.slice(0, 20) } });
   });
 
   // --- RISK ACTIONS ---
