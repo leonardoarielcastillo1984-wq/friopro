@@ -223,14 +223,20 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
       .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
     // La plantilla tiene título + datos de encabezado antes de la fila de
-    // headers: se detecta la hoja y fila correctas buscando la columna
-    // "peligro" — funciona también con Excels a mano donde headers van en 1.
+    // headers: se detecta la hoja y fila correctas exigiendo ≥2 celdas que
+    // sean headers conocidos (una de peligro + una de proceso/tarea), así el
+    // título "Identificación de Peligros" no se confunde con la fila real.
+    const H_PELIGRO = ['peligro_identificado', 'peligro', 'hazard'];
+    const H_PROCESO = ['proceso_tarea', 'proceso', 'tarea', 'actividad', 'actividad_tarea', 'puesto', 'area_puesto', 'area_actividad'];
     let wsSheet: XLSX.WorkSheet | null = null;
     let headerRowIdx = -1;
     for (const name of wb.SheetNames) {
       const ws = wb.Sheets[name];
       const grid = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
-      const idx = grid.findIndex(row => row.some((c: any) => norm(String(c)).includes('peligro')));
+      const idx = grid.findIndex((row: any[]) => {
+        const cells = row.map((c: any) => norm(String(c)));
+        return cells.some(c => H_PELIGRO.includes(c)) && cells.some(c => H_PROCESO.includes(c));
+      });
       if (idx >= 0) { wsSheet = ws; headerRowIdx = idx; break; }
     }
     if (!wsSheet || headerRowIdx < 0) {
