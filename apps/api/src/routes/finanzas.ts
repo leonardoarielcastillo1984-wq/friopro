@@ -871,6 +871,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
 
     // Pagos a proveedores: cada cargo matcheado crea FinanzaPago (dedup CARTOLA:*).
     let pagosCreados = 0;
+    const tocadasG = new Set<string>();
     for (const r of resCargos.filter(x => x.estado === 'match')) {
       for (const a of r.gastos.filter((x: any) => x.aplicar > 0)) {
         try {
@@ -883,7 +884,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
               createdById: user.id, createdByNombre: user.nombre,
             },
           });
-          pagosCreados++;
+          pagosCreados++; tocadasG.add(a.id);
         } catch (e: any) {
           errores.push(`${r.fecha} $${r.monto}: ${e?.message?.slice(0, 120) || 'error'}`);
         }
@@ -921,7 +922,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         errores.push(`mov ${r.fecha} $${r.monto}: ${e?.message?.slice(0, 120) || 'error'}`);
       }
     }
-    return reply.send({ creados, pagosCreados, facturasAfectadas: tocadas.size, errores, filas: resFilas, cargos: resCargos });
+    return reply.send({ creados, pagosCreados, facturasAfectadas: tocadas.size, gastosAfectados: tocadasG.size, errores, filas: resFilas, cargos: resCargos });
   });
 
   // POST /cartola-deshacer {referencia} — revierte un abono ya conciliado:
