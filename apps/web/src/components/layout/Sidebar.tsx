@@ -45,6 +45,7 @@ import {
   ListChecks,
   Wrench,
   Building2,
+  HardHat,
 } from 'lucide-react';
 
 const mainNav = [
@@ -82,6 +83,7 @@ const mainNav = [
 
   // 6. Gestión de Riesgos
   { label: 'Gestión de Riesgos', icon: Shield, href: '/seguridad' },
+  { label: 'SEH360 (SyH)', icon: HardHat, href: '/seh' },
   { label: 'Indicadores', icon: TrendingUp, href: '/indicadores' },
 
   // 7. Proyectos y acciones
@@ -122,6 +124,7 @@ const MODULE_PLAN_REQUIREMENTS: Record<string, PlanTier> = {
   '/objetivos': 'BASIC',
   '/calidad': 'BASIC',
   '/seguridad': 'BASIC',
+  '/seh': 'PROFESSIONAL',
   '/indicadores': 'BASIC',
   '/cumplimiento': 'PROFESSIONAL',
   '/infraestructura': 'PROFESSIONAL',

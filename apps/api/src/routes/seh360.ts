@@ -84,11 +84,12 @@ export async function registerSeh360Routes(app: FastifyInstance) {
     const model = modelMap[name];
     const schema = schemas[name];
     const qClient = (req: any) => req.query?.clientId ? { clientId: req.query.clientId } : {};
+    const softDel = !noSoftDelete.has(name);
 
     app.get(`${p}/${path}`, async (req: any, reply) => {
       if (!req.sehAuth) return reply.code(401).send({ error: 'No autorizado' });
       const t = tid(req); if (!t) return reply.code(400).send({ error: 'Tenant required' });
-      const softDel = !noSoftDelete.has(name); const where: any = { tenantId: t, ...(softDel ? { deletedAt: null } : {}), ...qClient(req) };
+      const where: any = { tenantId: t, ...(softDel ? { deletedAt: null } : {}), ...qClient(req) };
       const r = await txRun(app, req, (tx: any) => tx[model].findMany({ where, orderBy: { createdAt: 'desc' } }));
       return reply.send({ [name]: r });
     });
@@ -137,7 +138,16 @@ export async function registerSeh360Routes(app: FastifyInstance) {
     if (!req.sehAuth) return reply.code(401).send({ error: 'No autorizado' });
     const t = tid(req); if (!t) return reply.code(400).send({ error: 'Tenant required' });
     const qClient = req.query?.clientId ? { clientId: req.query.clientId } : {};
-    const r = await txRun(app, req, (tx: any) => tx.sehClient.findMany({ where: { tenantId: t, deletedAt: null, ...qClient }, orderBy: { createdAt: 'desc' } }));
+    let r = await txRun(app, req, (tx: any) => tx.sehClient.findMany({ where: { tenantId: t, deletedAt: null, ...qClient }, orderBy: { createdAt: 'desc' } }));
+    // SGI360: si el tenant no tiene clientes SEH, auto-crear "Principal" con el nombre del tenant
+    // (empresa normal = ella misma como cliente; consultor = puede dar de alta más)
+    if (r.length === 0) {
+      try {
+        const tenant = await txRun(app, req, (tx: any) => tx.tenant.findUnique({ where: { id: t }, select: { name: true } }));
+        await txRun(app, req, (tx: any) => tx.sehClient.create({ data: { tenantId: t, createdById: uid(req), name: tenant?.name || 'Principal' } }));
+        r = await txRun(app, req, (tx: any) => tx.sehClient.findMany({ where: { tenantId: t, deletedAt: null, ...qClient }, orderBy: { createdAt: 'desc' } }));
+      } catch (e: any) { console.error('[SEH360] auto-client failed:', e?.message); }
+    }
     return reply.send({ clients: r });
   });
 
