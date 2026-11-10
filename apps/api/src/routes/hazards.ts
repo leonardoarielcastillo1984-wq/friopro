@@ -268,7 +268,9 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
       return undefined;
     };
     const toInt = (v: any, fb?: number) => {
-      const n = Number(String(v ?? '').toString().trim());
+      const s = String(v ?? '').trim();
+      if (s === '') return fb; // Number('') es 0 en JS — la celda vacía no es cero, es "sin dato"
+      const n = Number(s);
       return Number.isFinite(n) ? Math.trunc(n) : fb;
     };
     const toBool = (v: any) => {
