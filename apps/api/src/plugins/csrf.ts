@@ -49,6 +49,7 @@ function shouldSkip(req: FastifyRequest) {
   if (url.startsWith('/seh360/')) return true; // SEH360 client portal routes
   if (url.startsWith('/audit360/auth/')) return true; // Audit360 auth routes (own JWT)
   if (url.startsWith('/flota360/auth/')) return true; // Flota360 auth routes (own JWT)
+  if (url.startsWith('/public/v1/') || url.startsWith('/api/public/v1/')) return true; // API pública (X-API-Key, sin cookies)
   if (url.startsWith('/audit360/webhooks/')) return true; // Audit360 webhooks (MercadoPago, no CSRF)
   if (url.startsWith('/siniestros360/')) return true; // Siniestros360 uses own JWT
   if (url.startsWith('/audit360/portal-client/')) return true; // Audit360 client portal (no auth)

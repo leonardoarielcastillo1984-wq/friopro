@@ -154,6 +154,7 @@ import finanzasRoutes from './routes/finanzas.js';
 import { copilotRoutes } from './routes/copilot.js';
 import suppliesRoutes from './routes/supplies.js';
 import fleetOpsRoutes from './routes/fleet-ops.js';
+import { apiKeyManagementRoutes, publicApiV1Routes } from './routes/public-api.js';
 import { centroEmpresaRoutes } from './routes/centro-empresa.js';
 import fleetRecurrenceRoutes from './routes/fleet-recurrence.js';
 import { driverHubRoutes } from './routes/driver-hub.js';
@@ -516,6 +517,8 @@ export async function buildApp() {
   await app.register(finanzasRoutes, { prefix: '/api/finanzas' });
   await app.register(fleetRecurrenceRoutes, { prefix: '/fleet-recurrence' });
   await app.register(fleetOpsRoutes, { prefix: '/fleet-ops' });
+  await app.register(apiKeyManagementRoutes, { prefix: '/api-keys' });
+  await app.register(publicApiV1Routes, { prefix: '/public/v1' });
   await app.register(centroEmpresaRoutes, { prefix: '/centro-empresa' });
   await app.register(driverHubRoutes, { prefix: '/driver-hub' });
 await app.register(garantiasRoutes, { prefix: '/garantias' });

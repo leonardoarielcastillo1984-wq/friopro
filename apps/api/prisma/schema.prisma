@@ -5279,6 +5279,30 @@ model LegalComplianceEvaluation {
   @@map("legal_compliance_evaluations")
 }
 
+// Biblioteca legal compartida multi-país (SIN tenantId): normas SST/ambientales/
+// calidad que se sugieren a cada tenant según su país y se importan a su registro.
+model LegalLibrary {
+  id                 String    @id @default(uuid()) @db.Uuid
+  country            String // ISO-3166 alpha-2: AR | CL | ALL (transversal)
+  framework          String // ENVIRONMENTAL | OHAS | QUALITY | OTHER
+  jurisdiction       String? // nacional | provincial/regional (ej. "CABA", "RM")
+  source             String // norma: "Ley 19.587", "DS 594", "Res. 299/11"...
+  article            String?
+  title              String
+  description        String?   @db.Text
+  appliesTo          String? // actividad/rubro sugerido (null = aplica a todo)
+  enforcingAuthority String? // organismo fiscalizador: SRT, DT, Seremi de Salud...
+  sourceUrl          String?
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now()) @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @db.Timestamptz
+
+  @@index([country])
+  @@index([framework])
+  @@index([isActive])
+  @@map("legal_library")
+}
+
 // ──────────────────────────────────────────────────────────────
 // ISO 45001 §8.1 — SST operacional del SGI (independiente de SEH360)
 // ──────────────────────────────────────────────────────────────

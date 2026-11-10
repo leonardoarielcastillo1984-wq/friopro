@@ -148,6 +148,93 @@ export default async function legalRequirementsRoutes(app: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
+  // ── Biblioteca legal compartida multi-país ──────────────────────
+  // GET /library — sugerencias de normas según el país del tenant
+  // ?country=XX para forzar, ?framework=, ?q= para buscar
+  app.get('/library', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await tenantCtx(req, reply, app.prisma); if (!tenantId) return;
+    const { country, framework, q } = req.query as any;
+    // País del tenant (fallback AR); 'ALL' se suma siempre
+    let tenantCountry = 'AR';
+    const t = await prisma().tenant.findUnique({ where: { id: tenantId }, select: { country: true } });
+    if (t?.country) tenantCountry = t.country;
+    const effectiveCountry = country || tenantCountry;
+    const where: any = {
+      isActive: true,
+      country: { in: [effectiveCountry, 'ALL'] },
+    };
+    if (framework) where.framework = framework;
+    if (q) {
+      where.OR = [
+        { source: { contains: q, mode: 'insensitive' } },
+        { title: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+    const items = await prisma().legalLibrary.findMany({
+      where,
+      orderBy: [{ country: 'asc' }, { framework: 'asc' }, { source: 'asc' }],
+      take: 300,
+    });
+    // Marcar cuáles ya fueron importados por este tenant (por source+title)
+    const existing = await prisma().legalRequirement.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { source: true, title: true },
+    });
+    const existingKeys = new Set(existing.map((e: any) => `${e.source}|||${e.title}`));
+    const library = items.map((i: any) => ({
+      ...i,
+      imported: existingKeys.has(`${i.source}|||${i.title}`),
+    }));
+    return reply.send({ items: library, tenantCountry: effectiveCountry });
+  });
+
+  // GET /library/countries — países con contenido en la biblioteca
+  app.get('/library/countries', async (_req: FastifyRequest, reply: FastifyReply) => {
+    const rows = await prisma().legalLibrary.groupBy({
+      by: ['country'],
+      where: { isActive: true },
+      _count: { country: true },
+    });
+    return reply.send({ countries: rows.map((r: any) => ({ country: r.country, count: r._count.country })) });
+  });
+
+  // POST /library/import — importa normas de la biblioteca al registro del tenant
+  const importSchema = z.object({
+    ids: z.array(z.string().uuid()).min(1).max(100),
+    appliesTo: z.string().optional().nullable(),
+  });
+  app.post('/library/import', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await tenantCtx(req, reply, app.prisma); if (!tenantId) return;
+    const body = importSchema.parse(req.body);
+    const items = await prisma().legalLibrary.findMany({
+      where: { id: { in: body.ids }, isActive: true },
+    });
+    if (!items.length) return reply.code(404).send({ error: 'No se encontraron normas en la biblioteca' });
+    const existing = await prisma().legalRequirement.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { source: true, title: true },
+    });
+    const existingKeys = new Set(existing.map((e: any) => `${e.source}|||${e.title}`));
+    const toCreate = items
+      .filter((i: any) => !existingKeys.has(`${i.source}|||${i.title}`))
+      .map((i: any) => ({
+        tenantId,
+        framework: i.framework,
+        source: i.source,
+        title: i.title,
+        description: i.description ?? null,
+        appliesTo: body.appliesTo || i.appliesTo || null,
+        evaluationFrequency: 'YEARLY',
+        isActive: true,
+      }));
+    if (!toCreate.length) {
+      return reply.send({ ok: true, imported: 0, skipped: items.length, message: 'Ya estaban registradas' });
+    }
+    const result = await prisma().legalRequirement.createMany({ data: toCreate });
+    return reply.send({ ok: true, imported: result.count, skipped: items.length - result.count });
+  });
+
   // POST /:id/evaluations — registrar evaluación de cumplimiento (9.1.2)
   app.post('/:id/evaluations', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await tenantCtx(req, reply, app.prisma); if (!tenantId) return;

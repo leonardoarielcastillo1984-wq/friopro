@@ -3,7 +3,8 @@
 import { Fragment, useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
 import DocCodeBadge from '@/components/DocCodeBadge';
-import { Scale, Plus, Trash2, X, CheckCircle2, AlertTriangle, ClipboardCheck } from 'lucide-react';
+import { Scale, Plus, Trash2, X, CheckCircle2, AlertTriangle, ClipboardCheck, Library, Search, Globe, Loader2 } from 'lucide-react';
+import { countryName, countryFlag } from '@/lib/countries';
 import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 // ISO 9001/14001/45001 §6.1.3 — registro de requisitos legales
@@ -43,6 +44,12 @@ const emptyForm = {
 };
 const emptyEval = { result: 'COMPLIANT', findings: '', correctiveRequired: false, evaluatedBy: '', evidence: '', evaluationDate: new Date().toISOString().split('T')[0] };
 
+type LibraryItem = {
+  id: string; country: string; framework: string; jurisdiction?: string; source: string;
+  article?: string; title: string; description?: string; appliesTo?: string;
+  enforcingAuthority?: string; sourceUrl?: string; imported: boolean;
+};
+
 export default function RequisitosLegalesPage() {
   const [items, setItems] = useState<Requirement[]>([]);
   const [summary, setSummary] = useState<any>(null);
@@ -55,6 +62,16 @@ export default function RequisitosLegalesPage() {
   const [evalTarget, setEvalTarget] = useState<Requirement | null>(null);
   const [evalForm, setEvalForm] = useState(emptyEval);
   const [history, setHistory] = useState<Record<string, Evaluation[]>>({});
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [library, setLibrary] = useState<LibraryItem[]>([]);
+  const [libCountry, setLibCountry] = useState('');
+  const [libCountries, setLibCountries] = useState<{ country: string; count: number }[]>([]);
+  const [libFilter, setLibFilter] = useState('');
+  const [libQuery, setLibQuery] = useState('');
+  const [libLoading, setLibLoading] = useState(false);
+  const [libSelected, setLibSelected] = useState<Set<string>>(new Set());
+  const [importing, setImporting] = useState(false);
+  const [libMessage, setLibMessage] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -68,6 +85,55 @@ export default function RequisitosLegalesPage() {
     } finally { setLoading(false); }
   }, [filter]);
   useEffect(() => { setLoading(true); load(); }, [load]);
+
+  const loadLibrary = useCallback(async (country?: string, framework?: string, q?: string) => {
+    setLibLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (country) params.set('country', country);
+      if (framework) params.set('framework', framework);
+      if (q) params.set('q', q);
+      const r = await apiFetch<{ items: LibraryItem[]; tenantCountry: string }>(`/legal-requirements/library?${params.toString()}`);
+      setLibrary(r?.items || []);
+      if (!country && r?.tenantCountry) setLibCountry(r.tenantCountry);
+      setLibSelected(new Set());
+    } finally { setLibLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (!showLibrary) return;
+    loadLibrary(libCountry || undefined, libFilter || undefined, libQuery || undefined);
+  }, [showLibrary, libCountry, libFilter, libQuery, loadLibrary]);
+
+  useEffect(() => {
+    if (!showLibrary) return;
+    apiFetch<{ countries: { country: string; count: number }[] }>('/legal-requirements/library/countries')
+      .then(r => setLibCountries(r?.countries || []))
+      .catch(() => {});
+  }, [showLibrary]);
+
+  function toggleLibSelect(id: string) {
+    setLibSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function importSelected() {
+    if (libSelected.size === 0) return;
+    setImporting(true); setLibMessage('');
+    try {
+      const r = await apiFetch<{ ok: boolean; imported: number; skipped: number }>(
+        '/legal-requirements/library/import',
+        { method: 'POST', json: { ids: Array.from(libSelected) } },
+      );
+      setLibMessage(`Se importaron ${r?.imported ?? 0} requisito(s)${r?.skipped ? ` · ${r.skipped} ya existían` : ''}`);
+      await Promise.all([load(), loadLibrary(libCountry || undefined, libFilter || undefined, libQuery || undefined)]);
+    } catch (e: any) {
+      setLibMessage(e?.message || 'No se pudo importar');
+    } finally { setImporting(false); }
+  }
 
   async function save(e: React.FormEvent) {
     e.preventDefault(); setSaving(true);
@@ -116,12 +182,111 @@ export default function RequisitosLegalesPage() {
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <DocCodeBadge outputKey="cumplimiento.requisitos-legales" title="Requisitos Legales" module="cumplimiento" subModule="requisitos-legales" outputType="LIST" />
+          <button onClick={() => setShowLibrary(v => !v)}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ${showLibrary ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}>
+            <Library className="h-4 w-4" /> Biblioteca legal
+          </button>
           <button onClick={() => { setEditItem(null); setForm(emptyForm); setShowModal(true); }}
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
             <Plus className="h-4 w-4" /> Nuevo requisito
           </button>
         </div>
       </div>
+
+      {/* Biblioteca legal compartida — sugerencias por país */}
+      {showLibrary && (
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 overflow-hidden">
+          <div className="border-b border-indigo-200 bg-indigo-50 px-5 py-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <Globe className="h-5 w-5 text-indigo-600" />
+                <div>
+                  <h2 className="font-semibold text-gray-900">Biblioteca legal {libCountry && <>— {countryFlag(libCountry)} {countryName(libCountry)}</>}</h2>
+                  <p className="text-xs text-gray-500">Normas sugeridas según tu país — seleccioná e importá a tu registro</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                  <input
+                    value={libQuery}
+                    onChange={e => setLibQuery(e.target.value)}
+                    placeholder="Buscar norma…"
+                    className="rounded-lg border border-gray-300 bg-white pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <select
+                  value={libCountry}
+                  onChange={e => setLibCountry(e.target.value)}
+                  className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  {libCountries.map(c => (
+                    <option key={c.country} value={c.country}>
+                      {c.country === 'ALL' ? 'Transversales (OIT)' : `${countryName(c.country) || c.country} (${c.count})`}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={libFilter}
+                  onChange={e => setLibFilter(e.target.value)}
+                  className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="">Todos los marcos</option>
+                  {Object.entries(FRAMEWORKS).map(([k, f]) => <option key={k} value={k}>{f.label}</option>)}
+                </select>
+                <button
+                  onClick={importSelected}
+                  disabled={libSelected.size === 0 || importing}
+                  className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  Importar {libSelected.size > 0 ? `(${libSelected.size})` : ''}
+                </button>
+              </div>
+            </div>
+          </div>
+          {libMessage && (
+            <p className="px-5 py-2 text-sm text-indigo-700 bg-indigo-50 border-b border-indigo-200">{libMessage}</p>
+          )}
+          <div className="max-h-96 overflow-y-auto bg-white">
+            {libLoading ? (
+              <p className="p-6 text-center text-sm text-gray-500"><Loader2 className="inline h-4 w-4 animate-spin mr-2" />Cargando biblioteca…</p>
+            ) : library.length === 0 ? (
+              <p className="p-6 text-center text-sm text-gray-500">No hay normas en la biblioteca para este filtro.</p>
+            ) : (
+              <ul className="divide-y divide-gray-100">
+                {library.map(item => (
+                  <li key={item.id} className={`px-5 py-3 flex items-start gap-3 ${item.imported ? 'bg-emerald-50/60' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={libSelected.has(item.id)}
+                      onChange={() => toggleLibSelect(item.id)}
+                      disabled={item.imported}
+                      className="mt-1 rounded border-gray-300 disabled:opacity-40"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-gray-900 text-sm">{item.source}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${FRAMEWORKS[item.framework]?.cls || 'bg-gray-100'}`}>{FRAMEWORKS[item.framework]?.label || item.framework}</span>
+                        {item.country !== 'ALL' && item.country !== libCountry && <span className="text-xs text-gray-400">{countryFlag(item.country)} {item.country}</span>}
+                        {item.country === 'ALL' && <span className="text-xs text-gray-400">OIT</span>}
+                        {item.imported && <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600"><CheckCircle2 className="h-3 w-3" />Ya importada</span>}
+                      </div>
+                      <p className="text-sm text-gray-700 mt-0.5">{item.title}</p>
+                      {item.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{item.description}</p>}
+                      <div className="mt-1 flex items-center gap-3 text-xs text-gray-400 flex-wrap">
+                        {item.enforcingAuthority && <span>Fiscaliza: {item.enforcingAuthority}</span>}
+                        {item.appliesTo && <span>Aplica a: {item.appliesTo}</span>}
+                        {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:underline">Ver texto oficial ↗</a>}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
 
       {summary && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
