@@ -27,6 +27,10 @@ export const seh360AuthPlugin = fp(async (app: FastifyInstance) => {
     const auth = (req as any).auth;
     if (!auth) { req.sehAuth = null; return; }
 
+    // Usuarios de portal cliente SEH: tienen JWT propio (role SEH_CLIENT),
+    // solo acceden a /seh360/portal/* — no a las rutas de gestión
+    if (auth.globalRole === 'SEH_CLIENT') { req.sehAuth = null; return; }
+
     // Tenant: prioriza header x-tenant-id (impersonación), si no el del token
     const headerTenant = req.headers['x-tenant-id'];
     let tenantId: string | undefined =
