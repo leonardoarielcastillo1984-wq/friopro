@@ -325,6 +325,8 @@ export default function SehPage() {
   const [libCountries, setLibCountries] = useState<string[]>([]);
   const [libSelected, setLibSelected] = useState<Set<string>>(new Set());
   const [libLoading, setLibLoading] = useState(false);
+  const [aiCountry, setAiCountry] = useState('');
+  const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
 
   const conf = MODULES.find(m => m.key === tab)!;
 
@@ -435,6 +437,23 @@ export default function SehPage() {
     } finally { setLibLoading(false); }
   }
   const toggleLib = (id: string) => setLibSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  // IA: alimentar la biblioteca con las normas del país elegido
+  async function aiSuggest() {
+    const country = aiCountry.trim();
+    if (!country) { setLibMsg('Escribí un país (ej: Argentina, Chile, Uruguay, México)'); return; }
+    setAiSuggestLoading(true); setLibMsg('');
+    try {
+      const r = await apiFetch<{ added: number; items: Row[] }>('/seh360/legal-library/ai-suggest', {
+        method: 'POST', json: { country, activity: client?.activity || undefined },
+      });
+      const items = r?.items || [];
+      setLibItems(items);
+      setLibSelected(new Set(items.map((i: any) => i.id)));
+      setLibCountry(country);
+      setLibMsg(r?.added ? `La IA agregó ${r.added} norma(s) de ${country} a la biblioteca` : `La biblioteca ya tenía las normas de ${country}`);
+    } catch (e: any) { setLibMsg(e?.message || 'Error al sugerir con IA'); }
+    finally { setAiSuggestLoading(false); }
+  }
   async function importLibrary() {
     if (!libSelected.size) { setLibMsg('Seleccioná al menos una norma'); return; }
     setLibMsg('Importando normas…');
@@ -689,6 +708,16 @@ export default function SehPage() {
                 {libCountries.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               <button onClick={searchLibrary} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 flex-shrink-0">Buscar</button>
+            </div>
+            {/* Sugerencia IA por país */}
+            <div className="flex items-center gap-2 border-b border-gray-100 bg-violet-50/50 p-3">
+              <Sparkles className="h-4 w-4 text-violet-600 flex-shrink-0" />
+              <input placeholder="País (ej: Argentina, Chile, Uruguay, México)" className={inputCls} value={aiCountry}
+                onChange={e => setAiCountry(e.target.value)} onKeyDown={e => e.key === 'Enter' && aiSuggest()} />
+              <button onClick={aiSuggest} disabled={aiSuggestLoading || !aiCountry.trim()}
+                className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 flex-shrink-0 whitespace-nowrap">
+                {aiSuggestLoading ? <><Loader2 className="inline h-4 w-4 animate-spin mr-1" />Generando…</> : 'Sugerir con IA'}
+              </button>
             </div>
             <div className="flex-1 overflow-y-auto p-3">
               {libLoading ? <p className="py-10 text-center text-sm text-gray-400"><Loader2 className="inline h-4 w-4 animate-spin mr-2" />Cargando…</p> : (
