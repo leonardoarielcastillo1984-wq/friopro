@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, lsKey } from '@/lib/api';
 import {
   HardHat, Plus, Trash2, X, Pencil, Building2, Search,
   ShieldAlert, ClipboardCheck, AlertTriangle, Users, Shirt,
   GraduationCap, Scale, ListChecks, Siren, FileCheck, TrendingUp, BrainCircuit, Loader2,
+  UserPlus, FileSpreadsheet, Sparkles, Bell,
 } from 'lucide-react';
 
 // ── Tipos ────────────────────────────────────────────────────────────
@@ -310,6 +311,13 @@ export default function SehPage() {
   const [itemForm, setItemForm] = useState<Row>({});
   const [saving, setSaving] = useState(false);
   const [libMsg, setLibMsg] = useState('');
+  const [showUsersModal, setShowUsersModal] = useState(false);
+  const [portalUsers, setPortalUsers] = useState<Row[]>([]);
+  const [userForm, setUserForm] = useState({ email: '', password: '', firstName: '', lastName: '', role: 'VIEWER' });
+  const [userMsg, setUserMsg] = useState('');
+  const [aiResult, setAiResult] = useState<{ title: string; text: string } | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [updates, setUpdates] = useState<any>(null);
 
   const conf = MODULES.find(m => m.key === tab)!;
 
@@ -393,21 +401,69 @@ export default function SehPage() {
   async function importLibrary() {
     setLibMsg('Importando normas de la biblioteca…');
     try {
-      const lib = await apiFetch<{ items: Row[] }>('/legal-requirements/library');
-      const items = (lib?.items || []).filter((i: any) => !i.imported);
-      if (!items.length) { setLibMsg('No hay normas nuevas en la biblioteca para tu país'); return; }
-      let ok = 0;
-      for (const i of items) {
-        await apiFetch('/seh360/legal-requirements', { method: 'POST', json: {
-          clientId: activeClient,
-          normative: i.source, description: i.title + (i.description ? ` — ${i.description}` : ''),
-          jurisdiction: i.jurisdiction || i.country, enforcingAuthority: i.enforcingAuthority,
-          isLibrary: true, librarySource: 'LegalLibrary', status: 'PENDING',
-        }}).then(() => ok++).catch(() => {});
-      }
-      setLibMsg(`Se importaron ${ok} norma(s) a la matriz legal`);
+      const lib = await apiFetch<{ items: Row[] }>('/seh360/legal-library');
+      const ids = (lib?.items || []).map((i: any) => i.id);
+      if (!ids.length) { setLibMsg('La biblioteca legal está vacía'); return; }
+      const r = await apiFetch<any>('/seh360/legal-library/import', { method: 'POST', json: { clientId: activeClient, itemIds: ids } });
+      setLibMsg(`Se importaron ${r?.imported ?? 0} norma(s) a la matriz legal (${r?.skipped ?? 0} ya estaban)`);
       await loadRows();
     } catch (e: any) { setLibMsg(e?.message || 'Error al importar'); }
+  }
+
+  // ── Usuarios del portal cliente ──────────────────────────────────
+  const loadPortalUsers = async (cid: string) => {
+    const r = await apiFetch<{ users: Row[] }>(`/seh360/clients/${cid}/users`);
+    setPortalUsers(r?.users || []);
+  };
+  async function createPortalUser(e: React.FormEvent) {
+    e.preventDefault(); setSaving(true); setUserMsg('');
+    try {
+      await apiFetch(`/seh360/clients/${activeClient}/users`, { method: 'POST', json: userForm });
+      setUserForm({ email: '', password: '', firstName: '', lastName: '', role: 'VIEWER' });
+      setUserMsg('Usuario creado — puede ingresar en /seh-portal');
+      await loadPortalUsers(activeClient);
+    } catch (err: any) { setUserMsg(err?.message || 'Error al crear usuario'); }
+    finally { setSaving(false); }
+  }
+  async function removePortalUser(uid: string) {
+    if (!confirm('¿Quitar acceso del portal a este usuario?')) return;
+    await apiFetch(`/seh360/clients/${activeClient}/users/${uid}`, { method: 'DELETE' });
+    await loadPortalUsers(activeClient);
+  }
+
+  // ── IA / export / novedades ──────────────────────────────────────
+  async function runAi(kind: 'risk-analysis' | 'legal-digest', title: string) {
+    setAiLoading(true);
+    try {
+      const r = await apiFetch<any>(`/seh360/ai/${kind}`, { method: 'POST', json: { clientId: activeClient } });
+      setAiResult({ title, text: r?.analysis || r?.digest || 'Sin respuesta del modelo' });
+    } catch (err: any) { setAiResult({ title, text: err?.message || 'Error al generar' }); }
+    finally { setAiLoading(false); }
+  }
+
+  async function exportMatrix() {
+    const token = localStorage.getItem(lsKey('accessToken'));
+    const tid = localStorage.getItem(lsKey('tenantId'));
+    const r = await fetch(`/api/seh360/legal-export?clientId=${activeClient}`, {
+      headers: { authorization: `Bearer ${token}`, 'x-tenant-id': tid || '' },
+    });
+    if (!r.ok) { setLibMsg('No hay requisitos para exportar'); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `matriz-legal-${client?.name || 'seh'}.xlsx`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function loadUpdates() {
+    const r = await apiFetch<any>(`/seh360/legal-updates?clientId=${activeClient}`);
+    setUpdates(r?.updates || { newLibraryItems: [], dueReviews: [], overdueCount: 0 });
+  }
+  async function importPendingUpdates(itemIds: string[]) {
+    const r = await apiFetch<any>('/seh360/legal-library/import', { method: 'POST', json: { clientId: activeClient, itemIds } });
+    setLibMsg(`Se importaron ${r?.imported ?? 0} norma(s)`);
+    setUpdates(null);
+    await loadRows();
   }
 
   const client = clients.find(c => c.id === activeClient);
@@ -428,6 +484,10 @@ export default function SehPage() {
             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm min-w-[180px]">
             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+          <button onClick={() => { setShowUsersModal(true); setUserMsg(''); if (activeClient) loadPortalUsers(activeClient); }} disabled={!activeClient}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+            <UserPlus className="h-4 w-4" /> Portal
+          </button>
           <button onClick={() => setShowClientModal(true)}
             className="inline-flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-medium text-orange-700 hover:bg-orange-100">
             <Building2 className="h-4 w-4" /> Nueva empresa
@@ -466,9 +526,29 @@ export default function SehPage() {
         </h2>
         <div className="flex items-center gap-2">
           {tab === 'legal' && (
-            <button onClick={importLibrary}
-              className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100">
-              <Search className="h-4 w-4" /> Importar de biblioteca
+            <>
+              <button onClick={importLibrary}
+                className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100">
+                <Search className="h-4 w-4" /> Importar de biblioteca
+              </button>
+              <button onClick={loadUpdates}
+                className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100">
+                <Bell className="h-4 w-4" /> Novedades
+              </button>
+              <button onClick={exportMatrix}
+                className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100">
+                <FileSpreadsheet className="h-4 w-4" /> Exportar
+              </button>
+              <button onClick={() => runAi('legal-digest', 'Análisis IA — Matriz legal')} disabled={aiLoading}
+                className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100 disabled:opacity-50">
+                <Sparkles className="h-4 w-4" /> Analizar IA
+              </button>
+            </>
+          )}
+          {tab === 'risks' && (
+            <button onClick={() => runAi('risk-analysis', 'Análisis IA — Matriz de riesgos')} disabled={aiLoading}
+              className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100 disabled:opacity-50">
+              <Sparkles className="h-4 w-4" /> {aiLoading ? 'Analizando…' : 'Analizar IA'}
             </button>
           )}
           <button onClick={openCreate} disabled={!activeClient}
@@ -545,6 +625,125 @@ export default function SehPage() {
               <button disabled={saving} className="rounded-lg bg-orange-600 px-4 py-2 text-sm text-white hover:bg-orange-700 disabled:opacity-50">{saving ? 'Guardando…' : 'Crear'}</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Modal usuarios del portal */}
+      {showUsersModal && client && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-gray-200 p-4">
+              <div>
+                <h3 className="font-semibold text-gray-900">Usuarios del portal — {client.name}</h3>
+                <p className="text-xs text-gray-500">Acceso read-only en /seh-portal</p>
+              </div>
+              <button onClick={() => setShowUsersModal(false)}><X className="h-5 w-5 text-gray-500" /></button>
+            </div>
+            <div className="p-4 space-y-4">
+              {/* Lista */}
+              <div className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+                {portalUsers.length === 0 && <p className="px-4 py-6 text-center text-sm text-gray-400">Sin usuarios. Creá el primero abajo.</p>}
+                {portalUsers.map((u: any) => (
+                  <div key={u.linkId} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                    <div>
+                      <span className="font-medium text-gray-900">{u.firstName} {u.lastName}</span>
+                      <span className="ml-2 text-gray-500">{u.email}</span>
+                      {u.isPrimary && <span className="ml-2 rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700">Principal</span>}
+                      <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{u.role}</span>
+                    </div>
+                    <button onClick={() => removePortalUser(u.userId)} className="rounded p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                ))}
+              </div>
+              {userMsg && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{userMsg}</p>}
+              {/* Form alta */}
+              <form onSubmit={createPortalUser} className="space-y-3">
+                <p className="text-sm font-medium text-gray-700">Nuevo usuario</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <input required type="email" placeholder="Email *" className={inputCls} value={userForm.email} onChange={e => setUserForm({ ...userForm, email: e.target.value })} />
+                  <input required type="password" minLength={6} placeholder="Contraseña *" className={inputCls} value={userForm.password} onChange={e => setUserForm({ ...userForm, password: e.target.value })} />
+                  <input placeholder="Nombre" className={inputCls} value={userForm.firstName} onChange={e => setUserForm({ ...userForm, firstName: e.target.value })} />
+                  <input placeholder="Apellido" className={inputCls} value={userForm.lastName} onChange={e => setUserForm({ ...userForm, lastName: e.target.value })} />
+                </div>
+                <select className={inputCls} value={userForm.role} onChange={e => setUserForm({ ...userForm, role: e.target.value })}>
+                  <option value="VIEWER">Solo lectura</option>
+                  <option value="EDITOR">Editor</option>
+                </select>
+                <button disabled={saving} className="w-full rounded-lg bg-orange-600 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-50">
+                  {saving ? 'Creando…' : 'Crear usuario de portal'}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal resultado IA */}
+      {aiResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-xl bg-white max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-gray-200 p-4">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Sparkles className="h-5 w-5 text-violet-600" /> {aiResult.title}</h3>
+              <button onClick={() => setAiResult(null)}><X className="h-5 w-5 text-gray-500" /></button>
+            </div>
+            <div className="p-5">
+              <div className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">{aiResult.text}</div>
+              <p className="mt-4 text-xs text-gray-400">Análisis orientativo generado por IA — revisar con criterio profesional de SyH.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal novedades legales */}
+      {updates && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-xl bg-white max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-gray-200 p-4">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Bell className="h-5 w-5 text-amber-600" /> Novedades legales</h3>
+              <button onClick={() => setUpdates(null)}><X className="h-5 w-5 text-gray-500" /></button>
+            </div>
+            <div className="p-4 space-y-5">
+              {updates.overdueCount > 0 && (
+                <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700 font-medium">⚠ {updates.overdueCount} revisión(es) vencida(s)</p>
+              )}
+              {/* Revisiones pendientes */}
+              <div>
+                <h4 className="mb-2 text-sm font-medium text-gray-700">Revisiones próximas / vencidas</h4>
+                {updates.dueReviews?.length === 0 && <p className="text-sm text-gray-400">Ninguna revisión pendiente en los próximos 60 días.</p>}
+                <ul className="space-y-1.5">
+                  {updates.dueReviews?.slice(0, 10).map((r: any) => (
+                    <li key={r.id} className="flex items-center justify-between text-sm rounded-lg border border-gray-100 px-3 py-2">
+                      <span className="font-medium text-gray-800">{r.normative}</span>
+                      <span className={r.overdue ? 'text-red-600 font-medium' : 'text-gray-500'}>
+                        {r.overdue ? 'Vencida' : `en ${r.daysUntil}d`} — {fmtDate(r.nextReview)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {/* Nuevas en biblioteca */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <h4 className="text-sm font-medium text-gray-700">Nuevas normas en biblioteca (90 días)</h4>
+                  {updates.newLibraryItems?.some((i: any) => !i.alreadyInMatrix) && (
+                    <button onClick={() => importPendingUpdates(updates.newLibraryItems.filter((i: any) => !i.alreadyInMatrix).map((i: any) => i.id))}
+                      className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
+                      Importar las nuevas
+                    </button>
+                  )}
+                </div>
+                {updates.newLibraryItems?.length === 0 && <p className="text-sm text-gray-400">Sin novedades en la biblioteca.</p>}
+                <ul className="space-y-1.5">
+                  {updates.newLibraryItems?.slice(0, 15).map((i: any) => (
+                    <li key={i.id} className="flex items-center justify-between text-sm rounded-lg border border-gray-100 px-3 py-2">
+                      <div><span className="font-medium text-gray-800">{i.source}</span><span className="ml-2 text-gray-500 line-clamp-1">{i.title}</span></div>
+                      {i.alreadyInMatrix && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">En matriz</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
