@@ -42,8 +42,12 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
   const [fTipo, setFTipo] = useState('');
   const [fOrigen, setFOrigen] = useState('');
   const [buscar, setBuscar] = useState('');
-  const [desde, setDesde] = useState('');
-  const [hasta, setHasta] = useState('');
+  // Por defecto se contempla solo el año en curso; el selector permite ver otros.
+  const anioActual = new Date().getFullYear();
+  const [anio, setAnio] = useState(String(anioActual));
+  const [desde, setDesde] = useState(`${anioActual}-01-01`);
+  const [hasta, setHasta] = useState(`${anioActual}-12-31`);
+  const anios = useMemo(() => [anioActual - 2, anioActual - 1, anioActual, anioActual + 1], [anioActual]);
   const [cajaOpen, setCajaOpen] = useState(false);
   const [vinculando, setVinculando] = useState<Mov | null>(null);
   const [candidatos, setCandidatos] = useState<DocCandidato[]>([]);
@@ -180,8 +184,17 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
         <select value={fOrigen} onChange={e => setFOrigen(e.target.value)} className={sel}>
           <option value="">Todo origen</option><option value="CARTOLA">Cartola</option><option value="CAJA_CHICA">Caja chica</option>
         </select>
-        <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className={sel} />
-        <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className={sel} />
+        <select value={anio} className={sel} title="Año de los movimientos"
+          onChange={e => {
+            const y = e.target.value; setAnio(y);
+            if (y) { setDesde(`${y}-01-01`); setHasta(`${y}-12-31`); }
+            else { setDesde(''); setHasta(''); }
+          }}>
+          <option value="">Todos</option>
+          {anios.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <input type="date" value={desde} onChange={e => { setDesde(e.target.value); setAnio(''); }} className={sel} />
+        <input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setAnio(''); }} className={sel} />
         <div className="relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
           <input value={buscar} onChange={e => setBuscar(e.target.value)} placeholder="Buscar descripción o referencia…"
