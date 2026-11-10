@@ -848,7 +848,9 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     let creados = 0; const errores: string[] = [];
     const tocadas = new Set<string>();
     for (const r of resFilas.filter(x => x.estado === 'match')) {
-      for (const a of r.facturas) {
+      // aplicar<=0: factura candidata ya cubierta por otro movimiento —
+      // crear el cobro solo ensucia (queda un registro de $0).
+      for (const a of r.facturas.filter((x: any) => x.aplicar > 0)) {
         try {
           await prisma().finanzaCobro.create({
             data: {
@@ -870,7 +872,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     // Pagos a proveedores: cada cargo matcheado crea FinanzaPago (dedup CARTOLA:*).
     let pagosCreados = 0;
     for (const r of resCargos.filter(x => x.estado === 'match')) {
-      for (const a of r.gastos) {
+      for (const a of r.gastos.filter((x: any) => x.aplicar > 0)) {
         try {
           await prisma().finanzaPago.create({
             data: {
@@ -892,8 +894,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     // (qué factura/gasto se pagó y cuánto) y huérfanos con el motivo, para
     // resolverlos a mano desde el tab Conciliación. Idempotente por firma.
     const movRows = [
-      ...resFilas.map((r: any) => ({ r, tipo: 'ABONO', vinc: (r.facturas || []).map((f: any) => ({ tipo: 'factura', ...f })) })),
-      ...resCargos.map((r: any) => ({ r, tipo: 'CARGO', vinc: (r.gastos || []).map((g: any) => ({ tipo: 'gasto', ...g })) })),
+      ...resFilas.map((r: any) => ({ r, tipo: 'ABONO', vinc: (r.facturas || []).filter((f: any) => f.aplicar > 0).map((f: any) => ({ tipo: 'factura', ...f })) })),
+      ...resCargos.map((r: any) => ({ r, tipo: 'CARGO', vinc: (r.gastos || []).filter((g: any) => g.aplicar > 0).map((g: any) => ({ tipo: 'gasto', ...g })) })),
     ].filter(({ r }) => r.estado === 'match' || r.estado === 'sin_match');
     for (const { r, tipo, vinc } of movRows) {
       const data: any = {
