@@ -286,7 +286,9 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
                         <span className="truncate text-xs font-medium text-neutral-800" title={m.descripcion}>{m.descripcion || '—'}</span>
                       </div>
                       <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-neutral-400">
-                        {m.origen === 'CAJA_CHICA' && <span className="rounded bg-amber-50 px-1 py-px text-amber-700">caja chica</span>}
+                        {m.origen === 'CAJA_CHICA'
+                          ? <span className="rounded bg-amber-50 px-1 py-px text-amber-700">caja chica</span>
+                          : <span className="rounded bg-sky-50 px-1 py-px text-sky-700">cartola</span>}
                         {m.referencia && <span>ref {m.referencia}</span>}
                       </div>
                     </td>
