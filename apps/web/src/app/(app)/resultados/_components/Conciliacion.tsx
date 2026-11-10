@@ -18,6 +18,9 @@ type Mov = {
   appliedAt: string | null; resueltoPor: string | null; createdByNombre: string | null; createdAt: string;
 };
 type DocCandidato = { id: string; numero: string | null; contraparte: string; fechaEmision: string; saldo: number };
+// Documento sin conciliación: factura emitida sin cobro de cartola/caja chica
+// o gasto sin pago vinculado a un movimiento.
+type DocSinConciliar = { tipo: 'factura' | 'gasto'; id: string; numero: string | null; contraparte: string; fecha: string; total: number; saldo: number; moneda: string; situacion: 'pendiente' | 'pago_manual' };
 
 const ESTADOS: Record<string, { label: string; cls: string }> = {
   conciliado: { label: 'Conciliado', cls: 'bg-emerald-50 text-emerald-700' },
@@ -33,7 +36,9 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
   const [resumen, setResumen] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [fEstado, setFEstado] = useState<'sin_match' | 'todos' | 'conciliados'>('sin_match');
+  const [fEstado, setFEstado] = useState<'sin_match' | 'todos' | 'conciliados' | 'docs'>('sin_match');
+  const [docs, setDocs] = useState<DocSinConciliar[]>([]);
+  const [docsResumen, setDocsResumen] = useState<any>(null);
   const [fTipo, setFTipo] = useState('');
   const [fOrigen, setFOrigen] = useState('');
   const [buscar, setBuscar] = useState('');
@@ -48,15 +53,24 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
   const load = useCallback(() => {
     setLoading(true); setError(null);
     const p = new URLSearchParams();
-    if (fTipo) p.set('tipo', fTipo);
-    if (fOrigen) p.set('origen', fOrigen);
     if (desde) p.set('desde', desde);
     if (hasta) p.set('hasta', hasta ? `${hasta}T23:59:59` : '');
+    if (fEstado === 'docs') {
+      // Lado documento: facturas emitidas y gastos sin movimiento vinculado.
+      if (moneda) p.set('moneda', moneda);
+      apiFetch<{ docs: DocSinConciliar[]; resumen: any }>(`/finanzas/docs-sin-conciliar?${p}`)
+        .then(d => { setDocs(d.docs); setDocsResumen(d.resumen); })
+        .catch((e: any) => setError(e?.message || 'No se pudo cargar'))
+        .finally(() => setLoading(false));
+      return;
+    }
+    if (fTipo) p.set('tipo', fTipo);
+    if (fOrigen) p.set('origen', fOrigen);
     apiFetch<{ movs: Mov[]; resumen: any }>(`/finanzas/cartola-movs?${p}`)
       .then(d => { setMovs(d.movs); setResumen(d.resumen); })
       .catch((e: any) => setError(e?.message || 'No se pudo cargar'))
       .finally(() => setLoading(false));
-  }, [fTipo, fOrigen, desde, hasta]);
+  }, [fEstado, fTipo, fOrigen, desde, hasta, moneda]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -155,7 +169,7 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex overflow-hidden rounded-lg border border-neutral-200">
-          {([['sin_match', 'Sin match'], ['conciliados', 'Conciliados'], ['todos', 'Todos']] as const).map(([k, l]) => (
+          {([['sin_match', 'Sin match'], ['docs', 'Docs sin match'], ['conciliados', 'Conciliados'], ['todos', 'Todos']] as const).map(([k, l]) => (
             <button key={k} onClick={() => setFEstado(k)}
               className={`px-3 py-1.5 text-xs font-medium ${fEstado === k ? 'bg-neutral-900 text-white' : 'bg-white text-neutral-600 hover:bg-neutral-50'}`}>{l}</button>
           ))}
@@ -186,7 +200,62 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
 
       {/* Tabla */}
       <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-        {visibles.length === 0 ? (
+        {fEstado === 'docs' ? (
+          // ── Documentos sin conciliación (facturas emitidas y gastos) ──
+          docs.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-14 text-neutral-400">
+              <CheckCircle2 size={28} className="text-emerald-400" />
+              <p className="text-sm">No hay documentos sin conciliar. Todo está vinculado a un movimiento.</p>
+            </div>
+          ) : (
+            <>
+              {docsResumen && (
+                <div className="flex flex-wrap gap-3 border-b border-neutral-100 px-4 py-2 text-[11px] text-neutral-500">
+                  <span><b className="text-emerald-700">{docsResumen.facturasPend}</b> facturas emitidas sin cobro vinculado</span>
+                  <span><b className="text-red-600">{docsResumen.gastosPend}</b> gastos sin pago vinculado</span>
+                  {docsResumen.pagosManuales > 0 && <span><b className="text-amber-600">{docsResumen.pagosManuales}</b> saldados fuera de cartola</span>}
+                </div>
+              )}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="border-b border-neutral-100 text-[11px] uppercase tracking-wide text-neutral-400">
+                    <tr>
+                      <th className="px-4 py-2.5 font-medium">Fecha</th>
+                      <th className="px-4 py-2.5 font-medium">Documento</th>
+                      <th className="px-4 py-2.5 font-medium">Contraparte</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Total</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Saldo</th>
+                      <th className="px-4 py-2.5 font-medium">Alerta</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {docs.filter(d => !buscar.trim() || d.contraparte?.toLowerCase().includes(buscar.trim().toLowerCase()) || String(d.numero || '').includes(buscar.trim())).map(d => (
+                      <tr key={`${d.tipo}-${d.id}`} className="border-t border-neutral-100 align-top">
+                        <td className="whitespace-nowrap px-4 py-2.5 text-xs text-neutral-500">{fmtFecha(d.fecha)}</td>
+                        <td className="px-4 py-2.5">
+                          {d.tipo === 'factura'
+                            ? <span className="font-medium text-emerald-700">Factura emitida N° {d.numero || 's/n'}</span>
+                            : <span className="font-medium text-red-600">Gasto {d.numero || 's/n'}</span>}
+                        </td>
+                        <td className="max-w-56 truncate px-4 py-2.5 text-xs text-neutral-700" title={d.contraparte}>{d.contraparte || '—'}</td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-right text-xs tabular-nums">{fmtMoney(d.total, d.moneda || moneda)}</td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-right text-xs font-medium tabular-nums">{fmtMoney(d.saldo, d.moneda || moneda)}</td>
+                        <td className="px-4 py-2.5">
+                          <div className={`flex items-start gap-1 text-[11px] ${d.situacion === 'pendiente' ? 'text-red-600' : 'text-amber-600'}`}>
+                            <AlertTriangle size={11} className="mt-px shrink-0" />
+                            <span>{d.situacion === 'pendiente'
+                              ? (d.tipo === 'factura' ? 'Cobro pendiente — sin transferencia ni caja chica asociada.' : 'Pago pendiente — sin movimiento de cartola ni caja chica asociado.')
+                              : 'Saldado por fuera de cartola/caja chica (registro manual).'}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )
+        ) : visibles.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-14 text-neutral-400">
             <CheckCircle2 size={28} className="text-emerald-400" />
             <p className="text-sm">{fEstado === 'sin_match' ? 'No hay movimientos sin conciliar. Todo cuadrado.' : 'No hay movimientos en este filtro.'}</p>

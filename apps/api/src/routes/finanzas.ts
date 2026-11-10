@@ -979,6 +979,72 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     return reply.send({ movs, resumen });
   });
 
+  // GET /docs-sin-conciliar — el otro lado de la conciliación: facturas
+  // emitidas y gastos que no tienen NINGÚN cobro/pago vinculado a un
+  // movimiento de cartola o caja chica. Dos situaciones:
+  //  'pendiente':   tiene saldo y nunca se concilió → falta el movimiento.
+  //  'pago_manual': quedó saldado pero por fuera de cartola (registro a mano).
+  app.get('/docs-sin-conciliar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const esCartola = (ref: string | null | undefined) => !!ref && (ref.startsWith('CARTOLA:') || ref.startsWith('CC:'));
+    const fWhere: any = {
+      tenantId, deletedAt: null,
+      tipoComprobante: { not: 'NOTA_CREDITO' }, estado: { notIn: ['ANULADA'] },
+      ...(q.moneda ? { moneda: q.moneda } : {}),
+    };
+    const gWhere: any = {
+      tenantId, deletedAt: null,
+      tipoComprobante: { not: 'NOTA_CREDITO' },
+      ...(q.moneda ? { moneda: q.moneda } : {}),
+    };
+    if (q.desde || q.hasta) {
+      fWhere.fechaEmision = {}; gWhere.fecha = {};
+      if (q.desde) { fWhere.fechaEmision.gte = new Date(q.desde); gWhere.fecha.gte = new Date(q.desde); }
+      if (q.hasta) { fWhere.fechaEmision.lt = new Date(q.hasta); gWhere.fecha.lt = new Date(q.hasta); }
+    }
+    const [facts, gastos] = await Promise.all([
+      prisma().finanzaFactura.findMany({ where: fWhere, include: { cobros: true }, orderBy: { fechaEmision: 'desc' }, take: 1500 }),
+      prisma().finanzaGasto.findMany({ where: gWhere, include: { pagos: true }, orderBy: { fecha: 'desc' }, take: 1500 }),
+    ]);
+    const docs: any[] = [];
+    for (const f of facts) {
+      const cobrado = f.cobros.reduce((s: number, c: any) => s + num(c.importe), 0);
+      const saldo = Math.max(0, num(f.total) - cobrado);
+      if (f.cobros.some((c: any) => esCartola(c.referencia))) continue; // ya conciliada
+      if (saldo <= 0.5 && !f.cobros.length) continue;                   // anulable: sin movimientos ni saldo
+      docs.push({
+        tipo: 'factura', id: f.id,
+        numero: [f.puntoVenta, f.numero].filter(Boolean).join('-') || null,
+        contraparte: f.clienteNombre, fecha: f.fechaEmision,
+        total: num(f.total), saldo, moneda: f.moneda,
+        situacion: saldo > 0.5 ? 'pendiente' : 'pago_manual',
+      });
+    }
+    for (const g of gastos) {
+      const pagado = g.pagos.reduce((s: number, p: any) => s + num(p.importe), 0);
+      const saldo = Math.max(0, num(g.total) - pagado);
+      if (g.pagos.some((p: any) => esCartola(p.referencia))) continue;
+      if (saldo <= 0.5 && !g.pagos.length) continue;
+      docs.push({
+        tipo: 'gasto', id: g.id,
+        numero: g.numeroComprobante || null,
+        contraparte: g.proveedor || g.concepto, fecha: g.fecha,
+        total: num(g.total), saldo, moneda: g.moneda,
+        situacion: saldo > 0.5 ? 'pendiente' : 'pago_manual',
+      });
+    }
+    docs.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+    const resumen = {
+      total: docs.length,
+      facturasPend: docs.filter(d => d.tipo === 'factura' && d.situacion === 'pendiente').length,
+      gastosPend: docs.filter(d => d.tipo === 'gasto' && d.situacion === 'pendiente').length,
+      pagosManuales: docs.filter(d => d.situacion === 'pago_manual').length,
+    };
+    return reply.send({ docs: docs.slice(0, 500), resumen });
+  });
+
   // POST /cartola-movs/:id/vincular {docTipo:'factura'|'gasto', docId, aplicar?}
   // Vincula a mano un movimiento huérfano: crea el cobro/pago real y deja la
   // trazabilidad en el movimiento. El importe default es el saldo del doc o
