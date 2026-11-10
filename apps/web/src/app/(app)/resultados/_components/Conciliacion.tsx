@@ -6,7 +6,10 @@ import { Loader2, Landmark, Link2, Ban, Undo2, CheckCircle2, AlertTriangle, Sear
 import { fmtMoney, fmtFecha, fmtActualizado } from './fmt';
 import ConciliarCartola from './ConciliarCartola';
 
-type Vinculo = { tipo: 'factura' | 'gasto'; id: string; numero: string | null; cliente?: string; proveedor?: string; aplicar: number; moneda?: string };
+type Vinculo = { tipo?: 'factura' | 'gasto'; doc?: 'factura' | 'gasto'; id: string; numero: string | null; cliente?: string; proveedor?: string; aplicar: number; moneda?: string };
+// Tipo efectivo del doc vinculado: las filas nuevas traen `tipo`, las
+// reconstruidas por el backfill traen `doc`.
+const tipoDoc = (v: Vinculo) => v.tipo || v.doc || 'gasto';
 type Mov = {
   id: string; tipo: 'ABONO' | 'CARGO'; origen: string; firma: string;
   fecha: string; descripcion: string; referencia: string | null; monto: number; moneda: string;
@@ -226,7 +229,10 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
                         <div className="mt-1 space-y-0.5">
                           {vincs.map((v, i) => (
                             <div key={i} className="text-[11px] text-neutral-600">
-                              {v.tipo === 'factura' ? 'Factura' : 'Gasto'} {v.numero || 's/n'} — {v.cliente || v.proveedor || ''}
+                              {tipoDoc(v) === 'factura'
+                                ? <span className="font-medium text-emerald-700">Cobro · Factura N° {v.numero || 's/n'}</span>
+                                : <span className="font-medium text-red-600">Pago · Gasto {v.numero || 's/n'}</span>}
+                              {' — '}{v.cliente || v.proveedor || ''}
                               <span className="text-neutral-400"> · {fmtMoney(v.aplicar, v.moneda || moneda)}</span>
                             </div>
                           ))}
@@ -234,6 +240,14 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
                         </div>
                       )}
                       {m.motivo && <div className="mt-1 text-[11px] text-red-500">{m.motivo}</div>}
+                      {m.estado === 'sin_match' && (
+                        <div className="mt-1 flex items-start gap-1 text-[11px] text-red-600">
+                          <AlertTriangle size={11} className="mt-px shrink-0" />
+                          <span>{m.tipo === 'ABONO'
+                            ? 'Cobro sin factura emitida asociada — emití la factura o vinculala a mano.'
+                            : 'Pago sin gasto/comprobante asociado (SII, caja chica o cartola) — cargalo o vinculalo.'}</span>
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-2.5 text-[10px] leading-4 text-neutral-400">
                       {m.appliedAt && <div>aplicado {fmtActualizado(m.appliedAt)}</div>}

@@ -13,6 +13,19 @@ UPDATE finanza_cartola_movs
 SET firma = 'CARTOLA:' || firma, "updatedAt" = now()
 WHERE firma NOT LIKE 'CARTOLA:%';
 
+-- Correctivo: las primeras versiones guardaban el tipo de doc como 'doc'
+-- pero el frontend/API leen 'tipo'. Copia doc→tipo donde falte.
+UPDATE finanza_cartola_movs m
+SET vinculos = (
+  SELECT jsonb_agg(v || jsonb_build_object('tipo', v->>'doc'))
+  FROM jsonb_array_elements(m.vinculos) v
+), "updatedAt" = now()
+WHERE jsonb_typeof(m.vinculos) = 'array'
+  AND EXISTS (
+    SELECT 1 FROM jsonb_array_elements(m.vinculos) v
+    WHERE v ? 'doc' AND NOT (v ? 'tipo')
+  );
+
 -- ABONOS: cobros aplicados a facturas
 WITH agr AS (
   SELECT
@@ -24,7 +37,7 @@ WITH agr AS (
     max(c."createdAt")           AS applied_at,
     string_agg(DISTINCT f."clienteNombre", ', ') AS desc_partes,
     jsonb_agg(jsonb_build_object(
-      'doc', 'factura', 'id', f.id,
+      'doc', 'factura', 'tipo', 'factura', 'id', f.id,
       'numero', nullif(concat_ws('-', f."puntoVenta", f.numero), ''),
       'cliente', f."clienteNombre",
       'aplicar', c.importe, 'moneda', c.moneda
@@ -58,7 +71,7 @@ WITH agr AS (
     max(p."createdAt")           AS applied_at,
     string_agg(DISTINCT coalesce(g.proveedor, g.concepto), ', ') AS desc_partes,
     jsonb_agg(jsonb_build_object(
-      'doc', 'gasto', 'id', g.id,
+      'doc', 'gasto', 'tipo', 'gasto', 'id', g.id,
       'numero', g."numeroComprobante",
       'proveedor', g.proveedor,
       'aplicar', p.importe, 'moneda', p.moneda
