@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { encryptApiKey } from '../services/llm/tenantCrypto.js';
-import { sendEmail, welcomeTenantEmail } from '../services/email.js';
+import { sendEmail, welcomeTenantEmail, notificationEmail } from '../services/email.js';
 
 // Extensiones de tipos no conflictivas
 declare module 'fastify' {
@@ -253,6 +253,55 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
     });
 
     return reply.send({ tenants: result });
+  });
+
+  // ── POST /super-admin/tenants/:id/nudge — Recordatorio de acceso a los admins ──
+  // Pensado para tenants registrados que nunca entraron: les recordamos su
+  // email de acceso, el link de login y cómo recuperar la contraseña.
+  app.post('/tenants/:id/nudge', async (req: FastifyRequest, reply: FastifyReply) => {
+    requireSuperAdmin(req);
+
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const tenant = await app.prisma.tenant.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        memberships: {
+          where: { deletedAt: null, role: 'TENANT_ADMIN', status: 'ACTIVE' },
+          include: { user: { select: { email: true, firstName: true, lastName: true } } },
+        },
+      },
+    });
+    if (!tenant) return reply.code(404).send({ error: 'Tenant no encontrado' });
+
+    const admins = (tenant.memberships || []).map((m: any) => m.user).filter((u: any) => !!u?.email);
+    if (!admins.length) return reply.code(400).send({ error: 'El tenant no tiene administradores activos' });
+
+    const appUrl = process.env.CORS_ORIGIN?.split(',')[0]?.trim() || 'https://logismart.ar';
+    const loginUrl = `${appUrl}/sgi360-landing/`;
+    const forgotUrl = `${appUrl}/forgot-password`;
+
+    const results = await Promise.allSettled(admins.map((u: any) => {
+      const nombre = [u.firstName, u.lastName].filter(Boolean).join(' ').trim();
+      return sendEmail(notificationEmail({
+        userEmail: u.email,
+        title: 'Tu cuenta de SGI 360 ya está lista',
+        message:
+          `<p>Hola${nombre ? ` <strong>${nombre}</strong>` : ''},</p>`
+          + `<p>Vimos que ya creaste el espacio de trabajo <strong>${tenant.name}</strong> en SGI 360 — `
+          + `te quedaron sólo un par de pasos para arrancar.</p>`
+          + `<p>Ingresá con tu email <strong>${u.email}</strong>. Si no recordás la contraseña, `
+          + `podés regenerarla en un minuto desde <a href="${forgotUrl}">"Olvidé mi contraseña"</a>.</p>`
+          + `<p>Si tuviste algún inconveniente para entrar o algo no te quedó claro, `
+          + `respondé a este correo y te ayudamos personalmente.</p>`,
+        actionLabel: 'Ingresar a SGI 360',
+        actionUrl: loginUrl,
+        type: 'info',
+      }));
+    }));
+
+    const sent = results.filter((r: any) => r.status === 'fulfilled').length;
+    app.log.info(`[NUDGE] tenant=${id} enviados=${sent}/${admins.length}`);
+    return reply.send({ ok: true, sent, total: admins.length, to: admins.map((u: any) => u.email) });
   });
 
   app.post('/bootstrap', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -1032,172 +1081,43 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
       const userCount = tenant.memberships?.length || 0;
       const subscriptionCount = tenant.subscriptions?.length || 0;
 
-      // Eliminar relaciones en orden correcto (de las más dependientes a las menos)
-      
-      // 1. Eliminar tenant setup si existe
-      if (tenant.tenantSetup) {
-        await (app.prisma as any).tenantSetup.delete({
-          where: { tenantId: id }
-        });
-      }
-
-      // 2. Eliminar datos relacionados con SGI (departamentos, empleados, etc.)
-      await (app.prisma as any).department.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).employee.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).position.deleteMany({
-        where: { tenantId: id }
-      });
-
-      // 3. Eliminar documentos y normativas
-      await (app.prisma as any).document.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).normativeStandard.deleteMany({
-        where: { tenantId: id }
-      });
-
-      // 4. Eliminar hallazgos y auditorías
-      await (app.prisma as any).aiFinding.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).auditRun.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).auditEvent.deleteMany({
-        where: { tenantId: id }
-      });
-
-      // 5. Eliminar riesgos, no conformidades, indicadores
-      await (app.prisma as any).risk.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).nonConformity.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).indicator.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).indicatorRiskLink.deleteMany({
-        where: { tenantId: id }
-      });
-
-      // 6. Eliminar planes de contingencia y recursos
-      await (app.prisma as any).drillScenario.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).contingencyPlan.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).emergencyResource.deleteMany({
-        where: { tenantId: id }
-      });
-
-      // 7. Eliminar mantenimiento
-      await (app.prisma as any).maintenanceAsset.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).maintenanceTechnician.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).maintenancePlan.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).maintenanceSparePart.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).workOrder.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).maintenanceCost.deleteMany({
-        where: { tenantId: id }
-      });
-
-      // 8. Eliminar clientes y encuestas
-      await (app.prisma as any).customer.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).survey.deleteMany({
-        where: { tenantId: id }
-      });
-
-      // 9. Eliminar notificaciones y webhooks
-      await (app.prisma as any).notification.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).webhookConfig.deleteMany({
-        where: { tenantId: id }
-      });
-
-      // 10. Eliminar entrenamientos
-      await (app.prisma as any).sgiTraining.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).training.deleteMany({
-        where: { tenantId: id }
-      });
-
-      // 11. Eliminar licencias y pagos
-      await (app.prisma as any).licenseAccessAttempt.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).licenseNotification.deleteMany({
-        where: { tenantId: id }
-      });
-
-      await (app.prisma as any).payment.deleteMany({
-        where: { tenantId: id }
-      });
-
-      // await (app.prisma as any).invoice.deleteMany({
-      //   where: { tenantId: id }
-      // });
-
-      // await (app.prisma as any).paymentPreference.deleteMany({
-      //   where: { tenantId: id }
-      // });
-
-      // 12. Eliminar tenant features
-      await (app.prisma as any).tenantFeature.deleteMany({
-        where: { tenantId: id }
-      });
-
-      // 13. Eliminar tenant subscriptions
-      await (app.prisma as any).tenantSubscription.deleteMany({
-        where: { tenantId: id }
-      });
-
-      // 14. Eliminar tenant memberships
-      await (app.prisma as any).tenantMembership.deleteMany({
-        where: { tenantId: id }
-      });
-
-      // 15. Finalmente eliminar el tenant
-      await app.prisma.tenant.delete({
-        where: { id }
-      });
+      // Borrado genérico en cascada: elimina todas las filas del tenant en
+      // cualquier tabla con columna tenantId/tenant_id (evita la lista manual
+      // de deleteMany que queda desactualizada — causa del FK en process_maps).
+      // Reintenta hasta 60 pasadas para resolver el orden entre tablas hijas.
+      await app.prisma.$transaction([
+        app.prisma.$executeRawUnsafe(`
+          DO $$
+          DECLARE
+            t RECORD; pass INT := 0; blocked BOOLEAN; col TEXT;
+          BEGIN
+            LOOP
+              pass := pass + 1;
+              blocked := false;
+              FOR t IN
+                SELECT DISTINCT table_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND column_name IN ('tenantId', 'tenant_id')
+                  AND table_name <> 'Tenant'
+              LOOP
+                SELECT column_name INTO col
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = t.table_name
+                  AND column_name IN ('tenantId', 'tenant_id')
+                LIMIT 1;
+                BEGIN
+                  EXECUTE format('DELETE FROM %I WHERE %I = %L', t.table_name, col, '${id}');
+                EXCEPTION WHEN foreign_key_violation THEN
+                  blocked := true;
+                END;
+              END LOOP;
+              EXIT WHEN NOT blocked OR pass >= 60;
+            END LOOP;
+          END $$;
+        `),
+        app.prisma.tenant.delete({ where: { id } })
+      ]);
 
       app.log.info(`[SUPERADMIN] Tenant eliminado: ${tenant.name} (${tenant.slug})`);
 

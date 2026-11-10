@@ -14,7 +14,7 @@ import {
   AlertCircle, CheckCircle2, Crown, ChevronDown, ChevronUp,
   UserPlus, Zap, Globe, Wallet, TrendingUp, AlertTriangle,
   Package, RefreshCw, DollarSign, Briefcase, ThumbsUp, ThumbsDown, Trash2,
-  Eye, LogIn,
+  Eye, LogIn, Mail,
 } from 'lucide-react';
 import { setImpersonationState, clearImpersonationState } from '@/components/ImpersonationBanner';
 
@@ -641,6 +641,7 @@ export default function AdminPage() {
   // Subscription form - Per-tenant state to avoid conflicts when switching tenants
   const [subscriptionForm, setSubscriptionForm] = useState<Record<string, { planTier: string | null; status: string; price: string }>>({});
   const [updatingSub, setUpdatingSub] = useState(false);
+  const [nudging, setNudging] = useState<string | null>(null);
 
   // Helper to get form state for a specific tenant
   const getSubFormState = (tenantId: string, tenant: TenantRow) => {
@@ -994,6 +995,23 @@ export default function AdminPage() {
     }
   }
 
+  // Recordatorio de acceso para tenants que se registraron pero no entraron:
+  // manda mail a los admins con su email de acceso + link para resetear la clave.
+  async function handleNudge(t: TenantRow) {
+    const admins = (t.admins || []).map(a => a.email).join(', ');
+    if (!confirm(`¿Enviar recordatorio de acceso a ${t.name}?\n\nVa a llegar a: ${admins || '(sin admins activos)'}`)) return;
+    setNudging(t.id);
+    setError('');
+    try {
+      const res = await apiFetch<{ ok: boolean; sent: number; total: number; to: string[] }>(`/super-admin/tenants/${t.id}/nudge`, { method: 'POST' });
+      flash(`Recordatorio enviado a ${res.sent}/${res.total} admin(s)`);
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo enviar el recordatorio');
+    } finally {
+      setNudging(null);
+    }
+  }
+
   async function handleImpersonate(t: TenantRow) {
     if (!confirm(`¿Ingresar al sistema como administrador de "${t.name}"?\n\nVerás el sistema exactamente como lo ve el cliente. Se registrará esta acción en el log de auditoría.`)) return;
     setImpersonating(t.id);
@@ -1318,6 +1336,16 @@ export default function AdminPage() {
                         ? <Loader2 className="h-3 w-3 animate-spin" />
                         : <Eye className="h-3 w-3" />}
                       <span className="hidden sm:inline">Ver como</span>
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleNudge(t); }}
+                      disabled={nudging === t.id}
+                      className="flex items-center gap-1.5 border border-sky-200 bg-sky-50 hover:bg-sky-100 text-sky-700 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors disabled:opacity-60"
+                      title={`Enviar recordatorio de acceso a los administradores de ${t.name}`}
+                    >
+                      {nudging === t.id
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <Mail className="h-3 w-3" />}
                     </button>
                     {expandedId === t.id ? <ChevronUp className="h-4 w-4 text-neutral-400" /> : <ChevronDown className="h-4 w-4 text-neutral-400" />}
                   </div>
