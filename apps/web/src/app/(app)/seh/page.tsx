@@ -322,10 +322,15 @@ export default function SehPage() {
   const conf = MODULES.find(m => m.key === tab)!;
 
   const loadClients = useCallback(async () => {
-    const r = await apiFetch<{ clients: Client[] }>('/seh360/clients');
-    const list = r?.clients || [];
-    setClients(list);
-    setActiveClient(prev => prev || list[0]?.id || '');
+    try {
+      const r = await apiFetch<{ clients: Client[] }>('/seh360/clients');
+      const list = r?.clients || [];
+      setClients(list);
+      setActiveClient(prev => prev || list[0]?.id || '');
+      if (!list.length) setLoading(false); // sin clientes → no quedarse en "Cargando…"
+    } catch {
+      setLoading(false); // si /clients falla, mostrar estado vacío en vez de spinner infinito
+    }
   }, []);
 
   const loadRows = useCallback(async () => {
@@ -334,6 +339,8 @@ export default function SehPage() {
       const q = activeClient ? `?clientId=${activeClient}` : '';
       const r = await apiFetch<Row>(`/seh360/${conf.path}${q}`);
       setRows((r as any)?.[conf.listKey] || []);
+    } catch {
+      setRows([]); // error de red/API → estado vacío, no spinner
     } finally { setLoading(false); }
   }, [conf.path, conf.listKey, activeClient]);
 
@@ -480,23 +487,30 @@ export default function SehPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <select value={activeClient} onChange={e => setActiveClient(e.target.value)}
-            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm min-w-[180px]">
-            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          {/* Selector solo si el tenant gestiona más de una empresa (modo consultor) */}
+          {clients.length > 1 && (
+            <select value={activeClient} onChange={e => setActiveClient(e.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm min-w-[180px]">
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
           <button onClick={() => { setShowUsersModal(true); setUserMsg(''); if (activeClient) loadPortalUsers(activeClient); }} disabled={!activeClient}
             className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
             <UserPlus className="h-4 w-4" /> Portal
           </button>
-          <button onClick={() => setShowClientModal(true)}
-            className="inline-flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-medium text-orange-700 hover:bg-orange-100">
-            <Building2 className="h-4 w-4" /> Nueva empresa
-          </button>
+          {/* 'Nueva empresa' solo tiene sentido para consultores: oculto mientras el tenant
+              sea mono-empresa (el cliente 'Principal' se auto-crea al entrar) */}
+          {clients.length > 1 && (
+            <button onClick={() => setShowClientModal(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-medium text-orange-700 hover:bg-orange-100">
+              <Building2 className="h-4 w-4" /> Nueva empresa
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Chips del cliente activo */}
-      {client && (
+      {/* Chips del cliente activo — solo visible en modo multi-empresa */}
+      {client && clients.length > 1 && (
         <div className="flex items-center gap-4 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 flex-wrap">
           <span className="font-medium text-gray-900">{client.name}</span>
           {client.cuit && <span>CUIT {client.cuit}</span>}
@@ -575,7 +589,9 @@ export default function SehPage() {
             <tbody className="divide-y divide-gray-100">
               {rows.length === 0 && (
                 <tr><td colSpan={conf.columns.length + 1} className="px-4 py-10 text-center text-gray-400">
-                  Sin registros{tab === 'legal' ? ' — usá "Importar de biblioteca" para traer las normas de tu país' : ''}.
+                  {!activeClient
+                    ? 'No se pudo cargar la empresa — recargá la página o revisá tu plan SEH360.'
+                    : `Sin registros${tab === 'legal' ? ' — usá "Importar de biblioteca" para traer las normas de tu país' : ''}.`}
                 </td></tr>
               )}
               {rows.map(r => (
