@@ -318,6 +318,13 @@ export default function SehPage() {
   const [aiResult, setAiResult] = useState<{ title: string; text: string } | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [updates, setUpdates] = useState<any>(null);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [libItems, setLibItems] = useState<Row[]>([]);
+  const [libSearch, setLibSearch] = useState('');
+  const [libCountry, setLibCountry] = useState('');
+  const [libCountries, setLibCountries] = useState<string[]>([]);
+  const [libSelected, setLibSelected] = useState<Set<string>>(new Set());
+  const [libLoading, setLibLoading] = useState(false);
 
   const conf = MODULES.find(m => m.key === tab)!;
 
@@ -380,7 +387,9 @@ export default function SehPage() {
   }
 
   async function saveItem(e: React.FormEvent) {
-    e.preventDefault(); setSaving(true);
+    e.preventDefault();
+    if (!activeClient) { alert('Todavía se está cargando la empresa — esperá un segundo y reintentá.'); return; }
+    setSaving(true);
     try {
       const body: Row = { ...itemForm, clientId: activeClient };
       conf.fields.forEach(f => {
@@ -404,15 +413,35 @@ export default function SehPage() {
     await loadRows();
   }
 
-  // Importar normas de la biblioteca compartida a la matriz del cliente activo
-  async function importLibrary() {
-    setLibMsg('Importando normas de la biblioteca…');
+  // ── Biblioteca legal: búsqueda + importación selectiva ──────────
+  async function openLibrary() {
+    setShowLibrary(true); setLibLoading(true); setLibMsg('');
     try {
-      const lib = await apiFetch<{ items: Row[] }>('/seh360/legal-library');
-      const ids = (lib?.items || []).map((i: any) => i.id);
-      if (!ids.length) { setLibMsg('La biblioteca legal está vacía'); return; }
-      const r = await apiFetch<any>('/seh360/legal-library/import', { method: 'POST', json: { clientId: activeClient, itemIds: ids } });
+      const [items, c] = await Promise.all([
+        apiFetch<{ items: Row[] }>(`/seh360/legal-library?search=${encodeURIComponent(libSearch)}&country=${libCountry}`),
+        apiFetch<{ countries: string[] }>('/seh360/legal-library/countries'),
+      ]);
+      setLibItems(items?.items || []);
+      setLibCountries(c?.countries || []);
+      setLibSelected(new Set((items?.items || []).map((i: any) => i.id))); // preseleccionar todas
+    } finally { setLibLoading(false); }
+  }
+  async function searchLibrary() {
+    setLibLoading(true);
+    try {
+      const r = await apiFetch<{ items: Row[] }>(`/seh360/legal-library?search=${encodeURIComponent(libSearch)}&country=${libCountry}`);
+      setLibItems(r?.items || []);
+      setLibSelected(new Set((r?.items || []).map((i: any) => i.id)));
+    } finally { setLibLoading(false); }
+  }
+  const toggleLib = (id: string) => setLibSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  async function importLibrary() {
+    if (!libSelected.size) { setLibMsg('Seleccioná al menos una norma'); return; }
+    setLibMsg('Importando normas…');
+    try {
+      const r = await apiFetch<any>('/seh360/legal-library/import', { method: 'POST', json: { clientId: activeClient, itemIds: [...libSelected] } });
       setLibMsg(`Se importaron ${r?.imported ?? 0} norma(s) a la matriz legal (${r?.skipped ?? 0} ya estaban)`);
+      setShowLibrary(false);
       await loadRows();
     } catch (e: any) { setLibMsg(e?.message || 'Error al importar'); }
   }
@@ -541,9 +570,9 @@ export default function SehPage() {
         <div className="flex items-center gap-2">
           {tab === 'legal' && (
             <>
-              <button onClick={importLibrary}
+              <button onClick={openLibrary}
                 className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100">
-                <Search className="h-4 w-4" /> Importar de biblioteca
+                <Search className="h-4 w-4" /> Biblioteca legal
               </button>
               <button onClick={loadUpdates}
                 className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100">
@@ -565,8 +594,8 @@ export default function SehPage() {
               <Sparkles className="h-4 w-4" /> {aiLoading ? 'Analizando…' : 'Analizar IA'}
             </button>
           )}
-          <button onClick={openCreate} disabled={!activeClient}
-            className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-50">
+          <button onClick={openCreate}
+            className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700">
             <Plus className="h-4 w-4" /> Nuevo
           </button>
         </div>
@@ -641,6 +670,54 @@ export default function SehPage() {
               <button disabled={saving} className="rounded-lg bg-orange-600 px-4 py-2 text-sm text-white hover:bg-orange-700 disabled:opacity-50">{saving ? 'Guardando…' : 'Crear'}</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Modal biblioteca legal con búsqueda */}
+      {showLibrary && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-3xl rounded-xl bg-white max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-gray-200 p-4">
+              <h3 className="font-semibold text-gray-900">Biblioteca legal compartida</h3>
+              <button onClick={() => setShowLibrary(false)}><X className="h-5 w-5 text-gray-500" /></button>
+            </div>
+            <div className="flex items-center gap-2 border-b border-gray-100 p-3">
+              <input placeholder="Buscar norma, ley, decreto…" className={inputCls} value={libSearch}
+                onChange={e => setLibSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchLibrary()} />
+              <select value={libCountry} onChange={e => setLibCountry(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="">Todos los países</option>
+                {libCountries.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <button onClick={searchLibrary} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 flex-shrink-0">Buscar</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              {libLoading ? <p className="py-10 text-center text-sm text-gray-400"><Loader2 className="inline h-4 w-4 animate-spin mr-2" />Cargando…</p> : (
+                <div className="divide-y divide-gray-100">
+                  {libItems.length === 0 && <p className="py-10 text-center text-sm text-gray-400">Sin resultados.</p>}
+                  {libItems.map((i: any) => (
+                    <label key={i.id} className="flex items-start gap-3 px-2 py-2.5 cursor-pointer hover:bg-gray-50 rounded">
+                      <input type="checkbox" checked={libSelected.has(i.id)} onChange={() => toggleLib(i.id)} className="mt-1" />
+                      <div>
+                        <span className="font-medium text-gray-900 text-sm">{i.source}</span>
+                        <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{i.country}</span>
+                        <p className="text-xs text-gray-500 line-clamp-1">{i.title}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-between border-t border-gray-200 p-4">
+              <span className="text-sm text-gray-500">{libSelected.size} seleccionada(s)</span>
+              <div className="flex gap-2">
+                <button onClick={() => setShowLibrary(false)} className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">Cancelar</button>
+                <button onClick={importLibrary} disabled={!libSelected.size || saving}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+                  Importar seleccionadas
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

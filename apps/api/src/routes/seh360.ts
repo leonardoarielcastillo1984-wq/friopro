@@ -153,9 +153,7 @@ export async function registerSeh360Routes(app: FastifyInstance) {
 
   app.post(`${p}/clients`, async (req: any, reply) => {
     try {
-      console.log('[DEBUG SEH360] POST /clients auth:', { hasSehAuth: !!req.sehAuth, sehAuthUserId: req.sehAuth?.userId, tenantId: req.sehAuth?.tenantId, authorization: req.headers.authorization ? 'present' : 'missing' });
       if (!req.sehAuth) return reply.code(401).send({ error: 'No autorizado' });
-      if (!await requireActivePlan(req, reply)) return;
       const t = tid(req);
       if (!t) return reply.code(401).send({ error: 'No autorizado - Tenant required' });
       const v = ClientS.safeParse(req.body);

@@ -10322,7 +10322,7 @@ enum AIAlertStatus {
 }
 
 model SehActionPlan {
-  id            String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId      String    @db.Uuid
   clientId      String    @db.Uuid
   title         String
@@ -10340,7 +10340,7 @@ model SehActionPlan {
   kanbanColumn  String    @default("TODO")
   kanbanOrder   Int       @default(0)
   createdAt     DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime  @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
   createdById   String?   @db.Uuid
   updatedById   String?   @db.Uuid
   deletedAt     DateTime? @db.Timestamptz(6)
@@ -10354,7 +10354,7 @@ model SehActionPlan {
 }
 
 model SehAlert {
-  id           String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId     String    @db.Uuid
   clientId     String?   @db.Uuid
   title        String
@@ -10368,7 +10368,7 @@ model SehAlert {
   emailSent    Boolean   @default(false)
   whatsappSent Boolean   @default(false)
   createdAt    DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt    DateTime  @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(6)
 
   @@index([clientId])
   @@index([isRead])
@@ -10378,7 +10378,7 @@ model SehAlert {
 }
 
 model SehApplicabilityRule {
-  id                         String   @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   province                   String?
   activity                   String?
   riskTypes                  String[]
@@ -10387,13 +10387,13 @@ model SehApplicabilityRule {
   suggestedLegalRequirements Json?
   isActive                   Boolean  @default(true)
   createdAt                  DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt                  DateTime @db.Timestamptz(6)
+  updatedAt                  DateTime @updatedAt @db.Timestamptz(6)
 
   @@map("seh_applicability_rules")
 }
 
 model SehAuditTrail {
-  id         String   @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId   String   @db.Uuid
   entityType String
   entityId   String   @db.Uuid
@@ -10411,7 +10411,7 @@ model SehAuditTrail {
 }
 
 model SehAudit {
-  id            String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId      String    @db.Uuid
   clientId      String    @db.Uuid
   code          String
@@ -10426,7 +10426,7 @@ model SehAudit {
   score         Int?
   reportUrl     String?
   createdAt     DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime  @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
   createdById   String?   @db.Uuid
   updatedById   String?   @db.Uuid
   deletedAt     DateTime? @db.Timestamptz(6)
@@ -10440,14 +10440,14 @@ model SehAudit {
 }
 
 model SehClientUser {
-  id        String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId  String    @db.Uuid
   clientId  String    @db.Uuid
   userId    String    @db.Uuid
   role      String    @default("VIEWER")
   isPrimary Boolean   @default(false)
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime  @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   SehClient SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   SehUser   SehUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -10458,7 +10458,7 @@ model SehClientUser {
 }
 
 model SehClient {
-  id                  String                @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId            String                @db.Uuid
   name                String
   logoUrl             String?
@@ -10475,7 +10475,7 @@ model SehClient {
   alertCount          Int                   @default(0)
   country             String?               @default("AR")
   createdAt           DateTime              @default(now()) @db.Timestamptz(6)
-  updatedAt           DateTime              @db.Timestamptz(6)
+  updatedAt           DateTime              @updatedAt @db.Timestamptz(6)
   createdById         String?               @db.Uuid
   updatedById         String?               @db.Uuid
   deletedAt           DateTime?             @db.Timestamptz(6)
@@ -10502,7 +10502,7 @@ model SehClient {
 }
 
 model SehDigitalSignature {
-  id            String   @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId      String   @db.Uuid
   entityType    String
   entityId      String   @db.Uuid
@@ -10518,7 +10518,7 @@ model SehDigitalSignature {
 }
 
 model SehDocument {
-  id          String     @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId    String     @db.Uuid
   clientId    String?    @db.Uuid
   title       String
@@ -10528,7 +10528,7 @@ model SehDocument {
   version     Int        @default(1)
   status      String     @default("ACTIVE")
   createdAt   DateTime   @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime   @db.Timestamptz(6)
+  updatedAt   DateTime   @updatedAt @db.Timestamptz(6)
   createdById String?    @db.Uuid
   updatedById String?    @db.Uuid
   deletedAt   DateTime?  @db.Timestamptz(6)
@@ -10541,7 +10541,7 @@ model SehDocument {
 }
 
 model SehDrill {
-  id            String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId      String    @db.Uuid
   clientId      String    @db.Uuid
   name          String
@@ -10561,7 +10561,7 @@ model SehDrill {
   score         Int?
   evidenceUrl   String?
   createdAt     DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime  @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
   createdById   String?   @db.Uuid
   updatedById   String?   @db.Uuid
   deletedAt     DateTime? @db.Timestamptz(6)
@@ -10575,7 +10575,7 @@ model SehDrill {
 }
 
 model SehEmployee {
-  id                String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId          String    @db.Uuid
   clientId          String    @db.Uuid
   firstName         String
@@ -10591,7 +10591,7 @@ model SehEmployee {
   medicalExamStatus String?   @default("VALID")
   status            String    @default("ACTIVE")
   createdAt         DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt         DateTime  @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(6)
   createdById       String?   @db.Uuid
   updatedById       String?   @db.Uuid
   deletedAt         DateTime? @db.Timestamptz(6)
@@ -10605,7 +10605,7 @@ model SehEmployee {
 }
 
 model SehEpp {
-  id           String       @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId     String       @db.Uuid
   clientId     String       @db.Uuid
   employeeId   String?      @db.Uuid
@@ -10618,7 +10618,7 @@ model SehEpp {
   status       String       @default("ACTIVE")
   signatureUrl String?
   createdAt    DateTime     @default(now()) @db.Timestamptz(6)
-  updatedAt    DateTime     @db.Timestamptz(6)
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(6)
   deletedAt    DateTime?    @db.Timestamptz(6)
   SehClient    SehClient    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   SehEmployee  SehEmployee? @relation(fields: [employeeId], references: [id])
@@ -10630,7 +10630,7 @@ model SehEpp {
 }
 
 model SehIncident {
-  id                  String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId            String    @db.Uuid
   clientId            String    @db.Uuid
   code                String
@@ -10659,7 +10659,7 @@ model SehIncident {
   iltPercentage       Int?
   insuranceCompany    String?
   createdAt           DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt           DateTime  @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(6)
   createdById         String?   @db.Uuid
   updatedById         String?   @db.Uuid
   deletedAt           DateTime? @db.Timestamptz(6)
@@ -10674,7 +10674,7 @@ model SehIncident {
 }
 
 model SehIndicatorMeasurement {
-  id           String       @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   indicatorId  String       @db.Uuid
   value        Float
   period       String
@@ -10688,7 +10688,7 @@ model SehIndicatorMeasurement {
 }
 
 model SehIndicator {
-  id                      String                    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId                String                    @db.Uuid
   clientId                String?                   @db.Uuid
   code                    String
@@ -10704,7 +10704,7 @@ model SehIndicator {
   status                  String                    @default("NO_DATA")
   trend                   String                    @default("STABLE")
   createdAt               DateTime                  @default(now()) @db.Timestamptz(6)
-  updatedAt               DateTime                  @db.Timestamptz(6)
+  updatedAt               DateTime                  @updatedAt @db.Timestamptz(6)
   createdById             String?                   @db.Uuid
   updatedById             String?                   @db.Uuid
   deletedAt               DateTime?                 @db.Timestamptz(6)
@@ -10718,7 +10718,7 @@ model SehIndicator {
 }
 
 model SehInspectionTemplate {
-  id          String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId    String    @db.Uuid
   name        String
   description String?
@@ -10729,7 +10729,7 @@ model SehInspectionTemplate {
   items       Json?
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime  @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
   createdById String?   @db.Uuid
   deletedAt   DateTime? @db.Timestamptz(6)
 
@@ -10739,7 +10739,7 @@ model SehInspectionTemplate {
 }
 
 model SehInspection {
-  id            String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId      String    @db.Uuid
   clientId      String    @db.Uuid
   code          String
@@ -10756,7 +10756,7 @@ model SehInspection {
   geolocation   Json?
   score         Int?
   createdAt     DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime  @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
   createdById   String?   @db.Uuid
   updatedById   String?   @db.Uuid
   deletedAt     DateTime? @db.Timestamptz(6)
@@ -10770,7 +10770,7 @@ model SehInspection {
 }
 
 model SehLegalRequirement {
-  id                 String     @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId           String     @db.Uuid
   clientId           String?    @db.Uuid
   jurisdiction       String?
@@ -10800,7 +10800,7 @@ model SehLegalRequirement {
   responsible        String?
   verificationNotes  String?
   createdAt          DateTime   @default(now()) @db.Timestamptz(6)
-  updatedAt          DateTime   @db.Timestamptz(6)
+  updatedAt          DateTime   @updatedAt @db.Timestamptz(6)
   createdById        String?    @db.Uuid
   updatedById        String?    @db.Uuid
   deletedAt          DateTime?  @db.Timestamptz(6)
@@ -10833,7 +10833,7 @@ model SehPayment {
 }
 
 model SehReport {
-  id          String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId    String    @db.Uuid
   clientId    String?   @db.Uuid
   title       String
@@ -10844,7 +10844,7 @@ model SehReport {
   content     Json?
   pdfUrl      String?
   createdAt   DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime  @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
   createdById String?   @db.Uuid
   deletedAt   DateTime? @db.Timestamptz(6)
 
@@ -10855,7 +10855,7 @@ model SehReport {
 }
 
 model SehRisk {
-  id             String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId       String    @db.Uuid
   clientId       String    @db.Uuid
   code           String
@@ -10873,7 +10873,7 @@ model SehRisk {
   residualLevel  Int?
   status         String    @default("IDENTIFIED")
   createdAt      DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime  @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
   createdById    String?   @db.Uuid
   updatedById    String?   @db.Uuid
   deletedAt      DateTime? @db.Timestamptz(6)
@@ -10888,7 +10888,7 @@ model SehRisk {
 }
 
 model SehSite {
-  id        String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId  String    @db.Uuid
   clientId  String    @db.Uuid
   name      String
@@ -10897,7 +10897,7 @@ model SehSite {
   province  String?
   status    String    @default("ACTIVE")
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime  @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
   SehClient SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
@@ -10907,14 +10907,14 @@ model SehSite {
 }
 
 model SehTenantPlan {
-  id             String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId       String    @unique @db.Uuid
   planTier       String    @default("STARTER")
   status         String    @default("TRIAL")
   trialEndsAt    DateTime? @db.Timestamptz(6)
   planEndsAt     DateTime? @db.Timestamptz(6)
   createdAt      DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime  @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
   maxClients     Int       @default(3)
   mercadoPagoId  String?   @db.VarChar(255)
   mercadoPagoRef String?   @db.VarChar(255)
@@ -10924,7 +10924,7 @@ model SehTenantPlan {
 }
 
 model SehTraining {
-  id            String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId      String    @db.Uuid
   clientId      String    @db.Uuid
   code          String
@@ -10940,7 +10940,7 @@ model SehTraining {
   attendees     Json?
   materialUrl   String?
   createdAt     DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime  @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
   createdById   String?   @db.Uuid
   updatedById   String?   @db.Uuid
   deletedAt     DateTime? @db.Timestamptz(6)
@@ -10954,7 +10954,7 @@ model SehTraining {
 }
 
 model SehUser {
-  id             String          @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId       String          @db.Uuid
   email          String
   passwordHash   String
@@ -10967,7 +10967,7 @@ model SehUser {
   isActive       Boolean         @default(true)
   platformUserId String?         @unique @db.Uuid
   createdAt      DateTime        @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime        @db.Timestamptz(6)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(6)
   deletedAt      DateTime?       @db.Timestamptz(6)
   SehClientUser  SehClientUser[]
 
@@ -10977,7 +10977,7 @@ model SehUser {
 }
 
 model SehVisit {
-  id             String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId       String    @db.Uuid
   clientId       String    @db.Uuid
   technicianName String?
@@ -10988,7 +10988,7 @@ model SehVisit {
   photoUrls      String[]
   signatureUrl   String?
   createdAt      DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime  @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
   createdById    String?   @db.Uuid
   deletedAt      DateTime? @db.Timestamptz(6)
   SehClient      SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -11000,7 +11000,7 @@ model SehVisit {
 }
 
 model SehWorkPermit {
-  id             String    @id @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
   tenantId       String    @db.Uuid
   clientId       String    @db.Uuid
   code           String
@@ -11020,7 +11020,7 @@ model SehWorkPermit {
   emergencyPlan  String?
   signatures     Json?
   createdAt      DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime  @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
   createdById    String?   @db.Uuid
   deletedAt      DateTime? @db.Timestamptz(6)
   SehClient      SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
