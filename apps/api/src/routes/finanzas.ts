@@ -514,6 +514,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     origen: z.enum(['CARTOLA', 'CAJA_CHICA']).default('CARTOLA'), // caja chica se concilia igual pero con medio propio
     filas: z.array(cartolaMovSchema).default([]),         // abonos → cobros de facturas
     cargos: z.array(cartolaMovSchema).default([]),        // cargos → pagos de gastos
+    omitir: z.array(z.string().max(150)).default([]),     // firmas desmarcadas en el preview: se registran sin aplicar
   });
 
   app.post('/cartola-conciliar', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -521,7 +522,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const body = cartolaSchema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
-    const { commit, moneda, origen, filas, cargos } = body.data;
+    const { commit, moneda, origen, filas, cargos, omitir } = body.data;
+    const omitirSet = new Set(omitir);
     const medioOrigen = origen === 'CAJA_CHICA' ? 'CAJA_CHICA' : 'TRANSFERENCIA';
     if (!filas.length && !cargos.length) return reply.code(400).send({ error: 'Sin movimientos: enviá filas (abonos) y/o cargos' });
     if (filas.length + cargos.length > 6000) return reply.code(400).send({ error: 'Máximo 6000 movimientos por cartola' });
@@ -611,11 +613,33 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       return hits === tk.length || (tk.length > 2 && hits / tk.length >= 0.7);
     };
 
+    // Filas idénticas dentro del mismo archivo colapsarían a la misma
+    // firma: el sufijo de ocurrencia las mantiene distintas, de forma
+    // determinista entre re-importaciones (mismo archivo → mismo orden).
+    const firmasLote = new Map<string, number>();
+    const firmaUnica = (fl: any) => {
+      const b = firmaCobro(fl);
+      const n = (firmasLote.get(b) || 0) + 1;
+      firmasLote.set(b, n);
+      return n === 1 ? b : `${b}:${n}`;
+    };
+
     const resFilas: any[] = [];
     for (const [idx, fl] of filasU.entries()) {
-      const firma = firmaCobro(fl);
+      const firma = firmaUnica(fl);
       const base = { idx, fecha: fl.fecha, descripcion: fl.descripcion, monto: fl.monto, referencia: fl.referencia ?? null, firma };
       if (aplicadas.has(firma)) { resFilas.push({ ...base, estado: 'ya_aplicado', facturas: [] }); continue; }
+      if (omitirSet.has(firma)) {
+        resFilas.push({ ...base, estado: 'sin_match', facturas: [], motivo: 'omitido en la revisión — registrado sin aplicar' });
+        continue;
+      }
+      // Caja chica: los ENTRA son reposiciones del fondo (transferencia
+      // interna desde la cartola), no cobros de clientes — no se cruzan
+      // con facturas para no generar cobros falsos.
+      if (origen === 'CAJA_CHICA') {
+        resFilas.push({ ...base, estado: 'interno', facturas: [], motivo: 'reposición de fondo — no se cruza con facturas' });
+        continue;
+      }
 
       // Candidatas por RUT en la descripción o por nombre de cliente.
       // NUNCA se imputa a facturas emitidas DESPUÉS del abono: un pago no
@@ -654,9 +678,14 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         }
       }
 
+      // Empate: varios pendientes del mismo cliente con el mismo saldo —
+      // elegir "el primero" podría imputar el documento equivocado.
+      let ambiguos = 0;
       if (!aplica.length) {
         if (cand.length) {
-          const exact = cand.find((f: any) => Math.abs(getResto(f) - fl.monto) <= 2);
+          const exacts = cand.filter((f: any) => Math.abs(getResto(f) - fl.monto) <= 2);
+          ambiguos = exacts.length;
+          const exact = exacts.length === 1 ? exacts[0] : null;
           const suma = cand.reduce((s: number, f: any) => s + getResto(f), 0);
           if (exact) aplica = [{ f: exact, aplicar: getResto(exact) }];
           else if (Math.abs(suma - fl.monto) <= 2) aplica = cand.map((f: any) => ({ f, aplicar: getResto(f) }));
@@ -672,11 +701,19 @@ export default async function finanzasRoutes(app: FastifyInstance) {
           if (unicos.length === 1) { cand = unicos; candTodas = unicos; aplica = [{ f: unicos[0], aplicar: getResto(unicos[0]) }]; como = 'monto'; }
         }
       }
+      // Un solo documento elegido entre pendientes empatados = ambiguo.
+      if (aplica.length === 1 && ambiguos > 1) aplica = [];
 
       if (!aplica.length) {
+        const sugeridos = [...candTodas]
+          .sort((a: any, b: any) => Math.abs(getResto(a) - fl.monto) - Math.abs(getResto(b) - fl.monto))
+          .slice(0, 3)
+          .map((f: any) => ({ id: f.id, numero: f.numero, cliente: f.cliente, saldo: getResto(f) }));
         resFilas.push({
-          ...base, estado: 'sin_match', facturas: [],
-          motivo: !candTodas.length
+          ...base, estado: 'sin_match', facturas: [], sugeridos,
+          motivo: ambiguos > 1 && cand.length
+            ? `${cand[0].cliente}: ${ambiguos} pendientes tienen el mismo saldo — monto ambiguo, vincular a mano`
+            : !candTodas.length
             ? 'no encontré facturas pendientes de ese pagador'
             : !cand.length
               ? `${candTodas[0].cliente}: sus pendientes fueron emitidas después del abono`
@@ -684,7 +721,20 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         });
         continue;
       }
-      const confianza = como === 'monto' ? 'baja' : 'alta';
+      // Solo coincide el monto (sin RUT ni nombre): se sugiere pero no
+      // se aplica solo — una coincidencia numérica puede ser de otro doc.
+      if (como === 'monto') {
+        resFilas.push({
+          ...base, estado: 'sugerido', como, confianza: 'baja',
+          motivo: 'coincide solo el monto — confirmar el vínculo a mano',
+          facturas: aplica.map(a => ({
+            id: a.f.id, numero: a.f.numero, cliente: a.f.cliente, moneda: a.f.moneda,
+            fechaEmision: a.f.fechaEmision, saldoPrevio: getResto(a.f), aplicar: a.aplicar,
+          })),
+        });
+        continue;
+      }
+      const confianza = 'alta';
       for (const a of aplica) resto.set(a.f.id, Math.max(0, getResto(a.f) - a.aplicar));
       aplicadas.add(firma);
       resFilas.push({
@@ -747,9 +797,13 @@ export default async function finanzasRoutes(app: FastifyInstance) {
 
     const resCargos: any[] = [];
     for (const [idx, fl] of cargosU.entries()) {
-      const firma = firmaCobro(fl);
+      const firma = firmaUnica(fl);
       const base = { idx, fecha: fl.fecha, descripcion: fl.descripcion, monto: fl.monto, referencia: fl.referencia ?? null, firma };
       if (aplicadasPagos.has(firma)) { resCargos.push({ ...base, estado: 'ya_aplicado', gastos: [] }); continue; }
+      if (omitirSet.has(firma)) {
+        resCargos.push({ ...base, estado: 'sin_match', gastos: [], motivo: 'omitido en la revisión — registrado sin aplicar' });
+        continue;
+      }
 
       // Nunca se imputa a gastos cargados DESPUÉS del pago.
       const emitidaAntes = (g: any) => new Date(g.fecha) <= new Date(`${fl.fecha}T23:59:59Z`);
@@ -769,6 +823,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       let cand = candTodas.filter(emitidaAntes);
 
       let aplica: { g: any; aplicar: number }[] = [];
+      let excedente = 0;
+      let ambiguos = 0;
 
       // Folios explícitos en el texto del cargo (el pagador indicó qué
       // factura/comprobante pagó). Mismo criterio que en abonos: cuadre ±$2.
@@ -791,11 +847,18 @@ export default async function finanzasRoutes(app: FastifyInstance) {
 
       if (!aplica.length) {
       if (cand.length) {
-        const exact = cand.find((g: any) => Math.abs(getRestoG(g) - fl.monto) <= 2);
+        const exacts = cand.filter((g: any) => Math.abs(getRestoG(g) - fl.monto) <= 2);
+        ambiguos = exacts.length;
+        const exact = exacts.length === 1 ? exacts[0] : null;
         const suma = cand.reduce((s: number, g: any) => s + getRestoG(g), 0);
         if (exact) aplica = [{ g: exact, aplicar: getRestoG(exact) }];
         else if (Math.abs(suma - fl.monto) <= 2) aplica = cand.map((g: any) => ({ g, aplicar: getRestoG(g) }));
-        else {
+        else if (suma < fl.monto - 2) {
+          // El cargo supera lo pendiente del proveedor: se aplica todo y
+          // el sobrante queda como excedente (gasto aún no cargado).
+          aplica = cand.map((g: any) => ({ g, aplicar: getRestoG(g) }));
+          excedente = fl.monto - suma;
+        } else {
           const sub = subconjuntoExactoG(cand, fl.monto);
           if (sub?.length) aplica = sub.map(g => ({ g, aplicar: getRestoG(g) }));
         }
@@ -804,11 +867,19 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         if (unicos.length === 1) { cand = unicos; candTodas = unicos; aplica = [{ g: unicos[0], aplicar: getRestoG(unicos[0]) }]; como = 'monto'; }
       }
       }
+      // Un solo documento elegido entre pendientes empatados = ambiguo.
+      if (aplica.length === 1 && ambiguos > 1) aplica = [];
 
       if (!aplica.length) {
+        const sugeridos = [...candTodas]
+          .sort((a: any, b: any) => Math.abs(getRestoG(a) - fl.monto) - Math.abs(getRestoG(b) - fl.monto))
+          .slice(0, 3)
+          .map((g: any) => ({ id: g.id, numero: g.numero, proveedor: g.proveedor, saldo: getRestoG(g) }));
         resCargos.push({
-          ...base, estado: 'sin_match', gastos: [],
-          motivo: !candTodas.length
+          ...base, estado: 'sin_match', gastos: [], sugeridos,
+          motivo: ambiguos > 1 && cand.length
+            ? `${cand[0].proveedor}: ${ambiguos} pendientes tienen el mismo saldo — monto ambiguo, vincular a mano`
+            : !candTodas.length
             ? 'no encontré gastos pendientes de ese beneficiario'
             : !cand.length
               ? `${candTodas[0].proveedor}: sus pendientes son posteriores al cargo`
@@ -816,7 +887,20 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         });
         continue;
       }
-      const confianza = como === 'monto' ? 'baja' : 'alta';
+      // Solo coincide el monto (sin RUT ni nombre): se sugiere pero no
+      // se aplica solo — una coincidencia numérica puede ser de otro doc.
+      if (como === 'monto') {
+        resCargos.push({
+          ...base, estado: 'sugerido', como, confianza: 'baja',
+          motivo: 'coincide solo el monto — confirmar el vínculo a mano',
+          gastos: aplica.map(a => ({
+            id: a.g.id, numero: a.g.numero, proveedor: a.g.proveedor, moneda: a.g.moneda,
+            fecha: a.g.fecha, saldoPrevio: getRestoG(a.g), aplicar: a.aplicar,
+          })),
+        });
+        continue;
+      }
+      const confianza = 'alta';
       for (const a of aplica) restoG.set(a.g.id, Math.max(0, getRestoG(a.g) - a.aplicar));
       aplicadasPagos.add(firma);
       resCargos.push({
@@ -837,8 +921,11 @@ export default async function finanzasRoutes(app: FastifyInstance) {
         resumen: {
           total: resFilas.length, matches: m.length, sinMatch: resFilas.filter(r => r.estado === 'sin_match').length,
           yaAplicados: resFilas.filter(r => r.estado === 'ya_aplicado').length,
+          sugeridos: resFilas.filter(r => r.estado === 'sugerido').length,
+          internos: resFilas.filter(r => r.estado === 'interno').length,
           montoMatch: m.reduce((s, r) => s + r.facturas.reduce((x: number, f: any) => x + f.aplicar, 0), 0),
           cargosTotal: resCargos.length, cargosMatch: mc.length, cargosSinMatch: resCargos.filter(r => r.estado === 'sin_match').length,
+          cargosSugeridos: resCargos.filter(r => r.estado === 'sugerido').length,
           cargosYaAplicados: resCargos.filter(r => r.estado === 'ya_aplicado').length,
           cargosMontoMatch: mc.reduce((s, r) => s + r.gastos.reduce((x: number, g: any) => x + g.aplicar, 0), 0),
         },
@@ -895,12 +982,12 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     // (qué factura/gasto se pagó y cuánto) y huérfanos con el motivo, para
     // resolverlos a mano desde el tab Conciliación. Idempotente por firma.
     const movRows = [
-      ...resFilas.map((r: any) => ({ r, tipo: 'ABONO', vinc: (r.facturas || []).filter((f: any) => f.aplicar > 0).map((f: any) => ({ tipo: 'factura', ...f })) })),
-      ...resCargos.map((r: any) => ({ r, tipo: 'CARGO', vinc: (r.gastos || []).filter((g: any) => g.aplicar > 0).map((g: any) => ({ tipo: 'gasto', ...g })) })),
-    ].filter(({ r }) => r.estado === 'match' || r.estado === 'sin_match');
+      ...resFilas.map((r: any) => ({ r, tipo: 'ABONO', vinc: r.estado === 'match' ? (r.facturas || []).filter((f: any) => f.aplicar > 0).map((f: any) => ({ tipo: 'factura', ...f })) : [] })),
+      ...resCargos.map((r: any) => ({ r, tipo: 'CARGO', vinc: r.estado === 'match' ? (r.gastos || []).filter((g: any) => g.aplicar > 0).map((g: any) => ({ tipo: 'gasto', ...g })) : [] })),
+    ].filter(({ r }) => ['match', 'sin_match', 'sugerido', 'interno'].includes(r.estado));
     for (const { r, tipo, vinc } of movRows) {
       const data: any = {
-        estado: r.estado === 'match' ? 'conciliado' : 'sin_match',
+        estado: r.estado === 'match' ? 'conciliado' : r.estado === 'sugerido' ? 'sugerido' : r.estado === 'interno' ? 'interno' : 'sin_match',
         como: r.como || null, confianza: r.confianza || null, motivo: r.motivo || null,
         excedente: r.excedente ?? null,
         vinculos: vinc.length ? vinc : undefined,
@@ -978,6 +1065,61 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       else if (m.estado === 'deshecho') resumen.deshechos++;
     }
     return reply.send({ movs, resumen });
+  });
+
+  // GET /caja-chica-resumen — conciliación de caja del fondo fijo:
+  // por mes compara lo que entró a la caja chica (reposiciones ENTRA) vs
+  // lo que salió (gastos SALE), y cruza cada reposición con el cargo de
+  // la cartola bancaria que la financió (mismo monto ±$2, fecha ±3 días).
+  app.get('/caja-chica-resumen', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const whereMov: any = { tenantId, estado: { notIn: ['deshecho', 'ignorado'] } };
+    if (q.desde || q.hasta) {
+      whereMov.fecha = {};
+      if (q.desde) whereMov.fecha.gte = new Date(q.desde);
+      if (q.hasta) whereMov.fecha.lte = new Date(q.hasta);
+    }
+    const movs = await prisma().finanzaCartolaMov.findMany({
+      where: whereMov,
+      select: { id: true, origen: true, tipo: true, fecha: true, descripcion: true, monto: true },
+      orderBy: { fecha: 'asc' },
+    });
+    const meses = new Map<string, { mes: string; entra: number; sale: number; nEntra: number; nSale: number }>();
+    const entradas: any[] = [];
+    const cartolaCargos: any[] = [];
+    for (const m of movs) {
+      if (m.origen === 'CAJA_CHICA') {
+        const mes = new Date(m.fecha).toISOString().slice(0, 7);
+        const mt = meses.get(mes) || { mes, entra: 0, sale: 0, nEntra: 0, nSale: 0 };
+        if (m.tipo === 'ABONO') { mt.entra += num(m.monto); mt.nEntra++; entradas.push(m); }
+        else { mt.sale += num(m.monto); mt.nSale++; }
+        meses.set(mes, mt);
+      } else if (m.origen === 'CARTOLA' && m.tipo === 'CARGO') {
+        cartolaCargos.push(m);
+      }
+    }
+    // Una reposición de caja chica se confirma cuando hay un cargo en la
+    // cartola por el mismo monto (±$2) dentro de ±3 días.
+    const usados = new Set<string>();
+    const transferencias = entradas.map(e => {
+      const t = cartolaCargos.find(c => !usados.has(c.id)
+        && Math.abs(num(c.monto) - num(e.monto)) <= 2
+        && Math.abs(+new Date(c.fecha) - +new Date(e.fecha)) <= 3 * 86400e3);
+      if (t) usados.add(t.id);
+      return {
+        cajaMovId: e.id, fecha: e.fecha, monto: num(e.monto), descripcion: e.descripcion,
+        cartolaMovId: t?.id || null, cartolaDescripcion: t?.descripcion || null,
+        estado: t ? 'confirmada' : 'sin_cargo_en_cartola',
+      };
+    });
+    let saldo = 0;
+    const out = [...meses.values()].sort((a, b) => a.mes.localeCompare(b.mes)).map(m => {
+      saldo += m.entra - m.sale;
+      return { ...m, saldoMes: m.entra - m.sale, saldoAcumulado: saldo };
+    });
+    return reply.send({ meses: out, transferencias });
   });
 
   // GET /docs-sin-conciliar — el otro lado de la conciliación: facturas
@@ -1135,7 +1277,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const ignorar = (req.body as any)?.ignorar !== false;
     const mov = await prisma().finanzaCartolaMov.findFirst({ where: { id, tenantId }, select: { id: true, estado: true } });
     if (!mov) return reply.code(404).send({ error: 'Movimiento no encontrado' });
-    if (mov.estado !== 'sin_match' && mov.estado !== 'ignorado')
+    if (!['sin_match', 'ignorado', 'sugerido'].includes(mov.estado))
       return reply.code(409).send({ error: 'Solo movimientos sin match se pueden ignorar' });
     const user = await resolveUser(app.prisma, (req as any).auth?.userId);
     await prisma().finanzaCartolaMov.update({

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Loader2, Landmark, Link2, Ban, Undo2, CheckCircle2, AlertTriangle, Search, X, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Loader2, Landmark, Link2, Ban, Undo2, CheckCircle2, AlertTriangle, Search, X, ArrowUpRight, ArrowDownRight, Wallet } from 'lucide-react';
 import { fmtMoney, fmtFecha, fmtActualizado } from './fmt';
 import ConciliarCartola from './ConciliarCartola';
 
@@ -13,7 +13,7 @@ const tipoDoc = (v: Vinculo) => v.tipo || v.doc || 'gasto';
 type Mov = {
   id: string; tipo: 'ABONO' | 'CARGO'; origen: string; firma: string;
   fecha: string; descripcion: string; referencia: string | null; monto: number; moneda: string;
-  estado: 'conciliado' | 'vinculado_manual' | 'sin_match' | 'deshecho' | 'ignorado';
+  estado: 'conciliado' | 'vinculado_manual' | 'sin_match' | 'deshecho' | 'ignorado' | 'sugerido' | 'interno';
   como: string | null; motivo: string | null; vinculos: Vinculo[] | null; excedente: number | null;
   appliedAt: string | null; resueltoPor: string | null; createdByNombre: string | null; createdAt: string;
 };
@@ -26,6 +26,8 @@ const ESTADOS: Record<string, { label: string; cls: string }> = {
   conciliado: { label: 'Conciliado', cls: 'bg-emerald-50 text-emerald-700' },
   vinculado_manual: { label: 'Vinculado a mano', cls: 'bg-blue-50 text-blue-700' },
   sin_match: { label: 'Sin match', cls: 'bg-red-50 text-red-700' },
+  sugerido: { label: 'Sugerido', cls: 'bg-amber-50 text-amber-700' },
+  interno: { label: 'Interno', cls: 'bg-sky-50 text-sky-700' },
   deshecho: { label: 'Deshecho', cls: 'bg-neutral-100 text-neutral-500' },
   ignorado: { label: 'Ignorado', cls: 'bg-neutral-100 text-neutral-400' },
 };
@@ -53,6 +55,7 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
   const [candidatos, setCandidatos] = useState<DocCandidato[]>([]);
   const [candidatosLoading, setCandidatosLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [cajaResumen, setCajaResumen] = useState<{ meses: any[]; transferencias: any[] } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true); setError(null);
@@ -78,9 +81,20 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
 
   useEffect(() => { load(); }, [load]);
 
+  // Cuadre del fondo de caja chica: reposiciones vs gastos por mes, con
+  // la transferencia de cartola que financió cada reposición.
+  useEffect(() => {
+    if (fOrigen !== 'CAJA_CHICA') { setCajaResumen(null); return; }
+    const p = new URLSearchParams();
+    if (desde) p.set('desde', desde);
+    if (hasta) p.set('hasta', hasta);
+    apiFetch<{ meses: any[]; transferencias: any[] }>(`/finanzas/caja-chica-resumen?${p}`)
+      .then(setCajaResumen).catch(() => setCajaResumen(null));
+  }, [fOrigen, desde, hasta]);
+
   const visibles = useMemo(() => {
     let list = movs;
-    if (fEstado === 'sin_match') list = list.filter(m => m.estado === 'sin_match');
+    if (fEstado === 'sin_match') list = list.filter(m => m.estado === 'sin_match' || m.estado === 'sugerido');
     else if (fEstado === 'conciliados') list = list.filter(m => m.estado === 'conciliado' || m.estado === 'vinculado_manual');
     if (buscar.trim()) {
       const q = buscar.trim().toLowerCase();
@@ -211,6 +225,51 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
 
       {error && <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><AlertTriangle size={15} className="mt-0.5 shrink-0" />{error}</div>}
 
+      {/* Cuadre de caja chica: lo que entró al fondo vs lo que salió, por mes */}
+      {fOrigen === 'CAJA_CHICA' && cajaResumen && cajaResumen.meses.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+            <Wallet size={15} />Cuadre de caja chica
+            <span className="ml-1 text-[11px] font-normal text-amber-700">reposiciones vs gastos del fondo, cruzado con la cartola</span>
+          </div>
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[10px] uppercase tracking-wide text-amber-800/70">
+                  <th className="py-1 pr-4 font-medium">Mes</th>
+                  <th className="py-1 pr-4 text-right font-medium">Reposiciones</th>
+                  <th className="py-1 pr-4 text-right font-medium">Gastos</th>
+                  <th className="py-1 pr-4 text-right font-medium">Diferencia</th>
+                  <th className="py-1 text-right font-medium">Saldo fondo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cajaResumen.meses.map((m: any) => (
+                  <tr key={m.mes} className="border-t border-amber-200/60">
+                    <td className="py-1.5 pr-4 font-medium text-amber-900">{m.mes}</td>
+                    <td className="py-1.5 pr-4 text-right tabular-nums text-emerald-700">{fmtMoney(m.entra, moneda)} <span className="text-amber-800/50">({m.nEntra})</span></td>
+                    <td className="py-1.5 pr-4 text-right tabular-nums text-red-600">{fmtMoney(m.sale, moneda)} <span className="text-amber-800/50">({m.nSale})</span></td>
+                    <td className={`py-1.5 pr-4 text-right tabular-nums font-medium ${m.saldoMes >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{fmtMoney(m.saldoMes, moneda)}</td>
+                    <td className={`py-1.5 text-right tabular-nums font-semibold ${m.saldoAcumulado >= 0 ? 'text-amber-900' : 'text-red-700'}`}>{fmtMoney(m.saldoAcumulado, moneda)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {cajaResumen.transferencias.length > 0 && (
+            <div className="mt-2 space-y-0.5 border-t border-amber-200/60 pt-2">
+              {cajaResumen.transferencias.map((t: any, i: number) => (
+                <div key={i} className="flex items-center gap-2 text-[11px]">
+                  {t.estado === 'confirmada'
+                    ? <><CheckCircle2 size={11} className="shrink-0 text-emerald-600" /><span className="text-amber-900">{fmtFecha(t.fecha)} — {fmtMoney(t.monto, moneda)} confirmada en cartola <span className="text-amber-800/60">({t.cartolaDescripcion})</span></span></>
+                    : <><AlertTriangle size={11} className="shrink-0 text-amber-600" /><span className="text-amber-800">{fmtFecha(t.fecha)} — {fmtMoney(t.monto, moneda)} sin cargo equivalente en cartola (±$2, ±3 días)</span></>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Tabla */}
       <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
         {fEstado === 'docs' ? (
@@ -324,10 +383,12 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
                         </div>
                       )}
                       {m.motivo && <div className="mt-1 text-[11px] text-red-500">{m.motivo}</div>}
-                      {m.estado === 'sin_match' && (
+                      {(m.estado === 'sin_match' || m.estado === 'sugerido') && (
                         <div className="mt-1 flex items-start gap-1 text-[11px] text-red-600">
                           <AlertTriangle size={11} className="mt-px shrink-0" />
-                          <span>{m.tipo === 'ABONO'
+                          <span>{m.estado === 'sugerido'
+                            ? 'Match solo por monto — no se aplicó automáticamente, confirmá el vínculo.'
+                            : m.tipo === 'ABONO'
                             ? 'Cobro sin factura emitida asociada — emití la factura o vinculala a mano.'
                             : 'Pago sin gasto/comprobante asociado (SII, caja chica o cartola) — cargalo o vinculalo.'}</span>
                         </div>
@@ -341,7 +402,7 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
                       <td className="whitespace-nowrap px-4 py-2.5 text-right">
                         {busyId === m.id ? <Loader2 size={14} className="inline animate-spin text-neutral-400" /> : (
                           <div className="flex justify-end gap-1">
-                            {m.estado === 'sin_match' && (
+                            {(m.estado === 'sin_match' || m.estado === 'sugerido') && (
                               <>
                                 <button onClick={() => abrirVincular(m)} title="Vincular a un documento pendiente"
                                   className="flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-100"><Link2 size={11} />Vincular</button>

@@ -7,12 +7,14 @@ import { fmtMoney, fmtFecha } from './fmt';
 
 type Fila = { fecha: string; descripcion: string; monto: number; referencia: string | null };
 type FilaResp = Fila & {
-  idx: number; estado: 'match' | 'sin_match' | 'ya_aplicado'; como?: string; confianza?: 'alta' | 'media' | 'baja';
+  idx: number; estado: 'match' | 'sin_match' | 'ya_aplicado' | 'sugerido' | 'interno'; como?: string; confianza?: 'alta' | 'media' | 'baja';
   excedente?: number; motivo?: string; firma?: string; facturas: { id: string; numero: string | null; cliente: string; aplicar: number; saldoPrevio: number }[];
+  sugeridos?: { id: string; numero: string | null; cliente?: string; proveedor?: string; saldo: number }[];
 };
 type CargoResp = Fila & {
-  idx: number; estado: 'match' | 'sin_match' | 'ya_aplicado'; como?: string; confianza?: 'alta' | 'media' | 'baja';
-  motivo?: string; firma?: string; gastos: { id: string; numero: string | null; proveedor: string; aplicar: number; saldoPrevio: number }[];
+  idx: number; estado: 'match' | 'sin_match' | 'ya_aplicado' | 'sugerido' | 'interno'; como?: string; confianza?: 'alta' | 'media' | 'baja';
+  excedente?: number; motivo?: string; firma?: string; gastos: { id: string; numero: string | null; proveedor: string; aplicar: number; saldoPrevio: number }[];
+  sugeridos?: { id: string; numero: string | null; cliente?: string; proveedor?: string; saldo: number }[];
 };
 
 // ── Parseo de cartola (CSV/TXT/Excel) ───────────────────────────────────────
@@ -166,7 +168,17 @@ export default function ConciliarCartola({ moneda, origen = 'CARTOLA', onClose, 
   const [resultado, setResultado] = useState<any>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [omitidasSet, setOmitidasSet] = useState<Set<string>>(new Set()); // firmas desmarcadas en el preview
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const toggleOmitir = (firma?: string) => {
+    if (!firma) return;
+    setOmitidasSet(prev => { const n = new Set(prev); n.has(firma) ? n.delete(firma) : n.add(firma); return n; });
+  };
+  const check = (f: { estado: string; firma?: string }) => f.estado !== 'match' ? null : (
+    <input type="checkbox" checked={!(f.firma && omitidasSet.has(f.firma))} onChange={() => toggleOmitir(f.firma)}
+      title="Desmarcar para registrar el movimiento sin aplicar el pago/cobro" className="h-3.5 w-3.5 cursor-pointer accent-neutral-700" />
+  );
 
   const cargar = async (file: File) => {
     setError(null); setPreview(null); setResultado(null); setArchivo(file.name); setBusy('parse');
@@ -176,7 +188,7 @@ export default function ConciliarCartola({ moneda, origen = 'CARTOLA', onClose, 
       setFilas(abonos); setCargos(cs); setOmitidas(om);
       setBusy('analizar');
       const r = await apiFetch<any>('/finanzas/cartola-conciliar', { method: 'POST', json: { commit: false, moneda, origen, filas: abonos, cargos: cs } });
-      setPreview(r);
+      setPreview(r); setOmitidasSet(new Set());
     } catch (e: any) { setError(e?.message || 'No se pudo leer el archivo'); }
     finally { setBusy(null); }
   };
@@ -184,7 +196,7 @@ export default function ConciliarCartola({ moneda, origen = 'CARTOLA', onClose, 
   const aplicar = async () => {
     setBusy('commit'); setError(null);
     try {
-      const r = await apiFetch<any>('/finanzas/cartola-conciliar', { method: 'POST', json: { commit: true, moneda, origen, filas, cargos } });
+      const r = await apiFetch<any>('/finanzas/cartola-conciliar', { method: 'POST', json: { commit: true, moneda, origen, filas, cargos, omitir: [...omitidasSet] } });
       setResultado(r); onDone();
     } catch (e: any) { setError(e?.message || 'Error al registrar los cobros'); }
     finally { setBusy(null); }
@@ -204,6 +216,8 @@ export default function ConciliarCartola({ moneda, origen = 'CARTOLA', onClose, 
   const chip = (f: { estado: string; como?: string; confianza?: string }) => {
     if (f.estado === 'ya_aplicado') return <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium text-neutral-500">ya aplicado</span>;
     if (f.estado === 'sin_match') return <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">sin match</span>;
+    if (f.estado === 'sugerido') return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700" title="Solo coincide el monto — no se aplica solo, confirmar a mano">sugerencia</span>;
+    if (f.estado === 'interno') return <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700" title="Reposición del fondo — movimiento interno, no cruza con documentos">interno</span>;
     const col = f.confianza === 'alta' ? 'bg-emerald-100 text-emerald-700' : f.confianza === 'media' ? 'bg-amber-100 text-amber-700' : 'bg-orange-100 text-orange-700';
     const lbl = f.como === 'folio' ? 'por folio' : f.como === 'rut' ? 'por RUT' : f.como === 'nombre' ? 'por nombre' : 'por monto';
     return <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${col}`}>{lbl}{f.confianza !== 'alta' ? ` (${f.confianza})` : ''}</span>;
@@ -252,12 +266,15 @@ export default function ConciliarCartola({ moneda, origen = 'CARTOLA', onClose, 
                 <span><b>{preview.resumen.total}</b> abonos</span>
                 <span className="text-emerald-700"><b>{preview.resumen.matches}</b> con match ({fmtMoney(preview.resumen.montoMatch, moneda)})</span>
                 {preview.resumen.sinMatch > 0 && <span className="text-red-600"><b>{preview.resumen.sinMatch}</b> sin match</span>}
+                {preview.resumen.sugeridos > 0 && <span className="text-amber-700"><b>{preview.resumen.sugeridos}</b> sugerencias</span>}
+                {preview.resumen.internos > 0 && <span className="text-sky-700"><b>{preview.resumen.internos}</b> internas</span>}
                 {preview.resumen.yaAplicados > 0 && <span><b>{preview.resumen.yaAplicados}</b> ya aplicados antes</span>}
                 {(preview.resumen.cargosTotal ?? 0) > 0 && <>
                   <span className="text-neutral-300">|</span>
                   <span><b>{preview.resumen.cargosTotal}</b> cargos</span>
                   <span className="text-emerald-700"><b>{preview.resumen.cargosMatch}</b> con match ({fmtMoney(preview.resumen.cargosMontoMatch ?? 0, moneda)})</span>
                   {preview.resumen.cargosSinMatch > 0 && <span className="text-red-600"><b>{preview.resumen.cargosSinMatch}</b> sin match</span>}
+                  {preview.resumen.cargosSugeridos > 0 && <span className="text-amber-700"><b>{preview.resumen.cargosSugeridos}</b> sugerencias</span>}
                   {preview.resumen.cargosYaAplicados > 0 && <span><b>{preview.resumen.cargosYaAplicados}</b> ya aplicados antes</span>}
                 </>}
               </div>
@@ -265,13 +282,15 @@ export default function ConciliarCartola({ moneda, origen = 'CARTOLA', onClose, 
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 bg-neutral-50">
                     <tr className="text-left text-[11px] uppercase tracking-wide text-neutral-500">
+                      <th className="px-2 py-2"></th>
                       <th className="px-3 py-2 font-medium">Fecha</th><th className="px-3 py-2 font-medium">Descripción</th>
                       <th className="px-3 py-2 text-right font-medium">Monto</th><th className="px-3 py-2 font-medium">Match</th><th className="px-3 py-2 font-medium">Estado</th>
                     </tr>
                   </thead>
                   <tbody>
                     {preview.filas.map((f: FilaResp) => (
-                      <tr key={`a-${f.idx}`} className={`border-t border-neutral-100 ${f.estado === 'sin_match' ? 'bg-red-50/40' : f.estado === 'ya_aplicado' ? 'opacity-50' : ''}`}>
+                      <tr key={`a-${f.idx}`} className={`border-t border-neutral-100 ${f.estado === 'sin_match' ? 'bg-red-50/40' : f.estado === 'ya_aplicado' ? 'opacity-50' : ''} ${f.firma && omitidasSet.has(f.firma) ? 'opacity-50 line-through' : ''}`}>
+                        <td className="px-2 py-1.5 text-center">{check(f)}</td>
                         <td className="px-3 py-1.5 text-xs text-neutral-500 whitespace-nowrap">{fmtFecha(f.fecha + 'T12:00:00')}</td>
                         <td className="px-3 py-1.5 text-xs"><div className="max-w-56 truncate" title={f.descripcion}>{f.descripcion || '—'}</div></td>
                         <td className="px-3 py-1.5 text-right whitespace-nowrap">{fmtMoney(f.monto, moneda)}</td>
@@ -282,7 +301,12 @@ export default function ConciliarCartola({ moneda, origen = 'CARTOLA', onClose, 
                             </div>
                           ))}
                           {f.excedente ? <div className="text-amber-600">excedente {fmtMoney(f.excedente, moneda)}</div> : null}
-                          {f.estado === 'sin_match' && f.motivo ? <div className="max-w-56 text-neutral-400" title={f.motivo}>{f.motivo}</div> : null}
+                          {(f.estado === 'sin_match' || f.estado === 'sugerido' || f.estado === 'interno') && f.motivo ? <div className="max-w-56 text-neutral-400" title={f.motivo}>{f.motivo}</div> : null}
+                          {f.estado === 'sin_match' && f.sugeridos?.length ? (
+                            <div className="max-w-56 text-[10px] text-neutral-400">
+                              sugiere: {f.sugeridos.map(s => `${s.numero || 's/n'} ${fmtMoney(s.saldo, moneda)}`).join(' · ')}
+                            </div>
+                          ) : null}
                           {f.estado === 'ya_aplicado' && f.firma ? (
                             <button onClick={() => deshacer(f.firma!)} disabled={!!busy} title="Elimina los cobros registrados por este abono"
                               className="rounded border border-neutral-300 px-1.5 py-0.5 text-[10px] text-neutral-500 hover:border-red-300 hover:bg-red-50 hover:text-red-600">deshacer</button>
@@ -302,13 +326,15 @@ export default function ConciliarCartola({ moneda, origen = 'CARTOLA', onClose, 
                     <table className="w-full text-sm">
                       <thead className="sticky top-0 bg-neutral-50">
                         <tr className="text-left text-[11px] uppercase tracking-wide text-neutral-500">
+                          <th className="px-2 py-2"></th>
                           <th className="px-3 py-2 font-medium">Fecha</th><th className="px-3 py-2 font-medium">Descripción</th>
                           <th className="px-3 py-2 text-right font-medium">Monto</th><th className="px-3 py-2 font-medium">Match</th><th className="px-3 py-2 font-medium">Estado</th>
                         </tr>
                       </thead>
                       <tbody>
                         {preview.cargos!.map((f: CargoResp) => (
-                          <tr key={`c-${f.idx}`} className={`border-t border-neutral-100 ${f.estado === 'sin_match' ? 'bg-red-50/40' : f.estado === 'ya_aplicado' ? 'opacity-50' : ''}`}>
+                          <tr key={`c-${f.idx}`} className={`border-t border-neutral-100 ${f.estado === 'sin_match' ? 'bg-red-50/40' : f.estado === 'ya_aplicado' ? 'opacity-50' : ''} ${f.firma && omitidasSet.has(f.firma) ? 'opacity-50 line-through' : ''}`}>
+                            <td className="px-2 py-1.5 text-center">{check(f)}</td>
                             <td className="px-3 py-1.5 text-xs text-neutral-500 whitespace-nowrap">{fmtFecha(f.fecha + 'T12:00:00')}</td>
                             <td className="px-3 py-1.5 text-xs"><div className="max-w-56 truncate" title={f.descripcion}>{f.descripcion || '—'}</div></td>
                             <td className="px-3 py-1.5 text-right whitespace-nowrap">{fmtMoney(f.monto, moneda)}</td>
@@ -318,7 +344,13 @@ export default function ConciliarCartola({ moneda, origen = 'CARTOLA', onClose, 
                                   {a.numero ? `#${a.numero} ` : ''}<span className="text-neutral-400">({a.proveedor})</span> → <b>{fmtMoney(a.aplicar, moneda)}</b>
                                 </div>
                               ))}
-                              {f.estado === 'sin_match' && f.motivo ? <div className="max-w-56 text-neutral-400" title={f.motivo}>{f.motivo}</div> : null}
+                              {(f.estado === 'sin_match' || f.estado === 'sugerido') && f.motivo ? <div className="max-w-56 text-neutral-400" title={f.motivo}>{f.motivo}</div> : null}
+                              {f.estado === 'sin_match' && f.sugeridos?.length ? (
+                                <div className="max-w-56 text-[10px] text-neutral-400">
+                                  sugiere: {f.sugeridos.map(s => `${s.numero || 's/n'} ${fmtMoney(s.saldo, moneda)}`).join(' · ')}
+                                </div>
+                              ) : null}
+                              {f.excedente ? <div className="text-amber-600">excedente {fmtMoney(f.excedente, moneda)}</div> : null}
                               {f.estado === 'ya_aplicado' && f.firma ? (
                                 <button onClick={() => deshacer(f.firma!)} disabled={!!busy} title="Elimina los pagos registrados por este cargo"
                                   className="rounded border border-neutral-300 px-1.5 py-0.5 text-[10px] text-neutral-500 hover:border-red-300 hover:bg-red-50 hover:text-red-600">deshacer</button>
