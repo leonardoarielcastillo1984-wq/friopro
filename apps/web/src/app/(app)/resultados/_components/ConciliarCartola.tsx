@@ -32,9 +32,21 @@ const parseMonto = (v: any): number => {
 };
 
 const parseFecha = (v: any): string => {
-  if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    const iso = v.toISOString().slice(0, 10);
+    // Fechas anteriores a 2000 son casi seguro celdas corruptas de Excel
+    // (serial 0/fecha 1900), no movimientos reales → se rechazan.
+    return iso >= '2000' ? iso : '';
+  }
   if (v == null) return '';
+  // Serial de Excel (días desde 1899-12-30) — celdas numéricas con formato fecha
+  if (typeof v === 'number' && v > 20000 && v < 80000)
+    return new Date(Math.round((v - 25569) * 86400 * 1000)).toISOString().slice(0, 10);
   const s = String(v).trim().split(' ')[0];
+  if (/^\d{5}$/.test(s)) {
+    const n = Number(s);
+    if (n > 20000 && n < 80000) return new Date(Math.round((n - 25569) * 86400 * 1000)).toISOString().slice(0, 10);
+  }
   let m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);           // dd/mm/yyyy
   if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
   m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);                          // yyyy-mm-dd
@@ -58,37 +70,52 @@ const splitLinea = (line: string, sep: string) => {
 // Detecta columnas: fecha, descripción, abono, cargo (o monto único con signo), referencia.
 // Devuelve abonos (plata que entra → cobros de facturas) y cargos (plata que
 // sale → pagos de gastos/proveedores).
-function filasDeTabla(rows: any[][]): { abonos: Fila[]; cargos: Fila[] } {
-  if (rows.length < 2) return { abonos: [], cargos: [] };
+function filasDeTabla(rows: any[][]): { abonos: Fila[]; cargos: Fila[]; omitidas: number } {
+  let omitidas = 0;
+  if (rows.length < 2) return { abonos: [], cargos: [], omitidas };
   // buscar la fila de encabezados (algunas cartolas traen títulos arriba)
   let hIdx = -1, h: string[] = [];
   for (let i = 0; i < Math.min(rows.length, 15); i++) {
     const cand = rows[i].map((c: any) => norm(String(c ?? '')));
-    if (cand.some(x => x.includes('fecha')) && (cand.some(x => x.includes('abono') || x.includes('credito') || x.includes('cargo') || x.includes('debito') || x === 'monto') )) { hIdx = i; h = cand; break; }
+    const esColMonto = (x: string) => x.includes('abono') || x.includes('credito') || x.includes('cargo') || x.includes('debito') || x === 'monto'
+      || x === 'entra' || x === 'sale' || x === 'entradas' || x === 'salidas'; // formato caja chica (ENTRA/SALE)
+    if (cand.some(x => x.includes('fecha')) && cand.some(esColMonto)) { hIdx = i; h = cand; break; }
   }
-  if (hIdx < 0) return { abonos: [], cargos: [] };
+  if (hIdx < 0) return { abonos: [], cargos: [], omitidas };
   const find = (...preds: ((x: string) => boolean)[]) => { for (const p of preds) { const i = h.findIndex(p); if (i >= 0) return i; } return -1; };
   // Formato Santander: columna "CARGO/ABONO" con letra C/A (no es un monto) — el monto con signo va en MONTO
   const flagCol = find(x => x.includes('cargo') && x.includes('abono'));
   const idx = {
     fecha: find(x => x === 'fecha' || x.startsWith('fecha')),
     desc: find(x => x.includes('descripcion') || x.includes('glosa') || x.includes('detalle') || x.includes('motivo') || x.includes('nombre') || x.includes('origen')),
-    abono: find(x => (x.includes('abono') || x.includes('credito') || x.includes('haber') || x.includes('deposito')) && !(x.includes('cargo') && x.includes('abono'))),
-    cargo: find(x => (x.includes('cargo') || x.includes('debito') || x.includes('debe') || x.includes('giro') || x.includes('pago')) && !(x.includes('cargo') && x.includes('abono'))),
+    // proveedor/cliente propio: en caja chica la descripción útil es "Proveedor — Detalle"
+    prov: find(x => x === 'proveedor' || x === 'cliente' || x === 'emisor' || x === 'beneficiario'),
+    abono: find(x => (x.includes('abono') || x.includes('credito') || x.includes('haber') || x.includes('deposito') || x === 'entra' || x === 'entradas' || x === 'ingreso') && !(x.includes('cargo') && x.includes('abono'))),
+    cargo: find(x => (x.includes('cargo') || x.includes('debito') || x.includes('debe') || x.includes('giro') || x.includes('pago') || x === 'sale' || x === 'salidas' || x === 'egreso') && !(x.includes('cargo') && x.includes('abono'))),
     monto: find(x => x === 'monto' || x === 'valor'),
-    // "N° MOVIMIENTO" (único por operación) antes que "N° DOCUMENTO" (suele venir en ceros)
-    ref: find(x => x.startsWith('n') && x.includes('movimiento'), x => x.includes('referencia') || x.includes('documento') || x.includes('comprobante')),
+    // "N° MOVIMIENTO" (único por operación) antes que "N° DOCUMENTO"/"NRO DOC" (suele venir en ceros)
+    ref: find(x => x.startsWith('n') && x.includes('movimiento'), x => x.includes('referencia') || x.includes('documento') || x.includes('comprobante') || x === 'nro doc' || x === 'n doc' || x === 'folio'),
   };
-  if (idx.fecha < 0 || (idx.abono < 0 && idx.cargo < 0 && idx.monto < 0)) return { abonos: [], cargos: [] };
+  if (idx.fecha < 0 || (idx.abono < 0 && idx.cargo < 0 && idx.monto < 0)) return { abonos: [], cargos: [], omitidas };
   const abonos: Fila[] = []; const cargos: Fila[] = [];
   for (const r of rows.slice(hIdx + 1)) {
     const fecha = parseFecha(r[idx.fecha]);
-    if (!fecha) continue;
-    const fila = (monto: number): Fila => ({
-      fecha, monto,
-      descripcion: idx.desc >= 0 ? String(r[idx.desc] ?? '').slice(0, 300) : '',
-      referencia: idx.ref >= 0 ? (String(r[idx.ref] ?? '').trim() || null) : null,
-    });
+    if (!fecha) {
+      // Fila con contenido pero sin fecha válida → se reporta, no se pierde en silencio
+      if (r.some((c: any) => c !== '' && c != null && (typeof c !== 'number' || c !== 0))) omitidas++;
+      continue;
+    }
+    const fila = (monto: number): Fila => {
+      const prov = (idx as any).prov >= 0 ? String(r[(idx as any).prov] ?? '').trim() : '';
+      const det = idx.desc >= 0 ? String(r[idx.desc] ?? '').trim() : '';
+      // Proveedor + detalle: el match de gastos busca tokens del proveedor en la descripción
+      const descripcion = [prov, det].filter(Boolean).join(' — ') || det || prov;
+      return {
+        fecha, monto,
+        descripcion: descripcion.slice(0, 300),
+        referencia: idx.ref >= 0 ? (String(r[idx.ref] ?? '').trim() || null) : null,
+      };
+    };
     if (flagCol >= 0 && idx.monto >= 0) {
       // Formato con flag CARGO/ABONO (Santander): la letra decide el sentido.
       const f = String(r[flagCol] ?? '').trim().toUpperCase();
@@ -107,11 +134,12 @@ function filasDeTabla(rows: any[][]): { abonos: Fila[]; cargos: Fila[] } {
       if (v > 0) abonos.push(fila(v));
       else if (v < 0) cargos.push(fila(Math.abs(v)));
     }
+    omitidas++; // tenía fecha pero ningún monto aprovechable
   }
-  return { abonos, cargos };
+  return { abonos, cargos, omitidas };
 }
 
-async function leerArchivo(file: File): Promise<{ abonos: Fila[]; cargos: Fila[] }> {
+async function leerArchivo(file: File): Promise<{ abonos: Fila[]; cargos: Fila[]; omitidas: number }> {
   const buf = await file.arrayBuffer();
   if (/\.(xlsx?|xls)$/i.test(file.name)) {
     const XLSX = await import('xlsx');
@@ -131,6 +159,7 @@ async function leerArchivo(file: File): Promise<{ abonos: Fila[]; cargos: Fila[]
 export default function ConciliarCartola({ moneda, origen = 'CARTOLA', onClose, onDone }: { moneda: string; origen?: 'CARTOLA' | 'CAJA_CHICA'; onClose: () => void; onDone: () => void }) {
   const esCaja = origen === 'CAJA_CHICA';
   const [archivo, setArchivo] = useState<string | null>(null);
+  const [omitidas, setOmitidas] = useState(0);
   const [filas, setFilas] = useState<Fila[]>([]);
   const [cargos, setCargos] = useState<Fila[]>([]);
   const [preview, setPreview] = useState<{ filas: FilaResp[]; cargos?: CargoResp[]; resumen: any } | null>(null);
@@ -142,9 +171,9 @@ export default function ConciliarCartola({ moneda, origen = 'CARTOLA', onClose, 
   const cargar = async (file: File) => {
     setError(null); setPreview(null); setResultado(null); setArchivo(file.name); setBusy('parse');
     try {
-      const { abonos, cargos: cs } = await leerArchivo(file);
-      if (!abonos.length && !cs.length) { setError('No encontré movimientos en el archivo. Revisá que tenga columnas Fecha / Abono / Cargo (o Monto con signo).'); return; }
-      setFilas(abonos); setCargos(cs);
+      const { abonos, cargos: cs, omitidas: om } = await leerArchivo(file);
+      if (!abonos.length && !cs.length) { setError('No encontré movimientos en el archivo. Revisá que tenga columnas Fecha / Abono / Cargo (o Monto con signo, o ENTRA / SALE).'); return; }
+      setFilas(abonos); setCargos(cs); setOmitidas(om);
       setBusy('analizar');
       const r = await apiFetch<any>('/finanzas/cartola-conciliar', { method: 'POST', json: { commit: false, moneda, origen, filas: abonos, cargos: cs } });
       setPreview(r);
@@ -213,6 +242,12 @@ export default function ConciliarCartola({ moneda, origen = 'CARTOLA', onClose, 
 
           {preview && !resultado && (
             <>
+              {omitidas > 0 && (
+                <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                  <span><b>{omitidas} fila{omitidas === 1 ? '' : 's'} omitida{omitidas === 1 ? '' : 's'}</b> por no tener fecha válida o monto. Revisalas en el Excel (fechas vacías o corruptas tipo 1900) — no se importaron.</span>
+                </div>
+              )}
               <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
                 <span><b>{preview.resumen.total}</b> abonos</span>
                 <span className="text-emerald-700"><b>{preview.resumen.matches}</b> con match ({fmtMoney(preview.resumen.montoMatch, moneda)})</span>
