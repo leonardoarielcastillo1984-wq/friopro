@@ -1057,10 +1057,12 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const movs = await prisma().finanzaCartolaMov.findMany({
       where, orderBy: { fecha: 'desc' }, take: Math.min(Number(q.limit) || 500, 2000),
     });
-    const resumen = { total: movs.length, conciliados: 0, sinMatch: 0, manuales: 0, deshechos: 0 };
+    const resumen = { total: movs.length, conciliados: 0, sinMatch: 0, sugeridos: 0, internos: 0, manuales: 0, deshechos: 0 };
     for (const m of movs) {
       if (m.estado === 'conciliado') resumen.conciliados++;
       else if (m.estado === 'sin_match') resumen.sinMatch++;
+      else if (m.estado === 'sugerido') resumen.sugeridos++;
+      else if (m.estado === 'interno') resumen.internos++;
       else if (m.estado === 'vinculado_manual') resumen.manuales++;
       else if (m.estado === 'deshecho') resumen.deshechos++;
     }

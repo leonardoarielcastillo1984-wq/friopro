@@ -181,6 +181,18 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
               <div className={`mt-1 text-xl font-bold tabular-nums ${k.cls}`}>{k.v}</div>
             </div>
           ))}
+          {(resumen.sugeridos ?? 0) > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5" title="Coincidencia solo por monto — requieren confirmación manual">
+              <div className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Sugeridos</div>
+              <div className="mt-1 text-xl font-bold tabular-nums text-amber-700">{resumen.sugeridos}</div>
+            </div>
+          )}
+          {(resumen.internos ?? 0) > 0 && (
+            <div className="rounded-xl border border-sky-200 bg-sky-50/50 p-3.5" title="Reposiciones del fondo — no cruzan con documentos">
+              <div className="text-[11px] font-medium uppercase tracking-wide text-sky-700">Internos</div>
+              <div className="mt-1 text-xl font-bold tabular-nums text-sky-700">{resumen.internos}</div>
+            </div>
+          )}
         </div>
       )}
 
