@@ -249,7 +249,10 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
                     <td className="py-1.5 pr-4 font-medium text-amber-900">{m.mes}</td>
                     <td className="py-1.5 pr-4 text-right tabular-nums text-emerald-700">{fmtMoney(m.entra, moneda)} <span className="text-amber-800/50">({m.nEntra})</span></td>
                     <td className="py-1.5 pr-4 text-right tabular-nums text-red-600">{fmtMoney(m.sale, moneda)} <span className="text-amber-800/50">({m.nSale})</span></td>
-                    <td className={`py-1.5 pr-4 text-right tabular-nums font-medium ${m.saldoMes >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{fmtMoney(m.saldoMes, moneda)}</td>
+                    <td className={`py-1.5 pr-4 text-right tabular-nums font-medium ${m.saldoMes >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                      {fmtMoney(m.saldoMes, moneda)}
+                      <div className="text-[9px] font-normal">{m.saldoMes >= 0 ? 'remanente' : 'sobregiro (fondos propios)'}</div>
+                    </td>
                     <td className={`py-1.5 text-right tabular-nums font-semibold ${m.saldoAcumulado >= 0 ? 'text-amber-900' : 'text-red-700'}`}>{fmtMoney(m.saldoAcumulado, moneda)}</td>
                   </tr>
                 ))}
