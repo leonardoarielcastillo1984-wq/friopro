@@ -56,6 +56,9 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
   const [candidatosLoading, setCandidatosLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [cajaResumen, setCajaResumen] = useState<{ meses: any[]; transferencias: any[] } | null>(null);
+  // Asignación manual del fondo por mes ("le transferí $X a caja chica").
+  const [asigMes, setAsigMes] = useState('');
+  const [asigMonto, setAsigMonto] = useState('');
 
   const load = useCallback(() => {
     setLoading(true); setError(null);
@@ -83,7 +86,7 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
 
   // Cuadre del fondo de caja chica: reposiciones vs gastos por mes, con
   // la transferencia de cartola que financió cada reposición.
-  useEffect(() => {
+  const loadCaja = useCallback(() => {
     if (fOrigen !== 'CAJA_CHICA') { setCajaResumen(null); return; }
     const p = new URLSearchParams();
     if (desde) p.set('desde', desde);
@@ -91,6 +94,8 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
     apiFetch<{ meses: any[]; transferencias: any[] }>(`/finanzas/caja-chica-resumen?${p}`)
       .then(setCajaResumen).catch(() => setCajaResumen(null));
   }, [fOrigen, desde, hasta]);
+
+  useEffect(() => { loadCaja(); }, [loadCaja]);
 
   const visibles = useMemo(() => {
     let list = movs;
@@ -147,6 +152,28 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
       await apiFetch(`/finanzas/cartola-movs/${m.id}/ignorar`, { method: 'POST', json: { ignorar: flag } });
       load(); onChanged();
     } catch (e: any) { setError(e?.message || 'Error'); }
+    finally { setBusyId(null); }
+  };
+
+  // Declara a mano cuánto se destinó al fondo en un mes.
+  const asignar = async () => {
+    const monto = parseInt(asigMonto, 10);
+    if (!asigMes || !monto || monto <= 0) return;
+    setBusyId('asig'); setError(null);
+    try {
+      await apiFetch('/finanzas/caja-chica-asignacion', { method: 'POST', json: { fecha: `${asigMes}-15`, monto } });
+      setAsigMonto(''); loadCaja(); load();
+    } catch (e: any) { setError(e?.message || 'No se pudo registrar la asignación'); }
+    finally { setBusyId(null); }
+  };
+
+  const quitarAsignacion = async (cajaMovId: string) => {
+    if (!confirm('¿Quitar esta asignación manual del fondo?')) return;
+    setBusyId(cajaMovId); setError(null);
+    try {
+      await apiFetch(`/finanzas/caja-chica-asignacion/${cajaMovId}`, { method: 'DELETE' });
+      loadCaja(); load();
+    } catch (e: any) { setError(e?.message || 'No se pudo quitar'); }
     finally { setBusyId(null); }
   };
 
@@ -240,9 +267,20 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
       {/* Cuadre de caja chica: lo que entró al fondo vs lo que salió, por mes */}
       {fOrigen === 'CAJA_CHICA' && cajaResumen && cajaResumen.meses.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-amber-900">
             <Wallet size={15} />Cuadre de caja chica
-            <span className="ml-1 text-[11px] font-normal text-amber-700">reposiciones vs gastos del fondo, cruzado con la cartola</span>
+            <span className="text-[11px] font-normal text-amber-700">reposiciones vs gastos del fondo, cruzado con la cartola</span>
+            {canEdit && (
+              <span className="ml-auto flex items-center gap-1.5 font-normal">
+                <input type="month" value={asigMes} onChange={e => setAsigMes(e.target.value)}
+                  className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[11px] text-amber-900" />
+                <input type="number" min={1} placeholder="Monto asignado" value={asigMonto} onChange={e => setAsigMonto(e.target.value)}
+                  className="w-32 rounded-lg border border-amber-300 bg-white px-2 py-1 text-[11px] text-amber-900" />
+                <button onClick={asignar} disabled={busyId === 'asig' || !asigMes || !asigMonto}
+                  title="Declarar cuánto se transfirió al fondo en ese mes"
+                  className="rounded-lg bg-amber-700 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-amber-800 disabled:opacity-40">Asignar</button>
+              </span>
+            )}
           </div>
           <div className="mt-2 overflow-x-auto">
             <table className="w-full text-xs">
@@ -278,6 +316,12 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
                   {t.estado === 'confirmada'
                     ? <><CheckCircle2 size={11} className="shrink-0 text-emerald-600" /><span className="text-amber-900">{fmtFecha(t.fecha)} — {fmtMoney(t.monto, moneda)} confirmada en cartola <span className="text-amber-800/60">({t.cartolaDescripcion})</span></span></>
                     : <><AlertTriangle size={11} className="shrink-0 text-amber-600" /><span className="text-amber-800">{fmtFecha(t.fecha)} — {fmtMoney(t.monto, moneda)} sin cargo equivalente en cartola (±$2, ±3 días)</span></>}
+                  {t.manual && <span className="rounded bg-amber-100 px-1 py-px text-[9px] font-medium text-amber-800">asignación manual</span>}
+                  {t.manual && canEdit && (
+                    <button onClick={() => quitarAsignacion(t.cajaMovId)} disabled={busyId === t.cajaMovId}
+                      title="Quitar esta asignación manual"
+                      className="text-amber-600 hover:text-red-600 disabled:opacity-40"><X size={11} /></button>
+                  )}
                 </div>
               ))}
             </div>

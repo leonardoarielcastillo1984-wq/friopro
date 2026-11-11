@@ -1124,6 +1124,52 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     return reply.send({ meses: out, transferencias });
   });
 
+  // POST /caja-chica-asignacion { fecha:'YYYY-MM-DD', monto, descripcion? }
+  // Declara a mano la plata asignada al fondo en un período (ej. "en
+  // octubre le transferí $5.000.000 a la caja chica"). Se guarda como
+  // movimiento interno CAJA_CHICA/ABONO con firma CC-ASIG: → el cuadre
+  // lo cuenta como reposición e intenta cruzarlo con la cartola.
+  app.post('/caja-chica-asignacion', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const b = z.object({
+      fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}/),
+      monto: z.number().positive(),
+      descripcion: z.string().max(200).optional(),
+    }).parse(req.body || {});
+    const firma = `CC-ASIG:${b.fecha.slice(0, 10)}:${Math.round(b.monto)}`;
+    const dup = await prisma().finanzaCartolaMov.findFirst({
+      where: { tenantId, firma, origen: 'CAJA_CHICA', estado: { not: 'deshecho' } },
+      select: { id: true },
+    });
+    if (dup) return reply.code(409).send({ error: 'Ya existe una asignación con esa fecha y monto' });
+    const user = await resolveUser(app.prisma, (req as any).auth?.userId);
+    const mov = await prisma().finanzaCartolaMov.create({
+      data: {
+        tenantId, tipo: 'ABONO', origen: 'CAJA_CHICA', firma,
+        fecha: new Date(`${b.fecha.slice(0, 10)}T12:00:00Z`),
+        descripcion: b.descripcion || `Asignación manual caja chica ${b.fecha.slice(0, 7)}`,
+        monto: b.monto, moneda: 'CLP', estado: 'interno', como: 'manual',
+        motivo: 'asignación registrada a mano',
+        resueltoPor: user.nombre, createdById: user.id, createdByNombre: user.nombre,
+      },
+    });
+    return reply.send({ ok: true, mov });
+  });
+
+  // DELETE /caja-chica-asignacion/:id — quita una asignación manual.
+  app.delete('/caja-chica-asignacion/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const mov = await prisma().finanzaCartolaMov.findFirst({
+      where: { id, tenantId, firma: { startsWith: 'CC-ASIG:' } }, select: { id: true },
+    });
+    if (!mov) return reply.code(404).send({ error: 'Asignación no encontrada' });
+    await prisma().finanzaCartolaMov.delete({ where: { id: mov.id } });
+    return reply.send({ ok: true });
+  });
+
   // GET /docs-sin-conciliar — el otro lado de la conciliación: facturas
   // emitidas y gastos que no tienen NINGÚN cobro/pago vinculado a un
   // movimiento de cartola o caja chica. Dos situaciones:
