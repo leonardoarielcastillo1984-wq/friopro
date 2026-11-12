@@ -84,6 +84,7 @@ export default function RiesgosPage() {
   const [filterAspectType, setFilterAspectType] = useState<string>('');
   const [filterStrategy, setFilterStrategy] = useState<string>('');
   const [filterLegalRequirement, setFilterLegalRequirement] = useState<string>('');
+  const [filterProcess, setFilterProcess] = useState<string>('');
   const [filterDateFrom, setFilterDateFrom] = useState<string>('');
   const [filterDateTo, setFilterDateTo] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
@@ -523,6 +524,7 @@ export default function RiesgosPage() {
       const matchesLevel = !filterLevel || getRiskLabel(r.riskLevel) === filterLevel;
       const matchesStatus = !filterStatus || r.status === filterStatus;
 
+      const matchesProcess = !filterProcess || (filterProcess === '__none__' ? !r.process : r.process === filterProcess);
       const matchesAspectType = !filterAspectType || (r.aspectType || '') === filterAspectType;
       const matchesStrategy = !filterStrategy || (r.strategy || '') === filterStrategy;
       const matchesLegalRequirement = !filterLegalRequirement || String(!!r.legalRequirement) === filterLegalRequirement;
@@ -536,6 +538,7 @@ export default function RiesgosPage() {
         matchesCategory &&
         matchesLevel &&
         matchesStatus &&
+        matchesProcess &&
         matchesAspectType &&
         matchesStrategy &&
         matchesLegalRequirement &&
@@ -543,22 +546,30 @@ export default function RiesgosPage() {
         matchesDateTo
       );
     });
-  }, [risks, searchTerm, filterCategory, filterLevel, filterStatus, filterAspectType, filterStrategy, filterLegalRequirement, filterDateFrom, filterDateTo]);
+  }, [risks, searchTerm, filterCategory, filterLevel, filterStatus, filterProcess, filterAspectType, filterStrategy, filterLegalRequirement, filterDateFrom, filterDateTo]);
 
-  // Build 5x5 matrix data
+  // Build 5x5 matrix data (sobre `filtered` para que los filtros apliquen)
   const matrixCounts: Record<string, number> = {};
   const matrixRisks: Record<string, Risk[]> = {};
-  risks.forEach(r => { 
+  filtered.forEach(r => { 
     const key = `${r.probability}-${r.impact}`; 
     matrixCounts[key] = (matrixCounts[key] || 0) + 1;
     if (!matrixRisks[key]) matrixRisks[key] = [];
     matrixRisks[key].push(r);
   });
 
-  // Group by process for process view
+  // Opciones del filtro de proceso: deptos + procesos ya usados en riesgos
+  const processOptions = useMemo(() => {
+    const set = new Set<string>();
+    departments.forEach(d => set.add(d.name));
+    risks.forEach(r => { if (r.process) set.add(r.process); });
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [departments, risks]);
+
+  // Group by process for process view (sobre `filtered`)
   const processData = useMemo(() => {
     const grouped: Record<string, { risks: Risk[]; highCount: number; criticalCount: number }> = {};
-    risks.forEach(r => {
+    filtered.forEach(r => {
       const process = r.process || 'Sin proceso asignado';
       if (!grouped[process]) grouped[process] = { risks: [], highCount: 0, criticalCount: 0 };
       grouped[process].risks.push(r);
@@ -566,7 +577,7 @@ export default function RiesgosPage() {
       else if (r.riskLevel >= 12) grouped[process].highCount++;
     });
     return grouped;
-  }, [risks]);
+  }, [filtered]);
 
   const clearFilters = () => {
     setFilterCategory('');
@@ -575,6 +586,7 @@ export default function RiesgosPage() {
     setFilterAspectType('');
     setFilterStrategy('');
     setFilterLegalRequirement('');
+    setFilterProcess('');
     setFilterDateFrom('');
     setFilterDateTo('');
     setSearchTerm('');
@@ -790,7 +802,7 @@ export default function RiesgosPage() {
           <Filter className="h-4 w-4" /> Filtros
         </button>
         
-        {(filterCategory || filterLevel || filterStatus || filterDateFrom || filterDateTo) && (
+        {(filterCategory || filterLevel || filterStatus || filterProcess || filterDateFrom || filterDateTo) && (
           <button onClick={clearFilters} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
             <X className="h-3 w-3" /> Limpiar
           </button>
@@ -834,7 +846,16 @@ export default function RiesgosPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">Proceso</label>
+              <select value={filterProcess} onChange={e => setFilterProcess(e.target.value)} className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm">
+                <option value="">Todos</option>
+                {processOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                <option value="__none__">Sin proceso asignado</option>
+              </select>
+            </div>
+
             <div>
               <label className="block text-xs font-medium text-neutral-600 mb-1">Tipo de Aspecto (ISO)</label>
               <select value={filterAspectType} onChange={e => setFilterAspectType(e.target.value)} className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm">
