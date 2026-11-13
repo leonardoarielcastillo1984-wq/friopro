@@ -1,0 +1,10 @@
+# 04 — Decisiones pendientes
+
+| ID | Decisión | Opciones | Recomendación | Consecuencia | ¿Bloquea? |
+|---|---|---|---|---|---|
+| D1 | OCR para PDFs escaneados | (a) Sin OCR: queda `UNREADABLE` y se pide un PDF con texto. (b) Tesseract en el worker. (c) OCR de un proveedor externo | **(a) en v1** | Costo y dependencias nulos. Las normas escaneadas no se pueden auditar hasta recargarlas. (b) suma unos 100 MB a la imagen y CPU. (c) implica enviar la norma completa a un tercero | No |
+| D2 | Proveedor de IA y política de datos | Groq, OpenAI u Ollama (las tres soportadas por `factory.ts`) | **Proveedor del tenant si está configurado; si no, el global. Ollama para clientes que exigen que los datos no salgan** | Define costo, calidad y qué datos de clientes salen del servidor. Requiere aceptación contractual del cliente | **Sí** (antes de E4) |
+| D3 | Normas creadas desde plantilla (sin PDF) | (a) Excluirlas. (b) Usar `NormativeClause.content` como fuente, sin página | **(a)**, por el principio "fuente = PDF cargado" | Los tenants que solo usan plantillas no pueden usar el módulo hasta subir el PDF | No |
+| D4 | `/uploads/` servido sin autenticación (`api/src/app.ts`) | (a) Cerrarlo o firmar las URLs. (b) Confirmar que Nginx ya lo bloquea | **Verificar en E0 y cerrarlo si es accesible** | Si es accesible, los PDFs de normas y documentos de cualquier tenant quedan expuestos. Es un riesgo previo a este módulo | **Sí** (antes de habilitarlo en prod) |
+| D5 | Convivencia con `/audit` ("Auditoría IA") y con el `%` de `compliance-evidences.ts` | (a) Convivir en v1. (b) Reemplazar | **(a)**, y deprecarlo cuando v1 se estabilice | Dos módulos con nombres parecidos durante la transición. Conviene renombrar el título de `/audit` en `Topbar.tsx` a "Análisis IA de documentos" | No |
+| D6 | Aprobación de N/A | (a) `TENANT_ADMIN` distinto del proponente. (b) Cualquier `edit` | **(a)** | Más control y más fricción en tenants con un solo administrador. En ese caso hace falta un segundo usuario | No |

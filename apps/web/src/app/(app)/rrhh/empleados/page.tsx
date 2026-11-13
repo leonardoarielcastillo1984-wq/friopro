@@ -629,6 +629,7 @@ export default function EmployeesPage() {
     { key: 'objetivos/politicas', label: 'Políticas SGI', icon: '📜' },
     { key: 'calidad', label: 'No Conformidades y Plan de acción', icon: '✅' },
     { key: 'auditoria', label: 'Auditorías', icon: '🤖' },
+    { key: 'auditor-ia', label: 'Auditor IA', icon: '🔎' },
     { key: 'revision-direccion', label: 'Revisión por la Dirección', icon: '📋' },
     { key: 'seguridad', label: 'Gestión de Riesgos', icon: '🛡️' },
     { key: 'indicadores', label: 'Indicadores', icon: '📈' },

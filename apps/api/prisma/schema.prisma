@@ -32,15 +32,15 @@ model NonConformity {
 
   // IATF 16949 §8.7.1.1/§8.7.1.4-5 — disposición documentada del producto NC:
   // concesión del cliente (waiver), reproceso con instrucción, reparación, rechazo.
-  disposition              String?   // CONCESSION | REWORK | REPAIR | SCRAP | REJECT_RETURN | USE_AS_IS
-  dispositionNotes         String?   @db.Text
-  concessionRef            String?   // nº de aprobación/waiver del cliente
-  concessionApprovedBy     String?   // quién aprobó (cliente)
-  concessionApprovedAt     DateTime? @db.Timestamptz
-  concessionExpiry         DateTime? @db.Timestamptz // vigencia de la concesión
-  reworkInstruction        String?   @db.Text // instrucción de reproceso/reparación
-  reworkVerifiedAt         DateTime? @db.Timestamptz
-  customerNotifiedAt       DateTime? @db.Timestamptz
+  disposition          String? // CONCESSION | REWORK | REPAIR | SCRAP | REJECT_RETURN | USE_AS_IS
+  dispositionNotes     String?   @db.Text
+  concessionRef        String? // nº de aprobación/waiver del cliente
+  concessionApprovedBy String? // quién aprobó (cliente)
+  concessionApprovedAt DateTime? @db.Timestamptz
+  concessionExpiry     DateTime? @db.Timestamptz // vigencia de la concesión
+  reworkInstruction    String?   @db.Text // instrucción de reproceso/reparación
+  reworkVerifiedAt     DateTime? @db.Timestamptz
+  customerNotifiedAt   DateTime? @db.Timestamptz
 
   // IATF 16949 §10.3.1 — mejora continua: lecciones aprendidas del análisis
   // (documentadas al cerrar la NC, alimentan riesgos/FMEA/planes de control)
@@ -387,7 +387,7 @@ model Tenant {
   deletedAt DateTime? @db.Timestamptz
 
   memberships          TenantMembership[]
-  referralsMade        Referral[]         @relation("Referrer")
+  referralsMade        Referral[]            @relation("Referrer")
   subscriptions        TenantSubscription[]
   features             TenantFeature[]
   auditEvents          AuditEvent[]
@@ -404,11 +404,16 @@ model Tenant {
   webhookConfigs       WebhookConfig[]
   sgiTrainings         SgiTraining[]
 
+  // Auditor IA
+  auditorExtractions AuditorExtraction[]
+  auditorReviews     AuditorReview[]
+  auditorDocExtracts AuditorDocExtract[]
+
   // RRHH Relations
-  trainings Training[]
-  employees Employee[]
+  trainings        Training[]
+  employees        Employee[]
   employeeSalaries EmployeeSalary[]
-  positions Position[]
+  positions        Position[]
 
   // Indicator↔Risk Links
   indicatorRiskLinks IndicatorRiskLink[]
@@ -427,12 +432,12 @@ model Tenant {
   emergencyResources EmergencyResource[]
 
   // Customer & Survey Relations
-  customers Customer[]
-  surveys   Survey[]
-  customerClaims              CustomerClaim[]
-  customerScorecards          CustomerScorecard[]
+  customers                    Customer[]
+  surveys                      Survey[]
+  customerClaims               CustomerClaim[]
+  customerScorecards           CustomerScorecard[]
   customerSpecificRequirements CustomerSpecificRequirement[]
-  pokaYokeDevices             PokaYokeDevice[]
+  pokaYokeDevices              PokaYokeDevice[]
 
   // Clima y Cultura Relations
   climaSurveys     ClimaSurvey[]
@@ -512,12 +517,12 @@ model Tenant {
   garantiasVehiculo              GarantiaVehiculo[]
 
   // Flota 360 — Conjuntos Operativos y Planes por Componente (aditivo, no reemplaza nada de Flota360)
-  conjuntosOperativos           ConjuntoOperativo[]
-  conjuntoOperativoEventos      ConjuntoOperativoEvento[]
-  maintenanceComponentRules     MaintenanceComponentRule[]
+  conjuntosOperativos            ConjuntoOperativo[]
+  conjuntoOperativoEventos       ConjuntoOperativoEvento[]
+  maintenanceComponentRules      MaintenanceComponentRule[]
   maintenanceComponentRuleAudits MaintenanceComponentRuleAudit[]
-  maintenanceSparePartMovements MaintenanceSparePartMovement[]
-  workOrderTasks                WorkOrderTask[]
+  maintenanceSparePartMovements  MaintenanceSparePartMovement[]
+  workOrderTasks                 WorkOrderTask[]
 
   // Flota 360 — Casos de defecto y restricciones de servicio (inspecciones)
   defectoCasos          DefectoCaso[]
@@ -549,8 +554,8 @@ model Tenant {
   flotaServicioUnidades FlotaServicioUnidad[]
 
   // Flota 360 — Talleres externos / services oficiales
-  flotaTalleres        FlotaTaller[]
-  flotaTallerEventos   FlotaTallerEvento[]
+  flotaTalleres      FlotaTaller[]
+  flotaTallerEventos FlotaTallerEvento[]
 
   // Digital Twin Relations
   assetDigitalTwins      AssetDigitalTwin[]
@@ -601,12 +606,12 @@ model Tenant {
   fleetComponentMeasurements FleetComponentMeasurement[]
 
   // Flota 360 — Episodios de indisponibilidad de unidades
-  unidadIndisponibilidades   UnidadIndisponibilidad[]
+  unidadIndisponibilidades UnidadIndisponibilidad[]
 
   // Resultados del Negocio — consolidador económico (aditivo)
-  finanzaCentrosCosto      FinanzaCentroCosto[]
-  finanzaFacturas          FinanzaFactura[]
-  finanzaGastos            FinanzaGasto[]
+  finanzaCentrosCosto       FinanzaCentroCosto[]
+  finanzaFacturas           FinanzaFactura[]
+  finanzaGastos             FinanzaGasto[]
   finanzaComentariosPeriodo FinanzaComentarioPeriodo[]
 
   @@index([parentTenantId])
@@ -1207,9 +1212,9 @@ model SgiTrainingAttendee {
   attendanceMarkedById String?   @db.Uuid
 
   // Envío de material didáctico por mail con acuse de lectura (evidencia §7.2/§7.3)
-  materialToken   String?   @unique
-  materialSentAt  DateTime? @db.Timestamptz
-  materialReadAt  DateTime? @db.Timestamptz // acuse de lectura — el asistente confirmó
+  materialToken  String?   @unique
+  materialSentAt DateTime? @db.Timestamptz
+  materialReadAt DateTime? @db.Timestamptz // acuse de lectura — el asistente confirmó
 
   // Evaluación de aprendizaje (Quiz)
   quizScore       Int?
@@ -1217,7 +1222,7 @@ model SgiTrainingAttendee {
   quizCompletedAt DateTime? @db.Timestamptz
   quizToken       String?   @unique
   quizSentAt      DateTime? @db.Timestamptz
-  quizAnswers     Json?     // [{ questionId, selected, isCorrect }]
+  quizAnswers     Json? // [{ questionId, selected, isCorrect }]
 
   createdAt DateTime @default(now()) @db.Timestamptz
 
@@ -1559,6 +1564,17 @@ model AiFinding {
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
+  // Auditor IA (aditivo Nov 2026): borrador → validación humana → vínculo explícito
+  evaluationId     String?   @db.Uuid
+  requirementId    String?   @db.Uuid
+  validationStatus String? // DRAFT | VALIDATED | REJECTED | LINKED
+  validatedById    String?   @db.Uuid
+  validatedAt      DateTime? @db.Timestamptz
+  validationNote   String?
+  actionPlanId     String?   @db.Uuid
+  linkedById       String?   @db.Uuid
+  linkedAt         DateTime? @db.Timestamptz
+
   createdById String?       @db.Uuid
   createdBy   PlatformUser? @relation("AiFindingCreatedBy", fields: [createdById], references: [id])
 
@@ -1569,6 +1585,7 @@ model AiFinding {
 
   @@index([tenantId])
   @@index([auditRunId])
+  @@index([evaluationId])
   @@index([documentId])
   @@index([normativeId])
   @@index([status])
@@ -1656,10 +1673,11 @@ model NormativeStandard {
   deletedAt DateTime? @db.Timestamptz
 
   // Relaciones
-  clauses    NormativeClause[]
-  aiFindings AiFinding[]
-  auditRuns  AuditRun[]
-  documents  Document[]
+  clauses            NormativeClause[]
+  aiFindings         AiFinding[]
+  auditRuns          AuditRun[]
+  documents          Document[]
+  auditorExtractions AuditorExtraction[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -1695,8 +1713,9 @@ model NormativeClause {
   deletedAt DateTime? @db.Timestamptz
 
   // Relaciones
-  documentMappings DocumentClauseMapping[]
-  aiFindings       AiFinding[]
+  documentMappings    DocumentClauseMapping[]
+  aiFindings          AiFinding[]
+  auditorRequirements AuditorRequirement[]
 
   @@unique([normativeId, clauseNumber])
   @@index([normativeId])
@@ -1953,8 +1972,8 @@ model EmployeeSalary {
   monto Decimal @db.Decimal(14, 2) // COSTO EMPRESA (sueldo + cargas patronales)
 
   // Imputación: OPERATIVO (COSTO_OP) o ESTRUCTURA según "Costo Mano Obra" de la planilla
-  tipoGasto String  @default("OPERATIVO")
-  origen    String  @default("IMPORT_SUELDOS")
+  tipoGasto String @default("OPERATIVO")
+  origen    String @default("IMPORT_SUELDOS")
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -2195,9 +2214,9 @@ enum AuditType {
   RECERTIFICATION
   SURVEILLANCE
   // IATF 16949 §9.2.2.1-3 (aditivo Oct 2026)
-  SYSTEM                // auditoría del sistema de gestión de calidad (ciclo anual)
+  SYSTEM // auditoría del sistema de gestión de calidad (ciclo anual)
   MANUFACTURING_PROCESS // auditoría de proceso de manufactura (cada turno, ciclo 3 años)
-  PRODUCT               // auditoría de producto (dimensional/funcional/empaque por fase)
+  PRODUCT // auditoría de producto (dimensional/funcional/empaque por fase)
 }
 
 enum AuditStatus {
@@ -2416,19 +2435,19 @@ model Audit {
 
   // ── Cumplimiento IATF 16949 §9.2.2 / §7.2.3 (aditivo Oct 2026) ──
   // Turnos cubiertos por la auditoría (9.2.2.2: manufactura debe cubrir cada turno)
-  shifts String[] @default([]) // MORNING | AFTERNOON | NIGHT
+  shifts             String[]  @default([]) // MORNING | AFTERNOON | NIGHT
   // Proceso auditado vinculado al Mapa de Procesos (FK débil — habilita matriz
   // proceso×año; `process` string se conserva por retrocompatibilidad)
-  processId String? @db.Uuid
+  processId          String?   @db.Uuid
   // Disparador basado en riesgo/desempeño (9.2.2.1)
   triggerSource      String? // SCHEDULED | SCORECARD | CUSTOMER_COMPLAINT | EXTERNAL_NC | PROCESS_CHANGE | PERFORMANCE_TREND
-  triggerDescription String? @db.Text
+  triggerDescription String?   @db.Text
   // Plazo de emisión del informe (alerta de demora)
-  reportDueDate DateTime? @db.Timestamptz
+  reportDueDate      DateTime? @db.Timestamptz
   // Auditoría de producto (9.2.2.3)
-  productName     String? // producto/muestra auditada
-  productionPhase String? // fase del proceso productivo donde se tomó la muestra
-  sampleSize      String? // tamaño o referencia de la muestra
+  productName        String? // producto/muestra auditada
+  productionPhase    String? // fase del proceso productivo donde se tomó la muestra
+  sampleSize         String? // tamaño o referencia de la muestra
 
   // Auditoría de segunda parte a proveedor (IATF 8.4.2.4.1 / ISO 9001 8.4)
   // FK escalar débil — habilita listar auditorías en la ficha del proveedor
@@ -2471,10 +2490,10 @@ model Auditor {
   isActive              Boolean       @default(true)
 
   // Competencia de auditor interno IATF §7.2.3 (aditivo Oct 2026)
-  coreTools             String[]   @default([]) // APQP | PPAP | FMEA | SPC | MSA | VDA63 | FORMEL_Q
-  processApproach       Boolean    @default(false) // formado en auditoría con enfoque por procesos
-  competenceEvaluatedAt DateTime?  @db.Timestamptz // última evaluación documentada de competencia
-  competenceNotes       String?    @db.Text
+  coreTools             String[]  @default([]) // APQP | PPAP | FMEA | SPC | MSA | VDA63 | FORMEL_Q
+  processApproach       Boolean   @default(false) // formado en auditoría con enfoque por procesos
+  competenceEvaluatedAt DateTime? @db.Timestamptz // última evaluación documentada de competencia
+  competenceNotes       String?   @db.Text
 
   // Relations
   documents AuditorDocument[]
@@ -3246,7 +3265,7 @@ model ContingencyPlan {
   // IATF 16949 §6.1.2.3 — prueba periódica de eficacia del plan
   // (simulacro ciberseguridad/fallas incl.) + notificación al cliente.
   lastTestedAt                 DateTime? @db.Timestamptz
-  testResult                   String?   // EFFECTIVE | PARTIAL | INEFFECTIVE
+  testResult                   String? // EFFECTIVE | PARTIAL | INEFFECTIVE
   testNotes                    String?   @db.Text
   customerNotificationRequired Boolean   @default(false)
   customerNotificationContact  String?
@@ -3380,28 +3399,28 @@ model CustomerClaim {
   tenantId String @db.Uuid
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  code      String  // RCL-{YYYY}-{NNN}
-  type      String  @default("COMPLAINT") // COMPLAINT | WARRANTY | FIELD_FAILURE | RETURN | OTHER
-  status    String  @default("OPEN")     // OPEN | IN_ANALYSIS | RESOLVED | CLOSED
-  productName   String?
-  partNumber    String?
-  quantity      Int?
-  description   String  @db.Text
-  detectedAt    DateTime @default(now()) @db.Timestamptz
+  code        String // RCL-{YYYY}-{NNN}
+  type        String   @default("COMPLAINT") // COMPLAINT | WARRANTY | FIELD_FAILURE | RETURN | OTHER
+  status      String   @default("OPEN") // OPEN | IN_ANALYSIS | RESOLVED | CLOSED
+  productName String?
+  partNumber  String?
+  quantity    Int?
+  description String   @db.Text
+  detectedAt  DateTime @default(now()) @db.Timestamptz
 
   // Análisis de falla de campo (10.2.5: análisis de piezas devueltas)
-  returnedPartsAnalysis String?  @db.Text
-  rootCause             String?  @db.Text
-  analysisMethod        String?  // 8D, Ishikawa, 5 Porqués…
+  returnedPartsAnalysis String? @db.Text
+  rootCause             String? @db.Text
+  analysisMethod        String? // 8D, Ishikawa, 5 Porqués…
   costAmount            Float?
 
   customerId String   @db.Uuid
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   // Trazabilidad a NCR / 8D (FK escalar — EightDReport vive en core tools)
-  ncrId       String?        @db.Uuid
-  ncr         NonConformity? @relation(fields: [ncrId], references: [id], onDelete: SetNull)
-  eightDCode  String? // código del reporte 8D si existe
+  ncrId      String?        @db.Uuid
+  ncr        NonConformity? @relation(fields: [ncrId], references: [id], onDelete: SetNull)
+  eightDCode String? // código del reporte 8D si existe
 
   closedAt    DateTime? @db.Timestamptz
   createdAt   DateTime  @default(now()) @db.Timestamptz
@@ -3428,16 +3447,16 @@ model CustomerScorecard {
 
   period String // YYYY-MM
 
-  deliveredPpm                  Float?
-  customerDisruptions           Int   @default(0) // paradas de línea / plant shutdowns
-  fieldFailures                 Int   @default(0)
-  returns                       Int   @default(0)
-  premiumFreightIncidents       Int   @default(0)
-  specialStatusNotifications    Int   @default(0) // new business hold, etc.
-  deliveryPerformance           Float? // % OTIF
-  qualityScore                  Float? // % o puntaje reportado por el cliente
-  overallScore                  Float?
-  notes                         String? @db.Text
+  deliveredPpm               Float?
+  customerDisruptions        Int     @default(0) // paradas de línea / plant shutdowns
+  fieldFailures              Int     @default(0)
+  returns                    Int     @default(0)
+  premiumFreightIncidents    Int     @default(0)
+  specialStatusNotifications Int     @default(0) // new business hold, etc.
+  deliveryPerformance        Float? // % OTIF
+  qualityScore               Float? // % o puntaje reportado por el cliente
+  overallScore               Float?
+  notes                      String? @db.Text
 
   createdAt   DateTime @default(now()) @db.Timestamptz
   updatedAt   DateTime @updatedAt @db.Timestamptz
@@ -3467,13 +3486,13 @@ model CustomerSpecificRequirement {
   documentId    String? @db.Uuid // evidencia documental vinculada
   responsibleId String? @db.Uuid
 
-  reviewedAt     DateTime? @db.Timestamptz
-  disseminatedAt DateTime? @db.Timestamptz
-  disseminationNotes String? @db.Text // a quiénes / qué procesos se difundió
+  reviewedAt         DateTime? @db.Timestamptz
+  disseminatedAt     DateTime? @db.Timestamptz
+  disseminationNotes String?   @db.Text // a quiénes / qué procesos se difundió
 
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-  createdById String?  @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  createdById String?   @db.Uuid
   deletedAt   DateTime? @db.Timestamptz
 
   @@index([tenantId])
@@ -3489,26 +3508,26 @@ model PokaYokeDevice {
   tenantId String @db.Uuid
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  code        String // PKY-{NNN}
-  name        String
-  type        String @default("CONTROL") // CONTROL (impide el error) | WARNING (alerta)
-  location    String? // línea / estación / máquina
-  process     String? // proceso donde aplica
+  code            String // PKY-{NNN}
+  name            String
+  type            String  @default("CONTROL") // CONTROL (impide el error) | WARNING (alerta)
+  location        String? // línea / estación / máquina
+  process         String? // proceso donde aplica
   defectPrevented String? // qué defecto/error previene
 
   // Verificación periódica (la organización debe verificar que sigue funcionando)
-  verificationFrequencyDays Int @default(30)
+  verificationFrequencyDays Int       @default(30)
   lastVerifiedAt            DateTime? @db.Timestamptz
   nextVerificationAt        DateTime? @db.Timestamptz
   verificationMethod        String?   @db.Text // cómo se verifica (pieza maestra, challenge test…)
-  lastVerificationResult    String?   // PASS | FAIL
+  lastVerificationResult    String? // PASS | FAIL
 
-  status    String @default("ACTIVE") // ACTIVE | FAILED | OUT_OF_SERVICE
-  isActive  Boolean @default(true)
+  status   String  @default("ACTIVE") // ACTIVE | FAILED | OUT_OF_SERVICE
+  isActive Boolean @default(true)
 
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-  createdById String?  @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  createdById String?   @db.Uuid
   deletedAt   DateTime? @db.Timestamptz
 
   verifications PokaYokeVerification[]
@@ -3519,15 +3538,15 @@ model PokaYokeDevice {
 }
 
 model PokaYokeVerification {
-  id           String @id @default(uuid()) @db.Uuid
-  deviceId     String @db.Uuid
-  device       PokaYokeDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  tenantId     String @db.Uuid
+  id       String         @id @default(uuid()) @db.Uuid
+  deviceId String         @db.Uuid
+  device   PokaYokeDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  tenantId String         @db.Uuid
 
-  verifiedAt   DateTime @default(now()) @db.Timestamptz
-  result       String   // PASS | FAIL
-  verifiedBy   String?  // nombre del verificador
-  notes        String?  @db.Text
+  verifiedAt DateTime @default(now()) @db.Timestamptz
+  result     String // PASS | FAIL
+  verifiedBy String? // nombre del verificador
+  notes      String?  @db.Text
 
   @@index([deviceId])
   @@index([tenantId])
@@ -3914,29 +3933,29 @@ model WorkOrder {
   // Ejecución externa: el ejecutor puede ser un taller en vez de un mecánico.
   // ejecutorTipo = INTERNO (technicianId) | EXTERNO (tallerId). Uno solo define el ejecutor;
   // responsableSeguimientoId/Nombre es el usuario interno que sigue la OT (opcional, sin FK).
-  ejecutorTipo                  String  @default("INTERNO") // INTERNO | EXTERNO
-  tallerId                      String? @db.Uuid
-  taller                        FlotaTaller? @relation(fields: [tallerId], references: [id], onDelete: SetNull)
-  responsableSeguimientoId      String? @db.Uuid
-  responsableSeguimientoNombre  String?
+  ejecutorTipo                 String       @default("INTERNO") // INTERNO | EXTERNO
+  tallerId                     String?      @db.Uuid
+  taller                       FlotaTaller? @relation(fields: [tallerId], references: [id], onDelete: SetNull)
+  responsableSeguimientoId     String?      @db.Uuid
+  responsableSeguimientoNombre String?
 
   // Seguimiento de la intervención externa (sin circuito paralelo: el status de la OT sigue siendo el eje)
   fechaIngresoTaller    DateTime? // fecha de envío/ingreso efectivo al taller (≠ programación)
   fechaEntregaEstimada  DateTime?
   fechaDevolucion       DateTime? // fecha real de devolución de la unidad
-  trabajoSolicitado     String?   // qué se pidió al taller
-  trabajoRealizado      String?   // qué se hizo efectivamente
-  referenciaExterna     String?   // n° de presupuesto / trabajo del taller
+  trabajoSolicitado     String? // qué se pidió al taller
+  trabajoRealizado      String? // qué se hizo efectivamente
+  referenciaExterna     String? // n° de presupuesto / trabajo del taller
   observacionesExternas String?
-  costoExterno          Float  @default(0) // suma de facturas externas vinculadas (sin repuestos propios)
+  costoExterno          Float     @default(0) // suma de facturas externas vinculadas (sin repuestos propios)
 
   // Recepción / conformidad del trabajo externo
-  recepcionAt          DateTime?
-  recepcionUsuarioId   String?  @db.Uuid
+  recepcionAt            DateTime?
+  recepcionUsuarioId     String?   @db.Uuid
   recepcionUsuarioNombre String?
-  recepcionResultado   String? // CONFORME | OBSERVADO | REQUIERE_CORRECCION
-  recepcionNotas       String?
-  recepcionEvidenciaUrl String?
+  recepcionResultado     String? // CONFORME | OBSERVADO | REQUIERE_CORRECCION
+  recepcionNotas         String?
+  recepcionEvidenciaUrl  String?
 
   // Garantía del trabajo (opcional — no toda reparación la tiene)
   garantiaAlcance     String?
@@ -3947,10 +3966,10 @@ model WorkOrder {
   garantiaDocUrl      String?
 
   // Reclamo/devolución de garantía: esta OT nace de una OT previa
-  reclamoDeOtId String?    @db.Uuid
-  reclamoDeOt   WorkOrder? @relation("ReclamosOT", fields: [reclamoDeOtId], references: [id], onDelete: SetNull)
+  reclamoDeOtId String?     @db.Uuid
+  reclamoDeOt   WorkOrder?  @relation("ReclamosOT", fields: [reclamoDeOtId], references: [id], onDelete: SetNull)
   reclamos      WorkOrder[] @relation("ReclamosOT")
-  sinCargo      Boolean    @default(false) // trabajo en garantía: no suma costo nuevo
+  sinCargo      Boolean     @default(false) // trabajo en garantía: no suma costo nuevo
 
   scheduledDate DateTime?
   startedAt     DateTime?
@@ -4744,7 +4763,7 @@ model EnvironmentalAspect {
   condition           String    @default("NORMAL") // NORMAL, ABNORMAL, EMERGENCY
   naturalness         String    @default("DIRECT") // DIRECT, INDIRECT
   // ISO 14001:2015 §6.1.2 — perspectiva de ciclo de vida
-  lifeCycleStage      String?   // RAW_MATERIAL | PRODUCTION | DISTRIBUTION | USE | END_OF_LIFE
+  lifeCycleStage      String? // RAW_MATERIAL | PRODUCTION | DISTRIBUTION | USE | END_OF_LIFE
   magnitude           Int
   severity            Int
   frequency           Int
@@ -4899,67 +4918,67 @@ enum FeatureKey {
 }
 
 model GestionCambio {
-  id                    String    @id @default(uuid()) @db.Uuid
-  tenantId              String    @db.Uuid
-  tenant                Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  code                  String
-  titulo                String
-  descripcion           String
-  tipo                  String // PROCESO | ORGANIZACIONAL | PRODUCTO_SERVICIO | INFRAESTRUCTURA | PROVEEDOR | NORMATIVO | OTRO
-  origen                String // AUDITORIA | NO_CONFORMIDAD | MEJORA | CLIENTE | LEGAL | INTERNO | OTRO
-  impactoCalidad        String // BAJO | MEDIO | ALTO
-  impactoSST            String // BAJO | MEDIO | ALTO
-  impactoAmbiental      String // BAJO | MEDIO | ALTO
+  id                       String    @id @default(uuid()) @db.Uuid
+  tenantId                 String    @db.Uuid
+  tenant                   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  code                     String
+  titulo                   String
+  descripcion              String
+  tipo                     String // PROCESO | ORGANIZACIONAL | PRODUCTO_SERVICIO | INFRAESTRUCTURA | PROVEEDOR | NORMATIVO | OTRO
+  origen                   String // AUDITORIA | NO_CONFORMIDAD | MEJORA | CLIENTE | LEGAL | INTERNO | OTRO
+  impactoCalidad           String // BAJO | MEDIO | ALTO
+  impactoSST               String // BAJO | MEDIO | ALTO
+  impactoAmbiental         String // BAJO | MEDIO | ALTO
   // Evaluación multidimensional extendida (aditivo) — niveles resumen por dimensión
-  impactoOperativo      String? // BAJO | MEDIO | ALTO
-  impactoTecnologico    String? // BAJO | MEDIO | ALTO
-  impactoLegal          String? // BAJO | MEDIO | ALTO
-  impactoContinuidad    String? // BAJO | MEDIO | ALTO
+  impactoOperativo         String? // BAJO | MEDIO | ALTO
+  impactoTecnologico       String? // BAJO | MEDIO | ALTO
+  impactoLegal             String? // BAJO | MEDIO | ALTO
+  impactoContinuidad       String? // BAJO | MEDIO | ALTO
   // Clasificación global calculada automáticamente (lógica centralizada)
-  nivelGlobal           String? // BAJO | MEDIO | ALTO | CRITICO
-  status                String    @default("SOLICITADO") // SOLICITADO | EN_REVISION | APROBADO | RECHAZADO | IMPLEMENTADO | EN_VERIFICACION | VERIFICADO | CERRADO
-  responsableId         String?   @db.Uuid
-  aprobadorId           String?   @db.Uuid
-  fechaSolicitud        DateTime  @default(now()) @db.Timestamptz
-  fechaPrevista         DateTime? @db.Timestamptz
-  fechaAprobacion       DateTime? @db.Timestamptz
-  fechaCierre           DateTime? @db.Timestamptz
-  motivoRechazo         String?
-  recursosNecesarios    String?
-  capacitacionRequerida Boolean   @default(false)
-  requiereComunicacion  Boolean   @default(false)
-  documentosAfectados   String?
-  riesgosIdentificados  String?
+  nivelGlobal              String? // BAJO | MEDIO | ALTO | CRITICO
+  status                   String    @default("SOLICITADO") // SOLICITADO | EN_REVISION | APROBADO | RECHAZADO | IMPLEMENTADO | EN_VERIFICACION | VERIFICADO | CERRADO
+  responsableId            String?   @db.Uuid
+  aprobadorId              String?   @db.Uuid
+  fechaSolicitud           DateTime  @default(now()) @db.Timestamptz
+  fechaPrevista            DateTime? @db.Timestamptz
+  fechaAprobacion          DateTime? @db.Timestamptz
+  fechaCierre              DateTime? @db.Timestamptz
+  motivoRechazo            String?
+  recursosNecesarios       String?
+  capacitacionRequerida    Boolean   @default(false)
+  requiereComunicacion     Boolean   @default(false)
+  documentosAfectados      String?
+  riesgosIdentificados     String?
   // IATF 16949 §8.5.6.1 — el cambio exige revisión de documentación
   // de producción: PFMEA / Plan de Control / instrucciones de trabajo.
-  requiresCoreToolsReview Boolean @default(false)
-  coreToolsReviewNotes    String?
+  requiresCoreToolsReview  Boolean   @default(false)
+  coreToolsReviewNotes     String?
   // IATF 16949 §8.5.6.1.1 — controles de proceso temporales/alternativos
   // (ej. inspección 100% mientras se repara un poka-yoke o equipo)
-  usesTemporaryControls     Boolean   @default(false)
-  temporaryControlsDesc     String?   @db.Text // qué control temporal se aplica
-  temporaryControlsEndDate  DateTime? @db.Timestamptz // fecha límite del control temporal
-  verificacion          String?
-  creadoPor             String?
+  usesTemporaryControls    Boolean   @default(false)
+  temporaryControlsDesc    String?   @db.Text // qué control temporal se aplica
+  temporaryControlsEndDate DateTime? @db.Timestamptz // fecha límite del control temporal
+  verificacion             String?
+  creadoPor                String?
   // Planificación del cambio (aditivo)
-  objetivoCambio        String?
-  alcance               String?
-  fechaInicioPrevista   DateTime? @db.Timestamptz
-  responsableGeneralId  String?   @db.Uuid
-  planComunicacion      String?
-  planCapacitacion      String?
-  planContingencia      String?
-  criteriosAceptacion   String?
-  condicionesPrevias    String?
+  objetivoCambio           String?
+  alcance                  String?
+  fechaInicioPrevista      DateTime? @db.Timestamptz
+  responsableGeneralId     String?   @db.Uuid
+  planComunicacion         String?
+  planCapacitacion         String?
+  planContingencia         String?
+  criteriosAceptacion      String?
+  condicionesPrevias       String?
   // Proyecto de implementación vinculado (Project360) — FK escalar, sin relación forzada
-  requiereProyecto      Boolean   @default(false)
-  projectId             String?   @db.Uuid
+  requiereProyecto         Boolean   @default(false)
+  projectId                String?   @db.Uuid
   // Cierre controlado
-  cierreComentario      String?
-  cerradoPor            String?   @db.Uuid
-  deletedAt             DateTime? @db.Timestamptz
-  createdAt             DateTime  @default(now()) @db.Timestamptz
-  updatedAt             DateTime  @updatedAt @db.Timestamptz
+  cierreComentario         String?
+  cerradoPor               String?   @db.Uuid
+  deletedAt                DateTime? @db.Timestamptz
+  createdAt                DateTime  @default(now()) @db.Timestamptz
+  updatedAt                DateTime  @updatedAt @db.Timestamptz
 
   historial      GestionCambioHistorial[]
   evaluaciones   GestionCambioEvaluacion[]
@@ -5232,24 +5251,24 @@ model Incident {
 // ──────────────────────────────────────────────────────────────
 
 model LegalRequirement {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
-  framework   String // ENVIRONMENTAL | OHAS | QUALITY | OTHER
-  source      String // ley/decreto/resolución/contrato/CSR (ej. "Ley 24.051")
-  title       String
-  description String?  @db.Text
-  appliesTo   String?  // proceso/actividad al que aplica
+  id                   String    @id @default(uuid()) @db.Uuid
+  tenantId             String    @db.Uuid
+  framework            String // ENVIRONMENTAL | OHAS | QUALITY | OTHER
+  source               String // ley/decreto/resolución/contrato/CSR (ej. "Ley 24.051")
+  title                String
+  description          String?   @db.Text
+  appliesTo            String? // proceso/actividad al que aplica
   // Evaluación de cumplimiento periódica (9.1.2)
   lastEvaluationDate   DateTime? @db.Timestamptz
-  lastEvaluationResult String?   // COMPLIANT | PARTIAL | NON_COMPLIANT
+  lastEvaluationResult String? // COMPLIANT | PARTIAL | NON_COMPLIANT
   nextEvaluationDate   DateTime? @db.Timestamptz
   evaluationFrequency  String    @default("YEARLY") // MONTHLY | QUARTERLY | BIANNUAL | YEARLY
-  responsibleId String?  @db.Uuid // empleado responsable
-  evidence      String?
-  isActive      Boolean  @default(true)
-  deletedAt     DateTime?
-  createdAt     DateTime @default(now()) @db.Timestamptz
-  updatedAt     DateTime @updatedAt @db.Timestamptz
+  responsibleId        String?   @db.Uuid // empleado responsable
+  evidence             String?
+  isActive             Boolean   @default(true)
+  deletedAt            DateTime?
+  createdAt            DateTime  @default(now()) @db.Timestamptz
+  updatedAt            DateTime  @updatedAt @db.Timestamptz
 
   evaluations LegalComplianceEvaluation[]
 
@@ -5282,20 +5301,20 @@ model LegalComplianceEvaluation {
 // Biblioteca legal compartida multi-país (SIN tenantId): normas SST/ambientales/
 // calidad que se sugieren a cada tenant según su país y se importan a su registro.
 model LegalLibrary {
-  id                 String    @id @default(uuid()) @db.Uuid
+  id                 String   @id @default(uuid()) @db.Uuid
   country            String // ISO-3166 alpha-2: AR | CL | ALL (transversal)
   framework          String // ENVIRONMENTAL | OHAS | QUALITY | OTHER
   jurisdiction       String? // nacional | provincial/regional (ej. "CABA", "RM")
   source             String // norma: "Ley 19.587", "DS 594", "Res. 299/11"...
   article            String?
   title              String
-  description        String?   @db.Text
+  description        String?  @db.Text
   appliesTo          String? // actividad/rubro sugerido (null = aplica a todo)
   enforcingAuthority String? // organismo fiscalizador: SRT, DT, Seremi de Salud...
   sourceUrl          String?
-  isActive           Boolean   @default(true)
-  createdAt          DateTime  @default(now()) @db.Timestamptz
-  updatedAt          DateTime  @updatedAt @db.Timestamptz
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now()) @db.Timestamptz
+  updatedAt          DateTime @updatedAt @db.Timestamptz
 
   @@index([country])
   @@index([framework])
@@ -5309,21 +5328,21 @@ model LegalLibrary {
 
 // Entrega de EPP a trabajadores (ISO 45001 §8.1.2 jerarquía de controles)
 model PpeDelivery {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
-  employeeId  String?  @db.Uuid // FK débil a Employee (patrón del codebase)
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  employeeId   String?   @db.Uuid // FK débil a Employee (patrón del codebase)
   employeeName String? // nombre libre si no está en RRHH
-  item        String // tipo de EPP (casco, guantes, protección auditiva...)
-  size        String?
-  quantity    Int      @default(1)
-  deliveredAt DateTime @default(now()) @db.Timestamptz
-  expiryDate  DateTime? @db.Timestamptz
-  receivedBy  String? // firma/confirmación de recepción
-  deliveredBy String?
-  notes       String?
-  deletedAt   DateTime?
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
+  item         String // tipo de EPP (casco, guantes, protección auditiva...)
+  size         String?
+  quantity     Int       @default(1)
+  deliveredAt  DateTime  @default(now()) @db.Timestamptz
+  expiryDate   DateTime? @db.Timestamptz
+  receivedBy   String? // firma/confirmación de recepción
+  deliveredBy  String?
+  notes        String?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now()) @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @db.Timestamptz
 
   @@index([tenantId])
   @@index([employeeId])
@@ -5333,29 +5352,29 @@ model PpeDelivery {
 
 // Permiso de trabajo de alto riesgo (ISO 45001 §8.1)
 model WorkPermit {
-  id           String   @id @default(uuid()) @db.Uuid
-  tenantId     String   @db.Uuid
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
   code         String
   type         String // HEIGHTS | HOT_WORK | CONFINED_SPACE | ELECTRICAL | EXCAVATION | LIFTING | OTHER
   title        String
   location     String
-  description  String?  @db.Text
-  status       String   @default("REQUESTED") // REQUESTED | APPROVED | IN_PROGRESS | SUSPENDED | CLOSED | REJECTED
+  description  String?   @db.Text
+  status       String    @default("REQUESTED") // REQUESTED | APPROVED | IN_PROGRESS | SUSPENDED | CLOSED | REJECTED
   requestedBy  String?
   approvedBy   String?
   approvedAt   DateTime? @db.Timestamptz
-  startDate    DateTime @db.Timestamptz
-  endDate      DateTime @db.Timestamptz
-  workers      String[] @default([]) // personal autorizado
-  hazards      String?  @db.Text // peligros identificados
-  controls     String?  @db.Text // medidas de control/aislamiento
-  ppeRequired  String[] @default([])
-  contractorId String?  @db.Uuid // proveedor/contratista (FK débil a Supplier)
+  startDate    DateTime  @db.Timestamptz
+  endDate      DateTime  @db.Timestamptz
+  workers      String[]  @default([]) // personal autorizado
+  hazards      String?   @db.Text // peligros identificados
+  controls     String?   @db.Text // medidas de control/aislamiento
+  ppeRequired  String[]  @default([])
+  contractorId String?   @db.Uuid // proveedor/contratista (FK débil a Supplier)
   closedAt     DateTime? @db.Timestamptz
   closureNotes String?
   deletedAt    DateTime?
-  createdAt    DateTime @default(now()) @db.Timestamptz
-  updatedAt    DateTime @updatedAt @db.Timestamptz
+  createdAt    DateTime  @default(now()) @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @db.Timestamptz
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -5366,20 +5385,20 @@ model WorkPermit {
 
 // Exámenes médicos ocupacionales (ISO 45001 §9.1.1)
 model MedicalExam {
-  id           String   @id @default(uuid()) @db.Uuid
-  tenantId     String   @db.Uuid
-  employeeId   String?  @db.Uuid // FK débil a Employee
-  employeeName String?  // nombre libre si no está en RRHH
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  employeeId   String?   @db.Uuid // FK débil a Employee
+  employeeName String? // nombre libre si no está en RRHH
   examType     String // PRE_EMPLOYMENT | PERIODIC | RETURN_TO_WORK | EXIT | SPECIAL
-  examDate     DateTime @db.Timestamptz
+  examDate     DateTime  @db.Timestamptz
   result       String // FIT | FIT_WITH_RESTRICTIONS | UNFIT | PENDING
-  restrictions String?  @db.Text // restricciones/recomendaciones médicas
+  restrictions String?   @db.Text // restricciones/recomendaciones médicas
   nextExamDate DateTime? @db.Timestamptz
   performedBy  String? // médico/centro de salud ocupacional
   notes        String?
   deletedAt    DateTime?
-  createdAt    DateTime @default(now()) @db.Timestamptz
-  updatedAt    DateTime @updatedAt @db.Timestamptz
+  createdAt    DateTime  @default(now()) @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @db.Timestamptz
 
   @@index([tenantId])
   @@index([employeeId])
@@ -5547,9 +5566,9 @@ model MeasuringEquipment {
   nextCalibrationDate  DateTime?
   acquisitionDate      DateTime?
   // IATF 16949 §7.1.5.3 — requisitos de laboratorio (interno/externo)
-  isExternalLab        Boolean  @default(false) // calibración/ensayo en laboratorio externo
-  labAccreditation     String?  // ej. "ISO/IEC 17025 — certificado nº ..."
-  labScope             String?  // alcance del laboratorio (qué ensayos/calibraciones cubre)
+  isExternalLab        Boolean   @default(false) // calibración/ensayo en laboratorio externo
+  labAccreditation     String? // ej. "ISO/IEC 17025 — certificado nº ..."
+  labScope             String? // alcance del laboratorio (qué ensayos/calibraciones cubre)
   notes                String?
   deletedAt            DateTime?
   createdAt            DateTime  @default(now()) @db.Timestamptz
@@ -5947,10 +5966,10 @@ model ProcessMap {
 
   // Norma a la que aplica el mapa: ISO9001 | IATF16949. null = ambas/sin especificar.
   // Permite al tenant con doble alcance (ej. ISO 9001 + IATF) ver el mapa general por norma.
-  norm        String?
+  norm String?
 
   // Orden de la etapa dentro de la cadena operativa del Mapa General (0 = sin orden explícito → heurística).
-  order       Int      @default(0)
+  order Int @default(0)
 
   // Control documental del mapa (doc. controlado del SGI)
   docCode       String?
@@ -6250,22 +6269,22 @@ model Project360Reminder {
 }
 
 model Project360Task {
-  id             String    @id @default(uuid()) @db.Uuid
-  projectId      String    @db.Uuid
-  tenantId       String    @db.Uuid
-  title          String
-  description    String?
-  responsibleId  String?   @db.Uuid
+  id              String    @id @default(uuid()) @db.Uuid
+  projectId       String    @db.Uuid
+  tenantId        String    @db.Uuid
+  title           String
+  description     String?
+  responsibleId   String?   @db.Uuid
   responsibleName String?
-  status         String    @default("PENDING")
-  priority       String    @default("MEDIUM")
-  dueDate        DateTime? @db.Timestamptz
-  completedAt    DateTime? @db.Timestamptz
-  order          Int       @default(0)
-  estimatedHours Float? // Horas estimadas
-  actualHours    Float? // Horas reales
-  parentId       String?   @db.Uuid // Tarea padre (subtareas)
-  dependencies   Json      @default("[]") // IDs de tareas previas
+  status          String    @default("PENDING")
+  priority        String    @default("MEDIUM")
+  dueDate         DateTime? @db.Timestamptz
+  completedAt     DateTime? @db.Timestamptz
+  order           Int       @default(0)
+  estimatedHours  Float? // Horas estimadas
+  actualHours     Float? // Horas reales
+  parentId        String?   @db.Uuid // Tarea padre (subtareas)
+  dependencies    Json      @default("[]") // IDs de tareas previas
 
   // Gantt Enterprise - FASE 10
   baselineStart  DateTime? @db.Timestamptz
@@ -7133,29 +7152,29 @@ model SgiObjective {
 
   // ── Cumplimiento IATF 16949 §6.2.1 / 6.2.1.1 (aditivo Oct 2026) ──
   // Despliegue en cascada: corporativo → departamental → individual
-  parentObjectiveId String?        @db.Uuid
-  parentObjective   SgiObjective?  @relation("ObjectiveDeployment", fields: [parentObjectiveId], references: [id], onDelete: SetNull)
-  childObjectives   SgiObjective[] @relation("ObjectiveDeployment")
-  level             String? // CORPORATE | DEPARTMENTAL | INDIVIDUAL
+  parentObjectiveId    String?        @db.Uuid
+  parentObjective      SgiObjective?  @relation("ObjectiveDeployment", fields: [parentObjectiveId], references: [id], onDelete: SetNull)
+  childObjectives      SgiObjective[] @relation("ObjectiveDeployment")
+  level                String? // CORPORATE | DEPARTMENTAL | INDIVIDUAL
   // Aprobación por alta dirección (auditable — se setea vía POST /objectives/:id/approve)
-  approvedById   String?   @db.Uuid
-  approvedByName String?
-  approvedAt     DateTime?
+  approvedById         String?        @db.Uuid
+  approvedByName       String?
+  approvedAt           DateTime?
   // Cierre verificable (ISO 6.2.2 e): resultado medido + evaluación del resultado
-  finalValue        Float?
-  evaluationComment String?
-  closedAt          DateTime?
+  finalValue           Float?
+  evaluationComment    String?
+  closedAt             DateTime?
   // Revisión periódica del objetivo (IATF 6.2.1.1 — revisión al menos anual)
-  reviewFrequency String? // MONTHLY | QUARTERLY | SEMIANNUAL | ANNUAL
-  nextReviewDate  DateTime?
+  reviewFrequency      String? // MONTHLY | QUARTERLY | SEMIANNUAL | ANNUAL
+  nextReviewDate       DateTime?
   // Comunicación del objetivo al personal afectado (ISO 6.2.1 f)
-  communicatedAt DateTime?
-  communicatedTo String?
+  communicatedAt       DateTime?
+  communicatedTo       String?
   // Frecuencia de medición propia (cuando no depende del KPI vinculado)
   measurementFrequency String?
   // Alineación a requisitos del cliente / parte interesada (IATF 6.2.1.1)
-  stakeholderId       String? @db.Uuid // weak link a Stakeholder (mismo patrón que auditId/capaId)
-  customerRequirement String? // requisito específico del cliente (CSR) que respalda el objetivo
+  stakeholderId        String?        @db.Uuid // weak link a Stakeholder (mismo patrón que auditId/capaId)
+  customerRequirement  String? // requisito específico del cliente (CSR) que respalda el objetivo
 
   progressLogs ObjectiveProgressLog[]
 
@@ -7388,8 +7407,8 @@ model Supplier {
   nextEvaluationDate DateTime?
   // ISO 45001 §8.1.4 / ISO 14001 §8.1 — requisitos SST/ambientales a contratistas
   // y proveedores que operan en las instalaciones o afectan el desempeño EHS
-  ehsRequirements String? // requisitos legales/SST/ambientales comunicados al proveedor
-  ehsApproved     Boolean @default(false) // cumple requisitos EHS para trabajar en planta
+  ehsRequirements    String? // requisitos legales/SST/ambientales comunicados al proveedor
+  ehsApproved        Boolean   @default(false) // cumple requisitos EHS para trabajar en planta
   notes              String?
   deletedAt          DateTime?
   createdAt          DateTime  @default(now()) @db.Timestamptz
@@ -7447,11 +7466,11 @@ model SupplierEvaluation {
   // IATF 16949 §8.4.2.4 — monitoreo suplementario del desempeño del proveedor:
   // conformidad de piezas entregadas, disrupciones al cliente (incl. retornos),
   // desempeño de entregas con fletes premium y notificaciones de estatus especial.
-  deliveredPpm            Float?
-  customerDisruptions     Int   @default(0)
-  premiumFreightIncidents Int   @default(0)
-  specialStatusNotifications Int @default(0)
-  specialStatusNotes      String? @db.Text
+  deliveredPpm               Float?
+  customerDisruptions        Int     @default(0)
+  premiumFreightIncidents    Int     @default(0)
+  specialStatusNotifications Int     @default(0)
+  specialStatusNotes         String? @db.Text
 
   @@index([supplierId])
   @@index([tenantId])
@@ -7467,16 +7486,16 @@ model SupplierDevelopmentPlan {
   supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
 
   title       String
-  objective   String? @db.Text // meta de desempeño (ej. reducir PPM a <50)
-  actions     Json?            // [{action, responsable, dueDate, status, evidence}]
-  status      String  @default("ACTIVE") // ACTIVE | COMPLETED | CANCELLED
+  objective   String?   @db.Text // meta de desempeño (ej. reducir PPM a <50)
+  actions     Json? // [{action, responsable, dueDate, status, evidence}]
+  status      String    @default("ACTIVE") // ACTIVE | COMPLETED | CANCELLED
   targetDate  DateTime? @db.Timestamptz
   completedAt DateTime? @db.Timestamptz
   evidence    String?   @db.Text
 
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-  createdById String?  @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  createdById String?   @db.Uuid
   deletedAt   DateTime? @db.Timestamptz
 
   @@index([tenantId])
@@ -7954,13 +7973,13 @@ model InspeccionItem {
 
   // ── Regla de criticidad (configurable por responsable, no inventada) ──
   // Regla por defecto para "no cumple" (esOk=false) o cualquier valor disparador:
-  severidadHallazgo String?  // LEVE | MODERADO | CRITICO — severidad del DEFECTO
-  bloqueaServicio   Boolean  @default(false) // la respuesta genera restricción de servicio
-  instruccionChofer String?  // texto que ve el chofer al detectar la condición
-  prioridadOt       String?  // LOW | MEDIUM | HIGH | CRITICAL — prioridad de ATENCIÓN de la OT (≠ severidad)
-  tipoDefecto       String?  // clave de agrupación del caso (si null: label+seccion normalizado)
-  componentKey      String?  // vínculo explícito al catálogo de componentes
-  posicion          String?  // posición física cuando aplica (ej: cubierta)
+  severidadHallazgo String? // LEVE | MODERADO | CRITICO — severidad del DEFECTO
+  bloqueaServicio   Boolean @default(false) // la respuesta genera restricción de servicio
+  instruccionChofer String? // texto que ve el chofer al detectar la condición
+  prioridadOt       String? // LOW | MEDIUM | HIGH | CRITICAL — prioridad de ATENCIÓN de la OT (≠ severidad)
+  tipoDefecto       String? // clave de agrupación del caso (si null: label+seccion normalizado)
+  componentKey      String? // vínculo explícito al catálogo de componentes
+  posicion          String? // posición física cuando aplica (ej: cubierta)
   // Overrides por respuesta para ítems con opciones:
   // [{ valor, generaHallazgo?, severidad?, bloqueaServicio?, instruccionChofer?, prioridadOt?, tipoDefecto? }]
   reglasRespuesta   Json?
@@ -8045,7 +8064,7 @@ model Inspeccion {
   // estable: cambiar el checklist no reescribe inspecciones anteriores).
   plantillaVersion Int?
   // Clave idempotente del envío: reintentos del chofer no duplican la inspección.
-  submissionKey String?
+  submissionKey    String?
 
   otId   String?
   ncrId  String?
@@ -8058,10 +8077,10 @@ model Inspeccion {
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
+  @@unique([tenantId, submissionKey])
   @@index([tenantId])
   @@index([tenantId, createdAt])
   @@index([qrId])
-  @@unique([tenantId, submissionKey])
   @@map("inspecciones")
 }
 
@@ -8158,13 +8177,13 @@ model InspeccionHallazgo {
   ncrGenerada Boolean @default(false)
 
   // ── Reporte de defecto (cada hallazgo ES un reporte conservado) ──
-  itemId          String? @db.Uuid // ítem del checklist que lo originó
-  item            InspeccionItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
-  valorRespuesta  String? // valor que disparó el hallazgo (snapshot de la respuesta)
-  reglaSnapshot   Json?   // regla aplicada en el momento (interpretación histórica estable)
-  reporteKey      String? // @@unique con tenantId — dedup de reintentos
-  bloqueante      Boolean @default(false) // la regla vigente marcaba restricción de servicio
-  prioridadOt     String? // prioridad de atención configurada (≠ severidad del defecto)
+  itemId            String?         @db.Uuid // ítem del checklist que lo originó
+  item              InspeccionItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  valorRespuesta    String? // valor que disparó el hallazgo (snapshot de la respuesta)
+  reglaSnapshot     Json? // regla aplicada en el momento (interpretación histórica estable)
+  reporteKey        String? // @@unique con tenantId — dedup de reintentos
+  bloqueante        Boolean         @default(false) // la regla vigente marcaba restricción de servicio
+  prioridadOt       String? // prioridad de atención configurada (≠ severidad del defecto)
   instruccionChofer String? // instrucción mostrada al chofer en el momento
 
   // Unidad afectada resuelta en el momento del reporte (no por texto posterior)
@@ -8177,17 +8196,17 @@ model InspeccionHallazgo {
   caso   DefectoCaso? @relation(fields: [casoId], references: [id], onDelete: SetNull)
 
   // OT que gestiona la reparación (una por caso, no por reporte)
-  otId String?     @db.Uuid
-  ot   WorkOrder?  @relation(fields: [otId], references: [id], onDelete: SetNull)
+  otId String?    @db.Uuid
+  ot   WorkOrder? @relation(fields: [otId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
+  @@unique([tenantId, reporteKey])
   @@index([tenantId])
   @@index([tenantId, estado])
   @@index([casoId])
   @@index([vehiculoId])
-  @@unique([tenantId, reporteKey])
   @@map("inspeccion_hallazgos")
 }
 
@@ -8207,18 +8226,18 @@ model DefectoCaso {
   tenantId String @db.Uuid
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  vehiculoId String   @db.Uuid
-  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
-  maintenanceAssetId String? @db.Uuid
+  vehiculoId         String   @db.Uuid
+  vehiculo           Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+  maintenanceAssetId String?  @db.Uuid
 
   // Identidad del defecto (matching por identificadores, no por texto libre)
-  itemKey      String  // tipoDefecto configurado o label+sección normalizado
-  itemLabel    String
-  itemId       String? @db.Uuid
-  seccion      String?
+  itemKey       String // tipoDefecto configurado o label+sección normalizado
+  itemLabel     String
+  itemId        String? @db.Uuid
+  seccion       String?
   equipoDestino String? // TRACTOR | SEMI
-  componentKey String?
-  posicion     String?
+  componentKey  String?
+  posicion      String?
 
   severidad  String  @default("MODERADO") // LEVE | MODERADO | CRITICO (del defecto)
   bloqueante Boolean @default(false)
@@ -8252,8 +8271,8 @@ model DefectoCaso {
 
   // Posible recurrencia: caso anterior resuelto con la misma firma.
   // No afirma misma causa — solo registra la relación para análisis.
-  casoPrevioId String?      @db.Uuid
-  casoPrevio   DefectoCaso? @relation("DefectoRecurrencia", fields: [casoPrevioId], references: [id], onDelete: SetNull)
+  casoPrevioId String?       @db.Uuid
+  casoPrevio   DefectoCaso?  @relation("DefectoRecurrencia", fields: [casoPrevioId], references: [id], onDelete: SetNull)
   recurrencias DefectoCaso[] @relation("DefectoRecurrencia")
 
   resueltoAt DateTime?
@@ -8274,13 +8293,13 @@ model DefectoCaso {
 
 // Auditoría append-only del caso: creación, reportes, OT, verificación, habilitación, reasignaciones.
 model DefectoCasoEvento {
-  id       String @id @default(uuid()) @db.Uuid
-  tenantId String @db.Uuid
-  casoId   String @db.Uuid
+  id       String      @id @default(uuid()) @db.Uuid
+  tenantId String      @db.Uuid
+  casoId   String      @db.Uuid
   caso     DefectoCaso @relation(fields: [casoId], references: [id], onDelete: Cascade)
 
-  tipo    String // CREADO | REPORTE | OT_VINCULADA | REPARACION_INFORMADA | VERIFICADO | VERIFICACION_FALLIDA | HABILITADO | REASIGNADO | CERRADO | REABIERTO | NOTA
-  detalle String?
+  tipo          String // CREADO | REPORTE | OT_VINCULADA | REPARACION_INFORMADA | VERIFICADO | VERIFICACION_FALLIDA | HABILITADO | REASIGNADO | CERRADO | REABIERTO | NOTA
+  detalle       String?
   usuarioId     String? @db.Uuid
   usuarioNombre String?
 
@@ -8300,23 +8319,23 @@ model RestriccionServicio {
   vehiculoId String   @db.Uuid
   vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
 
-  casoId     String?            @db.Uuid
-  caso       DefectoCaso?       @relation(fields: [casoId], references: [id], onDelete: SetNull)
-  hallazgoId String?            @db.Uuid // reporte de origen
+  casoId     String?      @db.Uuid
+  caso       DefectoCaso? @relation(fields: [casoId], references: [id], onDelete: SetNull)
+  hallazgoId String?      @db.Uuid // reporte de origen
 
   motivo String
-  origen  String @default("CHECKLIST") // CHECKLIST | MANUAL
-  activa  Boolean @default(true)
+  origen String  @default("CHECKLIST") // CHECKLIST | MANUAL
+  activa Boolean @default(true)
 
   // Levantamiento (habilitación): quién, cuándo y motivo
-  levantadaAt       DateTime?
-  levantadaPorId    String?   @db.Uuid
+  levantadaAt        DateTime?
+  levantadaPorId     String?   @db.Uuid
   levantadaPorNombre String?
-  levantadaMotivo   String?
+  levantadaMotivo    String?
 
-  createdById    String? @db.Uuid
-  createdByName  String?
-  createdAt      DateTime @default(now()) @db.Timestamptz
+  createdById   String?  @db.Uuid
+  createdByName String?
+  createdAt     DateTime @default(now()) @db.Timestamptz
 
   @@index([tenantId, activa])
   @@index([vehiculoId, activa])
@@ -8325,8 +8344,8 @@ model RestriccionServicio {
 
 // Auditoría de la configuración de criticidad de checklists (quién/qué/cuándo).
 model InspeccionReglaAudit {
-  id         String @id @default(uuid()) @db.Uuid
-  tenantId   String @db.Uuid
+  id          String @id @default(uuid()) @db.Uuid
+  tenantId    String @db.Uuid
   plantillaId String @db.Uuid
 
   accion           String // UPDATE_REGLAS | CREATE | REVISION_CRITICIDAD
@@ -8433,18 +8452,18 @@ model Vehiculo {
 
   // Presupuesto mensual asignado a la unidad (ARS). Se compara contra
   // el gasto real del mes (combustible + OTs + facturas + multas).
-  presupuestoMensual  Float?
+  presupuestoMensual Float?
 
   // Imputación económica: centro de costo / unidad de negocio (escalar, sin FK).
   // Resultados lo usa para filtrar costos de flota por unidad de negocio.
-  centroCostoId       String?  @db.Uuid
+  centroCostoId String? @db.Uuid
 
   // Ubicación declarada (dimensión separada: no determina disponibilidad).
   // SIN_DATOS = sin ubicación confiable registrada.
-  ubicacionTipo    String?   // ESTACIONAMIENTO | TALLER_INTERNO | TALLER_EXTERNO | OTRO
-  ubicacionDetalle String?   // nombre/dirección libre
+  ubicacionTipo    String? // ESTACIONAMIENTO | TALLER_INTERNO | TALLER_EXTERNO | OTRO
+  ubicacionDetalle String? // nombre/dirección libre
   ubicacionDesde   DateTime? @db.Timestamptz
-  ubicacionPor     String?   // quién lo registró
+  ubicacionPor     String? // quién lo registró
 
   // Relaciones
   conductorId String?    @db.Uuid
@@ -8544,19 +8563,19 @@ model UnidadIndisponibilidad {
   finAt    DateTime? @db.Timestamptz // null = abierto
   estado   String    @default("ABIERTA") // ABIERTA | CERRADA
 
-  origen  String @default("MANUAL") // MANUAL | OT | CHECKLIST | QR_MECANICO | MIGRACION
-  motivo  String? // descripción libre de la causa de salida de servicio
+  origen String  @default("MANUAL") // MANUAL | OT | CHECKLIST | QR_MECANICO | MIGRACION
+  motivo String? // descripción libre de la causa de salida de servicio
 
   // Causas relacionadas (una o varias OTs sin duplicar el tiempo; las
   // restricciones se consultan en vivo por vehiculoId).
   workOrderIds String[] @default([])
 
   // Taller (interno o externo) e ingreso/salida efectivos
-  tallerTipo             String?   // INTERNO | EXTERNO
-  tallerId               String?   @db.Uuid
-  tallerNombre           String?
-  fechaIngresoTaller     DateTime? @db.Timestamptz
-  fechaSalidaTaller      DateTime? @db.Timestamptz
+  tallerTipo              String? // INTERNO | EXTERNO
+  tallerId                String?   @db.Uuid
+  tallerNombre            String?
+  fechaIngresoTaller      DateTime? @db.Timestamptz
+  fechaSalidaTaller       DateTime? @db.Timestamptz
   fechaDevolucionEstimada DateTime? @db.Timestamptz
 
   responsableSeguimientoNombre String?
@@ -8593,7 +8612,7 @@ model UnidadIndisponibilidadEtapa {
   workOrderId String?   @db.Uuid
 
   responsableNombre String?
-  registradoPorId   String?  @db.Uuid
+  registradoPorId   String? @db.Uuid
   registradoPorName String?
 
   createdAt DateTime @default(now()) @db.Timestamptz
@@ -8609,9 +8628,9 @@ model VehiculoUbicacionEvento {
   vehiculoId String   @db.Uuid
   vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
 
-  tipo      String // ESTACIONAMIENTO | TALLER_INTERNO | TALLER_EXTERNO | OTRO | SIN_DATOS
-  detalle   String?
-  notas     String?
+  tipo          String // ESTACIONAMIENTO | TALLER_INTERNO | TALLER_EXTERNO | OTRO | SIN_DATOS
+  detalle       String?
+  notas         String?
   createdByName String?
 
   createdAt DateTime @default(now()) @db.Timestamptz
@@ -8740,10 +8759,10 @@ model MaintenanceComponentRuleAudit {
   ruleId String                   @db.Uuid
   rule   MaintenanceComponentRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
 
-  accion   String // CREATE, UPDATE, PROPAGAR
-  alcance  String // FUTURAS | PLANES_SELECCIONADOS
-  cambios  Json   // [{ campo, antes, despues }]
-  planIds  String[] @default([]) // planes existentes afectados por la propagación
+  accion  String // CREATE, UPDATE, PROPAGAR
+  alcance String // FUTURAS | PLANES_SELECCIONADOS
+  cambios Json // [{ campo, antes, despues }]
+  planIds String[] @default([]) // planes existentes afectados por la propagación
 
   usuarioId     String? @db.Uuid
   usuarioNombre String?
@@ -9125,9 +9144,9 @@ model Conductor {
   pinSetAt   DateTime? @db.Timestamptz
   pinSetById String?   @db.Uuid
 
-  vehiculos Vehiculo[]
-  multas    FlotaMulta[]
-  jornadas  FlotaJornada[]
+  vehiculos              Vehiculo[]
+  multas                 FlotaMulta[]
+  jornadas               FlotaJornada[]
   habilitacionesDescanso FlotaHabilitacionDescanso[]
 
   createdAt DateTime @default(now()) @db.Timestamptz
@@ -9260,7 +9279,7 @@ model NeumaticoPresion {
   notas         String?
 
   // Acción realizada en el control: VERIFICADA (estaba OK), INFLADA (se infló), AJUSTADA (se corrigió a otro valor)
-  accion String @default("VERIFICADA")
+  accion    String                   @default("VERIFICADA")
   // Ronda de control a la que pertenece esta medición (si fue parte de un control de unidad)
   controlId String?                  @db.Uuid
   control   NeumaticoControlPresion? @relation(fields: [controlId], references: [id], onDelete: SetNull)
@@ -9406,8 +9425,8 @@ model RegistroCombustible {
 
   // IVA incluido en el precio de surtidor. Evidencia el crédito fiscal
   // recuperable: si ivaRecuperable = false el IVA pasa a ser costo.
-  iva            Float?   // IVA contenido en costoTotal (combustible)
-  ivaUrea        Float?   // IVA contenido en costoUrea
+  iva            Float? // IVA contenido en costoTotal (combustible)
+  ivaUrea        Float? // IVA contenido en costoUrea
   ivaRecuperable Boolean @default(true)
 
   notas String?
@@ -9569,7 +9588,7 @@ model ServicioRegistro {
 
   // Solo en tipo INICIO_RECHAZADO: por qué se impidió el inicio y con qué regla
   motivoRechazo String? // JORNADA_ABIERTA, DESCANSO_INSUFICIENTE, SIN_HISTORIAL
-  reglaAplicada Json?   // snapshot de la política usada al rechazar
+  reglaAplicada Json? // snapshot de la política usada al rechazar
 
   reportadoPorNombre   String
   reportadoPorTelefono String?
@@ -9597,8 +9616,8 @@ model FlotaJornada {
   conductorId String    @db.Uuid
   conductor   Conductor @relation(fields: [conductorId], references: [id], onDelete: Cascade)
 
-  estado  String   @default("ABIERTA") // ABIERTA, CERRADA
-  inicioAt DateTime @db.Timestamptz
+  estado   String    @default("ABIERTA") // ABIERTA, CERRADA
+  inicioAt DateTime  @db.Timestamptz
   finAt    DateTime? @db.Timestamptz // null mientras ABIERTA o si se regulariza sin horario
 
   // Unidades usadas durante la jornada: [{vehiculoId, dominio, desde, hasta}]
@@ -9610,10 +9629,10 @@ model FlotaJornada {
   carga   String?
 
   // Evaluación de descanso previo (al abrir la jornada)
-  descansoPrevioHoras  Float?  // null = SIN_HISTORIAL o jornada previa sin cierre válido
-  evaluacionDescanso   String? // CUMPLE, INSUFICIENTE, SIN_HISTORIAL, JORNADA_PREVIA_ABIERTA
+  descansoPrevioHoras         Float? // null = SIN_HISTORIAL o jornada previa sin cierre válido
+  evaluacionDescanso          String? // CUMPLE, INSUFICIENTE, SIN_HISTORIAL, JORNADA_PREVIA_ABIERTA
   // Evaluación recalculada tras correcciones (la original queda en evaluacionDescansoOriginal)
-  evaluacionDescansoOriginal String?
+  evaluacionDescansoOriginal  String?
   descansoPrevioHorasOriginal Float?
 
   horasTrabajadas Float? // al cerrar: finAt - inicioAt (preciso, sin redondeo previo)
@@ -9631,9 +9650,9 @@ model FlotaJornada {
   politicaSnapshot Json?
 
   // Regularización/cierre administrativo
-  cierreTipo       String?  // NORMAL, REGULARIZADO
+  cierreTipo       String? // NORMAL, REGULARIZADO
   cierreMotivo     String?
-  cerradaPorUserId String?  @db.Uuid
+  cerradaPorUserId String? @db.Uuid
 
   notas String?
 
@@ -9681,7 +9700,7 @@ model FlotaJornadaAviso {
 
   tipo           String // ANTICIPADO, EXCESO
   horasAlAviso   Float
-  programadoPara DateTime @db.Timestamptz
+  programadoPara DateTime  @db.Timestamptz
   enviadoAt      DateTime? @db.Timestamptz
   estadoEntrega  String    @default("PENDIENTE") // PENDIENTE, ENVIADO, FALLIDO
   detalleError   String?
@@ -9704,17 +9723,17 @@ model FlotaJornadaPolitica {
   descansoMinHoras       Float  @default(12)
   modoAplicacion         String @default("ADVERTENCIA") // ADVERTENCIA, BLOQUEO
   jornadaAlertaHoras     Float  @default(12) // duración para alertar (no bloquea ni corta)
-  avisoAnticipacionHoras Float  @default(1)  // avisar antes de alcanzar el límite
+  avisoAnticipacionHoras Float  @default(1) // avisar antes de alcanzar el límite
   destinatarios          Json   @default("\"ADMINS\"") // "ADMINS" o [userId] de TenantMembership
 
   // true una vez que un responsable revisó explícitamente la política
   // (requisito para activar modo BLOQUEO)
   politicaRevisada Boolean @default(false)
 
-  version      Int      @default(1)
-  updatedById  String?  @db.Uuid
-  createdAt    DateTime @default(now()) @db.Timestamptz
-  updatedAt    DateTime @updatedAt @db.Timestamptz
+  version     Int      @default(1)
+  updatedById String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
 
   historial FlotaJornadaPoliticaHistorial[]
 
@@ -9724,10 +9743,10 @@ model FlotaJornadaPolitica {
 // Historial de versiones de la política — un cambio de umbral no reescribe
 // evaluaciones históricas porque cada jornada guarda su politicaSnapshot.
 model FlotaJornadaPoliticaHistorial {
-  id         String              @id @default(uuid()) @db.Uuid
-  tenantId   String              @db.Uuid
-  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  politicaId String              @db.Uuid
+  id         String               @id @default(uuid()) @db.Uuid
+  tenantId   String               @db.Uuid
+  tenant     Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  politicaId String               @db.Uuid
   politica   FlotaJornadaPolitica @relation(fields: [politicaId], references: [id], onDelete: Cascade)
 
   version Int
@@ -9751,13 +9770,13 @@ model FlotaHabilitacionDescanso {
   conductorId String    @db.Uuid
   conductor   Conductor @relation(fields: [conductorId], references: [id], onDelete: Cascade)
 
-  tipo                String  @default("SIN_HISTORIAL") // SIN_HISTORIAL, CIERRE_NO_CONFIABLE
+  tipo                   String @default("SIN_HISTORIAL") // SIN_HISTORIAL, CIERRE_NO_CONFIABLE
   descansoDeclaradoHoras Float?
-  fundamento          String
-  autorizadoPorId     String  @db.Uuid
+  fundamento             String
+  autorizadoPorId        String @db.Uuid
 
-  usadaEnJornadaId String?  @db.Uuid
-  usadaAt         DateTime? @db.Timestamptz
+  usadaEnJornadaId String?   @db.Uuid
+  usadaAt          DateTime? @db.Timestamptz
 
   createdAt DateTime @default(now()) @db.Timestamptz
 
@@ -10322,7 +10341,7 @@ enum AIAlertStatus {
 }
 
 model SehActionPlan {
-  id String @id @default(uuid()) @db.Uuid
+  id            String    @id @default(uuid()) @db.Uuid
   tenantId      String    @db.Uuid
   clientId      String    @db.Uuid
   title         String
@@ -10354,7 +10373,7 @@ model SehActionPlan {
 }
 
 model SehAlert {
-  id String @id @default(uuid()) @db.Uuid
+  id           String    @id @default(uuid()) @db.Uuid
   tenantId     String    @db.Uuid
   clientId     String?   @db.Uuid
   title        String
@@ -10378,7 +10397,7 @@ model SehAlert {
 }
 
 model SehApplicabilityRule {
-  id String @id @default(uuid()) @db.Uuid
+  id                         String   @id @default(uuid()) @db.Uuid
   province                   String?
   activity                   String?
   riskTypes                  String[]
@@ -10393,7 +10412,7 @@ model SehApplicabilityRule {
 }
 
 model SehAuditTrail {
-  id String @id @default(uuid()) @db.Uuid
+  id         String   @id @default(uuid()) @db.Uuid
   tenantId   String   @db.Uuid
   entityType String
   entityId   String   @db.Uuid
@@ -10411,7 +10430,7 @@ model SehAuditTrail {
 }
 
 model SehAudit {
-  id String @id @default(uuid()) @db.Uuid
+  id            String    @id @default(uuid()) @db.Uuid
   tenantId      String    @db.Uuid
   clientId      String    @db.Uuid
   code          String
@@ -10440,7 +10459,7 @@ model SehAudit {
 }
 
 model SehClientUser {
-  id String @id @default(uuid()) @db.Uuid
+  id        String    @id @default(uuid()) @db.Uuid
   tenantId  String    @db.Uuid
   clientId  String    @db.Uuid
   userId    String    @db.Uuid
@@ -10458,7 +10477,7 @@ model SehClientUser {
 }
 
 model SehClient {
-  id String @id @default(uuid()) @db.Uuid
+  id                  String                @id @default(uuid()) @db.Uuid
   tenantId            String                @db.Uuid
   name                String
   logoUrl             String?
@@ -10502,7 +10521,7 @@ model SehClient {
 }
 
 model SehDigitalSignature {
-  id String @id @default(uuid()) @db.Uuid
+  id            String   @id @default(uuid()) @db.Uuid
   tenantId      String   @db.Uuid
   entityType    String
   entityId      String   @db.Uuid
@@ -10518,7 +10537,7 @@ model SehDigitalSignature {
 }
 
 model SehDocument {
-  id String @id @default(uuid()) @db.Uuid
+  id          String     @id @default(uuid()) @db.Uuid
   tenantId    String     @db.Uuid
   clientId    String?    @db.Uuid
   title       String
@@ -10541,7 +10560,7 @@ model SehDocument {
 }
 
 model SehDrill {
-  id String @id @default(uuid()) @db.Uuid
+  id            String    @id @default(uuid()) @db.Uuid
   tenantId      String    @db.Uuid
   clientId      String    @db.Uuid
   name          String
@@ -10575,7 +10594,7 @@ model SehDrill {
 }
 
 model SehEmployee {
-  id String @id @default(uuid()) @db.Uuid
+  id                String    @id @default(uuid()) @db.Uuid
   tenantId          String    @db.Uuid
   clientId          String    @db.Uuid
   firstName         String
@@ -10605,7 +10624,7 @@ model SehEmployee {
 }
 
 model SehEpp {
-  id String @id @default(uuid()) @db.Uuid
+  id           String       @id @default(uuid()) @db.Uuid
   tenantId     String       @db.Uuid
   clientId     String       @db.Uuid
   employeeId   String?      @db.Uuid
@@ -10630,7 +10649,7 @@ model SehEpp {
 }
 
 model SehIncident {
-  id String @id @default(uuid()) @db.Uuid
+  id                  String    @id @default(uuid()) @db.Uuid
   tenantId            String    @db.Uuid
   clientId            String    @db.Uuid
   code                String
@@ -10674,7 +10693,7 @@ model SehIncident {
 }
 
 model SehIndicatorMeasurement {
-  id String @id @default(uuid()) @db.Uuid
+  id           String       @id @default(uuid()) @db.Uuid
   indicatorId  String       @db.Uuid
   value        Float
   period       String
@@ -10688,7 +10707,7 @@ model SehIndicatorMeasurement {
 }
 
 model SehIndicator {
-  id String @id @default(uuid()) @db.Uuid
+  id                      String                    @id @default(uuid()) @db.Uuid
   tenantId                String                    @db.Uuid
   clientId                String?                   @db.Uuid
   code                    String
@@ -10718,7 +10737,7 @@ model SehIndicator {
 }
 
 model SehInspectionTemplate {
-  id String @id @default(uuid()) @db.Uuid
+  id          String    @id @default(uuid()) @db.Uuid
   tenantId    String    @db.Uuid
   name        String
   description String?
@@ -10739,7 +10758,7 @@ model SehInspectionTemplate {
 }
 
 model SehInspection {
-  id String @id @default(uuid()) @db.Uuid
+  id            String    @id @default(uuid()) @db.Uuid
   tenantId      String    @db.Uuid
   clientId      String    @db.Uuid
   code          String
@@ -10770,7 +10789,7 @@ model SehInspection {
 }
 
 model SehLegalRequirement {
-  id String @id @default(uuid()) @db.Uuid
+  id                 String     @id @default(uuid()) @db.Uuid
   tenantId           String     @db.Uuid
   clientId           String?    @db.Uuid
   jurisdiction       String?
@@ -10833,7 +10852,7 @@ model SehPayment {
 }
 
 model SehReport {
-  id String @id @default(uuid()) @db.Uuid
+  id          String    @id @default(uuid()) @db.Uuid
   tenantId    String    @db.Uuid
   clientId    String?   @db.Uuid
   title       String
@@ -10855,7 +10874,7 @@ model SehReport {
 }
 
 model SehRisk {
-  id String @id @default(uuid()) @db.Uuid
+  id             String    @id @default(uuid()) @db.Uuid
   tenantId       String    @db.Uuid
   clientId       String    @db.Uuid
   code           String
@@ -10888,7 +10907,7 @@ model SehRisk {
 }
 
 model SehSite {
-  id String @id @default(uuid()) @db.Uuid
+  id        String    @id @default(uuid()) @db.Uuid
   tenantId  String    @db.Uuid
   clientId  String    @db.Uuid
   name      String
@@ -10907,7 +10926,7 @@ model SehSite {
 }
 
 model SehTenantPlan {
-  id String @id @default(uuid()) @db.Uuid
+  id             String    @id @default(uuid()) @db.Uuid
   tenantId       String    @unique @db.Uuid
   planTier       String    @default("STARTER")
   status         String    @default("TRIAL")
@@ -10924,7 +10943,7 @@ model SehTenantPlan {
 }
 
 model SehTraining {
-  id String @id @default(uuid()) @db.Uuid
+  id            String    @id @default(uuid()) @db.Uuid
   tenantId      String    @db.Uuid
   clientId      String    @db.Uuid
   code          String
@@ -10954,7 +10973,7 @@ model SehTraining {
 }
 
 model SehUser {
-  id String @id @default(uuid()) @db.Uuid
+  id             String          @id @default(uuid()) @db.Uuid
   tenantId       String          @db.Uuid
   email          String
   passwordHash   String
@@ -10977,7 +10996,7 @@ model SehUser {
 }
 
 model SehVisit {
-  id String @id @default(uuid()) @db.Uuid
+  id             String    @id @default(uuid()) @db.Uuid
   tenantId       String    @db.Uuid
   clientId       String    @db.Uuid
   technicianName String?
@@ -11000,7 +11019,7 @@ model SehVisit {
 }
 
 model SehWorkPermit {
-  id String @id @default(uuid()) @db.Uuid
+  id             String    @id @default(uuid()) @db.Uuid
   tenantId       String    @db.Uuid
   clientId       String    @db.Uuid
   code           String
@@ -12846,12 +12865,12 @@ model FlotaTaller {
   tenantId String @db.Uuid
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  nombre              String   // nombre comercial — único obligatorio del alta
-  razonSocial         String?
+  nombre               String // nombre comercial — único obligatorio del alta
+  razonSocial          String?
   identificacionFiscal String? // CUIT/RUT/etc según el país del tenant
-  tipo                String   @default("TALLER_EXTERNO") // TALLER_EXTERNO | SERVICE_OFICIAL
+  tipo                 String  @default("TALLER_EXTERNO") // TALLER_EXTERNO | SERVICE_OFICIAL
 
-  marcas        String[] @default([]) // marcas atendidas
+  marcas         String[] @default([]) // marcas atendidas
   especialidades String[] @default([]) // servicios/especialidades
 
   direccion      String?
@@ -13238,9 +13257,9 @@ model FleetComponentMeasurement {
 // - Append-only por contrato: no hay endpoints de edición/borrado de eventos.
 // ─────────────────────────────────────────────
 model VehiculoHistorialCambio {
-  id         String   @id @default(uuid()) @db.Uuid
-  tenantId   String   @db.Uuid
-  vehiculoId String   @db.Uuid // sin FK: debe sobrevivir al borrado físico de la unidad
+  id         String @id @default(uuid()) @db.Uuid
+  tenantId   String @db.Uuid
+  vehiculoId String @db.Uuid // sin FK: debe sobrevivir al borrado físico de la unidad
 
   tipoActivo String // VEHICULO | SEMI (snapshot del tipo al momento del evento)
   dominio    String // dominio al momento del evento (es editable, no sirve como id)
@@ -13275,13 +13294,13 @@ model FeedbackSugerencia {
   mensaje String
   pagina  String? // URL donde estaba el usuario
 
-  usuarioId     String?  @db.Uuid
+  usuarioId     String? @db.Uuid
   usuarioNombre String?
   usuarioEmail  String?
 
-  leido      Boolean   @default(false)
-  respondida Boolean   @default(false) // si se le contestó al usuario por mail
-  notasDev   String?   // anotaciones internas del desarrollador
+  leido      Boolean @default(false)
+  respondida Boolean @default(false) // si se le contestó al usuario por mail
+  notasDev   String? // anotaciones internas del desarrollador
 
   createdAt DateTime @default(now()) @db.Timestamptz
 
@@ -13333,11 +13352,11 @@ model FinanzaFactura {
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Datos del comprobante
-  numero          String?
-  puntoVenta      String?
-  tipoComprobante String   @default("FACTURA") // FACTURA, NOTA_CREDITO, BOLETA, OTRO
-  fechaEmision    DateTime @default(now()) @db.Timestamptz
-  fechaVencimiento DateTime? @db.Timestamptz
+  numero             String?
+  puntoVenta         String?
+  tipoComprobante    String    @default("FACTURA") // FACTURA, NOTA_CREDITO, BOLETA, OTRO
+  fechaEmision       DateTime  @default(now()) @db.Timestamptz
+  fechaVencimiento   DateTime? @db.Timestamptz
   // Cuándo prometió pagar el cliente (proyección de cobros). Si está,
   // la proyección usa esta fecha en vez de fechaVencimiento.
   fechaCobroEstimada DateTime? @db.Timestamptz
@@ -13350,10 +13369,10 @@ model FinanzaFactura {
   origen String @default("MANUAL") // MANUAL | IMPORT_RCV
 
   // Montos (Decimal: nunca Float para dinero)
-  neto   Decimal  @default(0) @db.Decimal(14, 2)
-  iva    Decimal  @default(0) @db.Decimal(14, 2)
-  total  Decimal  @db.Decimal(14, 2)
-  moneda String   @default("ARS") // ARS, CLP, USD… sin conversión: agregados por moneda
+  neto   Decimal @default(0) @db.Decimal(14, 2)
+  iva    Decimal @default(0) @db.Decimal(14, 2)
+  total  Decimal @db.Decimal(14, 2)
+  moneda String  @default("ARS") // ARS, CLP, USD… sin conversión: agregados por moneda
 
   estado String @default("EMITIDA") // EMITIDA, PARCIALMENTE_COBRADA, COBRADA, VENCIDA, ANULADA
 
@@ -13447,16 +13466,16 @@ model FinanzaGasto {
   fecha     DateTime @default(now()) @db.Timestamptz
   proveedor String?
   concepto  String
-  categoria String  @default("OTRO") // SUELDOS, ALQUILER, SEGUROS, SERVICIOS, ADMINISTRACION, IMPUESTOS, OTRO
-  tipoGasto String  @default("OPERATIVO") // OPERATIVO, ESTRUCTURA, OTRO
+  categoria String   @default("OTRO") // SUELDOS, ALQUILER, SEGUROS, SERVICIOS, ADMINISTRACION, IMPUESTOS, OTRO
+  tipoGasto String   @default("OPERATIVO") // OPERATIVO, ESTRUCTURA, OTRO
 
   centroCostoId String? @db.Uuid
 
   // neto = costo real sin IVA recuperable (null = se usa total)
   neto   Decimal? @db.Decimal(14, 2)
   iva    Decimal? @db.Decimal(14, 2)
-  total  Decimal @db.Decimal(14, 2)
-  moneda String  @default("ARS")
+  total  Decimal  @db.Decimal(14, 2)
+  moneda String   @default("ARS")
 
   // Evidencia del recupero de IVA crédito fiscal: false = el IVA no se
   // recupera y computa como costo (neto efectivo = total).
@@ -13469,11 +13488,11 @@ model FinanzaGasto {
 
   // Cuentas por pagar: fecha de vencimiento del compromiso + pagos parciales
   // (saldo y estado PENDIENTE/PARCIAL/PAGADO/VENCIDO se derivan de FinanzaPago)
-  fechaVencimiento DateTime? @db.Timestamptz
+  fechaVencimiento  DateTime?     @db.Timestamptz
   // Cuándo planeamos pagarlo (proyección de pagos). Si está, la
   // proyección usa esta fecha en vez de fechaVencimiento.
-  fechaPagoEstimada DateTime? @db.Timestamptz
-  pagos            FinanzaPago[]
+  fechaPagoEstimada DateTime?     @db.Timestamptz
+  pagos             FinanzaPago[]
 
   // Clasificación de costo para punto de equilibrio / proyección:
   // FIJO | VARIABLE | MIXTO (null = no clasificado → lo decide el rubro o queda fuera)
@@ -13487,7 +13506,7 @@ model FinanzaGasto {
 
   // Amortización de gasto anual: el `total` se prorratea en partes iguales
   // por mes dentro de [fechaDesde, fechaHasta] (seguro/anualidad).
-  esAmortizable Boolean @default(false)
+  esAmortizable  Boolean  @default(false)
   // Cuota variable (préstamo/leasing): importe del mes k = total + (k-1)*variacionCuota.
   // Negativo = cuota decreciente. Solo aplica con esRecurrente = true.
   variacionCuota Decimal? @db.Decimal(14, 2)
@@ -13523,9 +13542,9 @@ model FinanzaGasto {
 // FinanzaCobro pero del lado de egresos: un gasto puede tener muchos pagos;
 // el saldo y el estado (PENDIENTE/PARCIAL/PAGADO/VENCIDO) se derivan de la suma.
 model FinanzaPago {
-  id       String @id @default(uuid()) @db.Uuid
-  tenantId String @db.Uuid
-  gastoId  String @db.Uuid
+  id       String       @id @default(uuid()) @db.Uuid
+  tenantId String       @db.Uuid
+  gastoId  String       @db.Uuid
   gasto    FinanzaGasto @relation(fields: [gastoId], references: [id], onDelete: Cascade)
 
   fecha   DateTime @default(now()) @db.Timestamptz
@@ -13575,7 +13594,7 @@ model FinanzaCartolaMov {
   vinculos Json?
 
   appliedAt   DateTime? @db.Timestamptz // cuándo se aplicaron cobros/pagos
-  resueltoPor String?                   // quién lo resolvió a mano (vinculado_manual)
+  resueltoPor String? // quién lo resolvió a mano (vinculado_manual)
 
   createdById     String? @db.Uuid
   createdByNombre String?
@@ -13597,15 +13616,15 @@ model FinanzaComentarioPeriodo {
   tenantId String @db.Uuid
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  mesKey        String  // "YYYY-MM"
+  mesKey        String // "YYYY-MM"
   centroCostoId String? @db.Uuid
   texto         String
 
   createdById     String? @db.Uuid
   createdByNombre String?
 
-  createdAt DateTime @default(now()) @db.Timestamptz
-  updatedAt DateTime @updatedAt @db.Timestamptz
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
   deletedAt DateTime? @db.Timestamptz
 
   @@index([tenantId, mesKey])
@@ -13614,13 +13633,13 @@ model FinanzaComentarioPeriodo {
 
 // ── Marketing: leads capturados desde landings públicas (lead magnets) ──
 model MarketingLead {
-  id       String @id @default(uuid()) @db.Uuid
+  id       String  @id @default(uuid()) @db.Uuid
   email    String
   nombre   String?
   empresa  String?
   telefono String?
   source   String // 'checklist-iso-9001', 'matriz-iperc', 'plantilla-bia', 'soa-iso-27001', etc.
-  meta     Json?  // datos extra (ej: score del checklist)
+  meta     Json? // datos extra (ej: score del checklist)
   ip       String?
 
   utmSource   String?
@@ -13647,10 +13666,10 @@ model MarketingLead {
 // herramientas gratuitas, register_started/completed, validate_doc…
 // Ligero a propósito: sin FKs, solo índices para agregados rápidos.
 model GrowthEvent {
-  id    String @id @default(uuid()) @db.Uuid
+  id    String  @id @default(uuid()) @db.Uuid
   event String // PAGE_VIEW | TOOL_VIEW | LEAD_SUBMITTED | REGISTER_STARTED | REGISTER_COMPLETED | REFERRAL_CLICK | VALIDATE_DOC | UNSUBSCRIBE
   page  String? // path o slug de la página donde ocurrió
-  meta  Json?   // extras (utm, source, referrer-domain…)
+  meta  Json? // extras (utm, source, referrer-domain…)
   ip    String?
 
   createdAt DateTime @default(now()) @db.Timestamptz
@@ -13666,11 +13685,11 @@ model GrowthEvent {
 // con ese código, ambos reciben recompensa (días extra de trial).
 model Referral {
   id            String    @id @default(uuid()) @db.Uuid
-  code          String    // código del tenant que refiere (único por referrer)
+  code          String // código del tenant que refiere (único por referrer)
   referrerId    String    @db.Uuid
   referrer      Tenant    @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
   referredId    String?   @db.Uuid // tenant creado gracias al código
-  referredEmail String?   // email que se registró
+  referredEmail String? // email que se registró
   status        String    @default("CLICKED") // CLICKED | REGISTERED | REWARDED
   rewardDays    Int       @default(30)
   rewardedAt    DateTime? @db.Timestamptz
@@ -13697,10 +13716,10 @@ model SupplyItem {
   tenantId String @db.Uuid
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  code        String @unique
+  code        String  @unique
   name        String
-  rubro       String @default("OTRO") // LIMPIEZA, LIBRERIA, FILM, LUBRICANTE, EP, OTRO
-  unit        String @default("unidad") // unidad, litro, kg, caja, resma, rollo
+  rubro       String  @default("OTRO") // LIMPIEZA, LIBRERIA, FILM, LUBRICANTE, EP, OTRO
+  unit        String  @default("unidad") // unidad, litro, kg, caja, resma, rollo
   description String?
 
   currentStock Float @default(0)
@@ -13774,4 +13793,260 @@ model SupplyMovement {
   @@index([itemId])
   @@index([createdAt])
   @@map("supply_movements")
+}
+
+// ─────────────────────────────────────────────
+// AUDITOR IA — trazabilidad norma→requisito→evidencia→evaluación→decisión humana
+// Todos los estados son String (convención del schema: ej. Document.status,
+// ClauseEvidence.status) para permitir valores documentados sin migrar enums.
+// ─────────────────────────────────────────────
+
+// Extracción de una versión normativa. Inmutable tras APPROVED; una nueva
+// revisión del archivo genera una extracción nueva (nunca edita la anterior).
+model AuditorExtraction {
+  id          String            @id @default(uuid()) @db.Uuid
+  tenantId    String            @db.Uuid
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  normativeId String            @db.Uuid
+  normative   NormativeStandard @relation(fields: [normativeId], references: [id], onDelete: Cascade)
+
+  fileHash String // sha256 del PDF — dedupe de reprocesamiento
+  revision Int    @default(1)
+
+  status      String  @default("EXTRACTING") // EXTRACTING|PENDING_APPROVAL|APPROVED|REJECTED|UNREADABLE|FAILED
+  pageCount   Int     @default(0)
+  diagnostics Json? // {textPages, emptyPages, encrypted, avgCharsPerPage, reason}
+  model       String?
+  error       String?
+
+  approvedById String?   @db.Uuid
+  approvedAt   DateTime? @db.Timestamptz
+  rejectedById String?   @db.Uuid
+  rejectedAt   DateTime? @db.Timestamptz
+  rejectNote   String?
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  pages        AuditorSourcePage[]
+  requirements AuditorRequirement[]
+  reviews      AuditorReview[]
+
+  @@unique([normativeId, fileHash, revision])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("auditor_extractions")
+}
+
+// Texto por página del PDF normativo. Fuente de citas (requisito→página).
+model AuditorSourcePage {
+  id           String            @id @default(uuid()) @db.Uuid
+  tenantId     String            @db.Uuid
+  extractionId String            @db.Uuid
+  extraction   AuditorExtraction @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+
+  page     Int
+  text     String @db.Text
+  textHash String // sha256 para detectar cambios entre extracciones
+
+  @@unique([extractionId, page])
+  @@index([tenantId])
+  @@map("auditor_source_pages")
+}
+
+// Requisito verificable derivado de una cláusula, aprobado por una persona.
+model AuditorRequirement {
+  id           String            @id @default(uuid()) @db.Uuid
+  tenantId     String            @db.Uuid
+  extractionId String            @db.Uuid
+  extraction   AuditorExtraction @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+  clauseId     String?           @db.Uuid
+  clause       NormativeClause?  @relation(fields: [clauseId], references: [id], onDelete: SetNull)
+
+  code                   String // "6.2-a" — correlativo dentro de la cláusula
+  clauseNumber           String // denormalizado para mostrar/ordenar
+  statement              String // paráfrasis verificable (≤300)
+  verificationTypes      String[] @default([]) // DOCUMENT|RECORD|OBSERVATION|INTERVIEW
+  connectorKeys          String[] @default([]) // conectores sugeridos (catálogo)
+  page                   Int? // página del PDF; null = "página no determinada"
+  requiresDocumentedInfo Boolean  @default(false) // la cláusula exige "información documentada"
+  origin                 String   @default("AI") // AI | CLAUSE_FALLBACK | MANUAL
+  status                 String   @default("PROPOSED") // PROPOSED|APPROVED|DISCARDED
+  order                  Int      @default(0)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  evaluations AuditorEvaluation[]
+
+  @@unique([extractionId, code])
+  @@index([tenantId])
+  @@index([extractionId])
+  @@map("auditor_requirements")
+}
+
+// Ejecución de revisión sobre una extracción aprobada, con alcance y período.
+model AuditorReview {
+  id           String            @id @default(uuid()) @db.Uuid
+  tenantId     String            @db.Uuid
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  extractionId String            @db.Uuid
+  extraction   AuditorExtraction @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+  normativeId  String            @db.Uuid // denormalizado para consultas
+
+  scope          String?   @db.Text
+  processIds     String[]  @default([])
+  sites          String[]  @default([])
+  periodFrom     DateTime? @db.Timestamptz
+  periodTo       DateTime? @db.Timestamptz
+  requirementIds String[]  @default([]) // vacío = todos los APPROVED
+
+  status            String  @default("DRAFT") // DRAFT|QUEUED|RUNNING|COMPLETED|PARTIAL|FAILED|CANCELLED
+  progress          Int     @default(0)
+  totalRequirements Int     @default(0)
+  totals            Json? // contadores por eje/estado
+  jobId             String?
+  dedupeKey         String? // hash de configuración — evita ejecuciones duplicadas
+  cancelRequested   Boolean @default(false)
+
+  estTokens  Int     @default(0)
+  usedTokens Int     @default(0)
+  model      String?
+  config     Json?
+
+  createdById String?   @db.Uuid
+  startedAt   DateTime? @db.Timestamptz
+  finishedAt  DateTime? @db.Timestamptz
+  error       String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+
+  evaluations AuditorEvaluation[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, dedupeKey])
+  @@index([extractionId])
+  @@map("auditor_reviews")
+}
+
+// Resultado por requisito dentro de una revisión. 4 ejes independientes:
+// trabajo (sistema), presencia de evidencia (conectores), dictamen (IA) y
+// decisión humana. Inmutable por attempt; la reevaluación crea attempt nuevo.
+model AuditorEvaluation {
+  id            String             @id @default(uuid()) @db.Uuid
+  tenantId      String             @db.Uuid
+  reviewId      String             @db.Uuid
+  review        AuditorReview      @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  requirementId String             @db.Uuid
+  requirement   AuditorRequirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  attempt       Int                @default(1)
+
+  workStatus     String @default("PENDING") // PENDING|IN_PROGRESS|EVALUATED|CANNOT_EVALUATE|STALE
+  evidenceStatus String @default("NOT_SEARCHED") // NOT_SEARCHED|FOUND|PARTIAL|ABSENT|SOURCE_UNAVAILABLE
+  aiVerdict      String @default("NONE") // NONE|EVIDENCE_SUPPORTS|POSSIBLE_GAP|REQUIRES_EXTERNAL_VERIFICATION|INSUFFICIENT_EVIDENCE
+  humanDecision  String @default("PENDING") // PENDING|VALIDATED|GAP_CONFIRMED|MORE_EVIDENCE_REQUESTED|AI_REJECTED|NA_PROPOSED|NA_APPROVED|NA_REJECTED
+
+  explanation        String? @db.Text
+  limitations        Json? // string[]
+  externalChecks     Json? // verificaciones fuera del sistema pendientes
+  gaps               Json? // [{description, relatedRefs[]}]
+  proposals          Json? // [{action, target}]
+  auditQuestions     Json? // preguntas sugeridas para la auditoría
+  sourcesConsulted   Json? // refs de evidencias entregadas al modelo
+  sourcesUnavailable Json? // [{connectorKey, reason}]
+  sourceSnapshot     Json? // [{type,id,version,updatedAt,hash}] — invalidación selectiva
+
+  model         String?
+  promptVersion String?
+  tokens        Int     @default(0)
+  noProvider    Boolean @default(false) // evaluado sin IA configurada
+
+  decidedById     String?   @db.Uuid
+  decidedAt       DateTime? @db.Timestamptz
+  decisionComment String?
+  naJustification String?
+  naProposedById  String?   @db.Uuid
+  naApprovedById  String?   @db.Uuid
+  naApprovedAt    DateTime? @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  evidenceLinks AuditorEvidenceLink[]
+  decisionLogs  AuditorDecisionLog[]
+
+  @@unique([reviewId, requirementId, attempt])
+  @@index([tenantId])
+  @@index([reviewId])
+  @@index([requirementId])
+  @@map("auditor_evaluations")
+}
+
+// Vínculo requisito↔evidencia con su versión/fecha capturada al vincular.
+model AuditorEvidenceLink {
+  id           String            @id @default(uuid()) @db.Uuid
+  tenantId     String            @db.Uuid
+  evaluationId String            @db.Uuid
+  evaluation   AuditorEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  connectorKey    String
+  entityType      String // document | objective | risk | ...
+  entityId        String    @db.Uuid
+  version         String? // versión del documento o equivalente
+  entityUpdatedAt DateTime?
+  title           String
+  url             String?
+  summary         String?   @db.Text // resumen acotado entregado al modelo
+  entityHash      String?
+
+  origin       String  @default("AUTO") // AUTO|SUGGESTED|MANUAL
+  aiAssessment String? // SUPPORTS|NOT_SUPPORTS|INCONCLUSIVE
+  inPeriod     Boolean @default(true)
+  addedById    String? @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([evaluationId])
+  @@index([tenantId, entityType, entityId]) // invalidación por cambio de fuente
+  @@map("auditor_evidence_links")
+}
+
+// Caché de texto de adjuntos de documentos (para fragmentos citables).
+model AuditorDocExtract {
+  id              String @id @default(uuid()) @db.Uuid
+  tenantId        String @db.Uuid
+  tenant          Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  documentId      String @unique @db.Uuid // caché 1:1 — se refresca si cambia versión/archivo
+  documentVersion Int
+  fileHash        String
+  text            String @db.Text
+  pages           Int    @default(0)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("auditor_doc_extracts")
+}
+
+// Historial inmutable de transiciones (sistema y humanas) por evaluación.
+model AuditorDecisionLog {
+  id           String            @id @default(uuid()) @db.Uuid
+  tenantId     String            @db.Uuid
+  evaluationId String            @db.Uuid
+  evaluation   AuditorEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  axis      String // workStatus|evidenceStatus|aiVerdict|humanDecision|evidenceLink
+  fromValue String?
+  toValue   String
+  actorId   String? @db.Uuid // null = sistema
+  comment   String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([evaluationId])
+  @@index([tenantId])
+  @@map("auditor_decision_logs")
 }

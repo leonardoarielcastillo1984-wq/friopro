@@ -27,6 +27,7 @@ import { departmentRoutes } from './routes/departments.js';
 import { normativoRoutes, clauseMappingRoutes } from './routes/normativos.js';
 import { complianceEvidenceRoutes } from './routes/compliance-evidences.js';
 import { auditRoutes } from './routes/audit.js';
+import { auditorIaRoutes } from './routes/auditor-ia.js';
 import gestionCambiosRoutes from './routes/gestion-cambios.js';
 import { registerAuditRoutes } from './routes/audits.js';
 import { registerManagementReviewRoutes } from './routes/managementReview.js';
@@ -135,6 +136,7 @@ import { registerHelpRoutes } from './routes/help.js';
 import { registerFeedbackRoutes } from './routes/feedback.js';
 import { demoRoutes } from './routes/demo.js';
 import { startNormativeWorker, startAuditWorker, recoverStuckNormatives } from './jobs/queue.js';
+import { startAuditorIaWorker } from './jobs/auditorIaJobs.js';
 import { startEmailWorker } from './jobs/emailQueue.js';
 import { startStorageReconcileJob } from './jobs/storageReconcileJob.js';
 import { startMaintenanceRemindersJob } from './jobs/maintenanceRemindersJob.js';
@@ -267,6 +269,7 @@ export async function buildApp() {
   // Iniciar workers
   startNormativeWorker();
   startAuditWorker();
+  startAuditorIaWorker();
   startEmailWorker();
   // Recuperar normativos que quedaron atascados (p.ej. Redis read-only al subirlos)
   void recoverStuckNormatives();
@@ -414,6 +417,9 @@ export async function buildApp() {
   await app.register(normativoRoutes, { prefix: '/normativos' });
   await app.register(complianceEvidenceRoutes, { prefix: '/normativos' });
   await app.register(auditRoutes, { prefix: '/audit' });
+  // Auditor IA — doble prefijo como finanzas (Nginx strippea /api en prod)
+  await app.register(auditorIaRoutes, { prefix: '/auditor-ia' });
+  await app.register(auditorIaRoutes, { prefix: '/api/auditor-ia' });
   await app.register(registerAuditRoutes);
   await app.register(registerManagementReviewRoutes);
   await app.register(coreToolsRoutes, { prefix: '/core-tools' });

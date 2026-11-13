@@ -30,6 +30,8 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/finanzas': 'resultados',
   '/centro-empresa': 'centro-empresa',
   '/api/centro-empresa': 'centro-empresa',
+  '/auditor-ia': 'auditor-ia',
+  '/api/auditor-ia': 'auditor-ia',
 };
 
 export const userPermissionsPlugin = fp(async (app: FastifyInstance) => {

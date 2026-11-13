@@ -46,6 +46,7 @@ import {
   Wrench,
   Building2,
   HardHat,
+  ScanSearch,
 } from 'lucide-react';
 
 const mainNav = [
@@ -78,6 +79,7 @@ const mainNav = [
   // 5. Calidad y mejora continua
   { label: 'No Conformidades y Plan de acción', icon: ClipboardCheck, href: '/calidad' },
   { label: 'Auditorías', icon: BrainCircuit, href: '/auditoria' },
+  { label: 'Auditor IA', icon: ScanSearch, href: '/auditor-ia' },
   { label: 'Revisión por la Dirección', icon: FileBarChart, href: '/revision-direccion' },
   { label: 'Core Tools IATF', icon: Wrench, href: '/core-tools' },
 
@@ -134,6 +136,7 @@ const MODULE_PLAN_REQUIREMENTS: Record<string, PlanTier> = {
   '/clientes': 'PROFESSIONAL',
   '/reportes': 'PROFESSIONAL',
   '/auditoria': 'PREMIUM',
+  '/auditor-ia': 'PREMIUM',
   '/revision-direccion': 'PROFESSIONAL',
   '/core-tools': 'PROFESSIONAL',
   '/rrhh': 'PREMIUM',
