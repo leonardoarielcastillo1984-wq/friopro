@@ -23,7 +23,7 @@ import {
 } from './schemas.js';
 import { CONNECTOR_KEYS } from './connectors/index.js';
 
-export const PROMPT_VERSION = 'auditor-ia/v1';
+export const PROMPT_VERSION = 'auditor-ia/v2';
 
 const DATA_OPEN = '<<<DATOS id="{id}">';
 const DATA_CLOSE = '<<<FIN>>>';
@@ -125,6 +125,8 @@ export class AuditorLLM {
       'frente al requisito. ' +
       '(5) Nunca afirmes cumplimiento legal; EVIDENCE_SUPPORTS significa que la ' +
       'evidencia respalda, no que se "cumple". ' +
+      '(6) Redactá TODOS los campos de texto en español rioplatense: explanation, ' +
+      'gaps, limitations, externalChecks, proposals, auditQuestions, aspect y note. ' +
       UNTRUSTED_NOTICE;
 
     const evBlock = args.evidence

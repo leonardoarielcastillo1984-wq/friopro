@@ -74,6 +74,8 @@ export interface EvaluationRow {
   id: string;
   requirementId: string;
   attempt: number;
+  noProvider?: boolean;
+  limitations?: string[] | null;
   workStatus: string;
   evidenceStatus: string;
   aiVerdict: string;

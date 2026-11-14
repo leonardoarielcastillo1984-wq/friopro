@@ -207,7 +207,25 @@ export default function ReviewDetailPage() {
                     <td className="px-3 py-2.5 max-w-[280px]">
                       <span className="line-clamp-2 text-neutral-800">{ev.requirement.statement}</span>
                     </td>
-                    <td className="px-3 py-2.5"><Badge axis="workStatus" value={ev.workStatus} /></td>
+                    <td className="px-3 py-2.5">
+                      <Badge axis="workStatus" value={ev.workStatus} />
+                      {ev.workStatus === 'IN_PROGRESS' && (
+                        <div className="mt-0.5 text-[10px] text-blue-600 font-medium">
+                          {review.progress}% de avance
+                        </div>
+                      )}
+                      {ev.workStatus === 'CANNOT_EVALUATE' && (
+                        <div className="mt-0.5 text-[10px] text-rose-600 leading-snug" title={ev.limitations?.join(' · ') ?? ''}>
+                          {ev.noProvider
+                            ? 'Sin proveedor LLM configurado'
+                            : ev.limitations?.[0]
+                              ? ev.limitations[0].length > 60
+                                ? `${ev.limitations[0].slice(0, 57)}…`
+                                : ev.limitations[0]
+                              : 'No se pudo evaluar'}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5"><Badge axis="evidenceStatus" value={ev.evidenceStatus} /></td>
                     <td className="px-3 py-2.5"><Badge axis="aiVerdict" value={ev.aiVerdict} /></td>
                     <td className="px-3 py-2.5"><Badge axis="humanDecision" value={ev.humanDecision} /></td>

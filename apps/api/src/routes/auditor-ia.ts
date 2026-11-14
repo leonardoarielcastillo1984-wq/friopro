@@ -514,6 +514,7 @@ export async function auditorIaRoutes(app: FastifyInstance) {
             id: true, requirementId: true, attempt: true,
             workStatus: true, evidenceStatus: true, aiVerdict: true,
             humanDecision: true, tokens: true, updatedAt: true,
+            noProvider: true, limitations: true,
             requirement: {
               select: { code: true, clauseNumber: true, statement: true, page: true },
             },
