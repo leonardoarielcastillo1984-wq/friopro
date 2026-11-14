@@ -36,6 +36,7 @@ interface ActionPlan {
   progressPercent: number; effectivenessCheckDate: string|null; effectivenessMethod: string|null;
   effectivenessResult: string|null; effectiveness: APEffectiveness; cancellationReason: string|null;
   observations: string|null; closedAt: string|null; codeAssignedAt: string|null;
+  systemicCheck: string|null; systemicCheckResult: string|null;
   createdAt: string; updatedAt: string;
   ncr?: { id: string; code: string; title: string; severity: string; status: string; }|null;
   executor?: User|null; supervisor?: User|null; effectivenessChecker?: User|null;
@@ -89,12 +90,19 @@ const EFF_OPTS: SelectOption[] = [
   { value: 'EFFECTIVE', label: 'Si, es eficaz' },
   { value: 'NOT_EFFECTIVE', label: 'No es eficaz' },
 ];
+// IATF 16949 §10.2.3 — extensión sistémica de la NC a otros procesos/departamentos
+const SYS_CHECK_OPTS: SelectOption[] = [
+  { value: 'PENDING', label: 'Pendiente' },
+  { value: 'DONE', label: 'Verificado' },
+  { value: 'NOT_REQUIRED', label: 'No aplica' },
+];
 const STATUS_OPTS: SelectOption[] = Object.entries(STATUS_CFG).map(([v, c]) => ({ value: v, label: c.label }));
 
 const TYPE_LABELS: Record<string, string> = Object.fromEntries(TYPE_OPTS.map(o => [o.value, o.label]));
 const ORIGIN_LABELS: Record<string, string> = Object.fromEntries(ORIGIN_OPTS.map(o => [o.value, o.label]));
 const METHOD_LABELS: Record<string, string> = Object.fromEntries(METHOD_OPTS.map(o => [o.value, o.label]));
 const EFF_LABELS: Record<string, string> = Object.fromEntries(EFF_OPTS.map(o => [o.value, o.label]));
+const SYS_CHECK_LABELS: Record<string, string> = Object.fromEntries(SYS_CHECK_OPTS.map(o => [o.value, o.label]));
 
 const DASH = '\u2014';
 
@@ -169,6 +177,8 @@ const COLUMNS: ColDef[] = [
   { key: 'executorName', label: 'Responsable', group: 'ejecucion', width: 110 },
   { key: 'progressPercent', label: 'Avance %', group: 'ejecucion', width: 70, editable: true, cellType: 'number', min: 0, max: 100, field: 'progressPercent' },
   { key: 'actualEndDate', label: 'F. real fin.', group: 'ejecucion', width: 90, editable: true, cellType: 'date', field: 'actualEndDate' },
+  { key: 'systemicCheck', label: 'Verif. otros proc. (10.2.3)', group: 'verificacion', width: 140, editable: true, cellType: 'select', options: SYS_CHECK_OPTS, field: 'systemicCheck' },
+  { key: 'systemicCheckResult', label: 'Analisis otros procesos (IATF 10.2.3)', group: 'verificacion', width: 180, editable: true, cellType: 'textarea', field: 'systemicCheckResult' },
   { key: 'effectivenessCheckDate', label: 'F. verif. efic.', group: 'verificacion', width: 90, editable: true, cellType: 'date', field: 'effectivenessCheckDate' },
   { key: 'effectivenessMethod', label: 'Metodo verif.', group: 'verificacion', width: 130, editable: true, cellType: 'textarea', field: 'effectivenessMethod' },
   { key: 'effectivenessResult', label: 'Resultado verif.', group: 'verificacion', width: 150, editable: true, cellType: 'textarea', field: 'effectivenessResult' },
@@ -272,6 +282,8 @@ function DetailModal({ plan, onClose }: { plan: ActionPlan; onClose: () => void;
               {field('Accion planificada', plan.plannedAction)}
               {field('Resultado esperado', plan.expectedResult)}
               {field('Recursos', plan.requiredResources)}
+              {field('Verif. otros procesos (IATF 10.2.3)', plan.systemicCheck ? SYS_CHECK_LABELS[plan.systemicCheck] ?? plan.systemicCheck : null)}
+              <div className="md:col-span-2">{field('Analisis en otros procesos/departamentos', plan.systemicCheckResult)}</div>
               {field('Metodo verif.', plan.effectivenessMethod)}
               {field('Resultado verif.', plan.effectivenessResult)}
               {field('Eficacia', EFF_LABELS[plan.effectiveness])}
@@ -528,6 +540,7 @@ function PlanAccionPageInner() {
         else if (colKey === 'origin') val = ORIGIN_LABELS[p.origin] ?? '';
         else if (colKey === 'analysisMethod') val = p.analysisMethod ? METHOD_LABELS[p.analysisMethod] : '';
         else if (colKey === 'effectiveness') val = EFF_LABELS[p.effectiveness] ?? '';
+        else if (colKey === 'systemicCheck') val = SYS_CHECK_LABELS[p.systemicCheck ?? 'PENDING'] ?? '';
         else if (colKey === 'progressPercent') val = String(p.progressPercent);
         else if (colKey === 'sequenceNumber') val = String(p.sequenceNumber ?? '');
         else val = String((p as any)[colKey] ?? '');

@@ -12371,6 +12371,13 @@ model ActionPlan {
   processChanges       String?
   documentationChanges String?
 
+  // IATF 16949 §10.2.3 — extensión sistémica: verificar que la no
+  // conformidad no se repite en otros procesos/departamentos y
+  // dejar evidencia de ese análisis.
+  // PENDING | DONE | NOT_REQUIRED
+  systemicCheck       String  @default("PENDING")
+  systemicCheckResult String?
+
   // Evaluación de riesgo (Matriz Prob×Impacto)
   initialProbability  Int?
   initialImpact       Int?

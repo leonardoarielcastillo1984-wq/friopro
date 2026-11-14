@@ -37,6 +37,9 @@ const createSchema = z.object({
   preventiveAction: z.string().nullable().optional(),
   processChanges: z.string().nullable().optional(),
   documentationChanges: z.string().nullable().optional(),
+  // IATF 16949 §10.2.3 — verificación de extensión a otros procesos
+  systemicCheck: z.enum(['PENDING','DONE','NOT_REQUIRED']).nullable().optional(),
+  systemicCheckResult: z.string().nullable().optional(),
   initialProbability: z.number().int().min(1).max(5).nullable().optional(),
   initialImpact: z.number().int().min(1).max(5).nullable().optional(),
   initialRiskLevel: z.string().nullable().optional(),
