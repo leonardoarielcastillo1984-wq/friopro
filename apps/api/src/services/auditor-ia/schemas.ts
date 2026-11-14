@@ -75,6 +75,36 @@ export const EvaluationOutputSchema = z.object({
 });
 export type EvaluationOutput = z.infer<typeof EvaluationOutputSchema>;
 
+/**
+ * Normaliza errores típicos de modelos locales antes de validar:
+ *  - campos array en null/undefined → []
+ *  - campos array-de-string como string suelto → [string]
+ *  - items no-objeto en arrays de objetos → filtrados
+ *  - gaps[].relatedRefs null → []
+ * Evita que `"limitations": null` tumbe toda la evaluación.
+ */
+export function normalizeEvaluationJson(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  const o = { ...(raw as Record<string, unknown>) };
+
+  for (const f of ['limitations', 'externalChecks', 'auditQuestions']) {
+    if (o[f] == null) o[f] = [];
+    else if (typeof o[f] === 'string') o[f] = [o[f]];
+  }
+  for (const f of ['evidence', 'gaps', 'proposals']) {
+    if (o[f] == null) o[f] = [];
+    else if (Array.isArray(o[f])) o[f] = (o[f] as unknown[]).filter(
+      (i) => i && typeof i === 'object' && !Array.isArray(i),
+    );
+  }
+  if (Array.isArray(o.gaps)) {
+    o.gaps = (o.gaps as Record<string, unknown>[]).map((g) =>
+      g && typeof g === 'object' && g.relatedRefs == null ? { ...g, relatedRefs: [] } : g,
+    );
+  }
+  return o;
+}
+
 // ── Consulta conversacional ──────────────────────────────────
 
 export const AnswerOutputSchema = z.object({
@@ -120,6 +150,21 @@ export function invalidRefs(output: EvaluationOutput | AnswerOutput, validRefs: 
     for (const c of output.citations) refs.push(c.ref);
   }
   return [...new Set(refs.filter((r) => !validRefs.has(r)))];
+}
+
+/**
+ * ZodError → texto legible 'campo: mensaje' para persistir en
+ * limitations. El dump JSON crudo de e.message llega hasta la UI
+ * y es ilegible (aparece como '{"code":"invalid_type",...').
+ */
+export function zodSummary(e: unknown): string {
+  if (e instanceof z.ZodError) {
+    return e.issues
+      .slice(0, 3)
+      .map((i) => `${i.path.join('.') || 'raíz'}: ${i.message}`)
+      .join('; ');
+  }
+  return (e as Error).message ?? 'error desconocido';
 }
 
 /** Parsea texto a JSON tolerando fences markdown. */

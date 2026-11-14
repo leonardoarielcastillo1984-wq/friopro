@@ -17,6 +17,8 @@ import {
   sanitizeEvaluation,
   invalidRefs,
   parseModelJson,
+  normalizeEvaluationJson,
+  zodSummary,
   type ExtractionOutput,
   type EvaluationOutput,
   type AnswerOutput,
@@ -130,7 +132,7 @@ export class AuditorLLM {
       const parsed = ExtractionOutputSchema.parse(parseModelJson(r.text));
       return { ok: true, output: parsed, tokens: r.tokens, model: r.model };
     } catch (e) {
-      return { ok: false, error: `salida inválida: ${(e as Error).message}`.slice(0, 300), tokens: r.tokens, model: r.model };
+      return { ok: false, error: `salida inválida: ${zodSummary(e)}`.slice(0, 300), tokens: r.tokens, model: r.model };
     }
   }
 
@@ -183,7 +185,9 @@ export class AuditorLLM {
         continue;
       }
       try {
-        const parsed = EvaluationOutputSchema.parse(parseModelJson(r.text));
+        const parsed = EvaluationOutputSchema.parse(
+          normalizeEvaluationJson(parseModelJson(r.text)),
+        );
         const bad = invalidRefs(parsed, validRefs);
         if (bad.length) {
           lastError = `refs inválidos: ${bad.join(', ')}`;
@@ -200,7 +204,7 @@ export class AuditorLLM {
         }
         return { ok: true, output, tokens, model: r.model };
       } catch (e) {
-        lastError = `salida inválida: ${(e as Error).message}`.slice(0, 300);
+        lastError = `salida inválida: ${zodSummary(e)}`.slice(0, 300);
       }
     }
     return { ok: false, error: lastError || 'salida inválida del modelo', tokens: 0 };
