@@ -22,6 +22,8 @@ import { AuditorLLM, PROMPT_VERSION } from './llm-adapter.js';
 export interface ReviewRunContext {
   tenantId: string;
   reviewId: string;
+  /** Norma de la revisión: los conectores filtran mapeos por cláusula. */
+  normativeId?: string;
   createdById: string | null;
   userPerms: UserPerms;
   processIds: string[];
@@ -114,12 +116,49 @@ async function evaluateOne(
     const connectorCtx: ConnectorContext = {
       tenantId,
       userPerms: ctx.userPerms,
+      normativeId: ctx.normativeId,
       processIds: ctx.processIds,
       sites: ctx.sites,
       periodFrom: ctx.periodFrom,
       periodTo: ctx.periodTo,
       db: prisma,
     };
+
+    // Evidencia manual del intento anterior: los vínculos son por
+    // evaluación, así que el intento nuevo arranca con copias y el
+    // modelo las ve como fuentes (E#).
+    if (attempt > 1) {
+      const prevLinks = await prisma.auditorEvidenceLink.findMany({
+        where: {
+          tenantId,
+          origin: 'MANUAL',
+          evaluation: {
+            reviewId: ctx.reviewId,
+            requirementId: requirement.id,
+            attempt: attempt - 1,
+          },
+        },
+        select: {
+          entityType: true, entityId: true, version: true,
+          entityUpdatedAt: true, title: true, url: true,
+          summary: true, entityHash: true, inPeriod: true,
+        },
+      });
+      for (const l of prevLinks) {
+        items.push({
+          entityType: l.entityType,
+          entityId: l.entityId,
+          title: l.title,
+          version: l.version ?? undefined,
+          updatedAt: l.entityUpdatedAt ?? undefined,
+          url: l.url ?? '',
+          inPeriod: l.inPeriod,
+          summary: l.summary ?? l.title,
+          hash: l.entityHash ?? '',
+          manual: true,
+        });
+      }
+    }
 
     for (const key of requirement.connectorKeys.length ? requirement.connectorKeys : ['documents']) {
       const connector = getConnector(key);
@@ -159,9 +198,25 @@ async function evaluateOne(
       }
     }
 
-    // Evidencia en período primero: el modelo recibe las primeras
-    // MAX_MODEL_EVIDENCE y los refs E# se asignan por este orden.
-    items.sort((a, b) => Number(b.inPeriod) - Number(a.inPeriod));
+    // Dedupe por entidad: un ítem manual vinculado a la misma fuente
+    // que colecta un conector no aparece dos veces (gana el manual).
+    const seen = new Set<string>();
+    const deduped = items.filter((i) => {
+      const k = `${i.entityType}:${i.entityId}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    items.length = 0;
+    items.push(...deduped);
+
+    // Evidencia manual primero (la marcó un humano) y en período
+    // después: el modelo recibe las primeras MAX_MODEL_EVIDENCE y
+    // los refs E# se asignan por este orden.
+    items.sort((a, b) =>
+      Number(b.manual ?? false) - Number(a.manual ?? false) ||
+      Number(b.inPeriod) - Number(a.inPeriod),
+    );
 
     // 3) evidenceStatus determinista
     const evidenceStatus = computeEvidenceStatus(items, consulted.length > 0);
@@ -256,7 +311,7 @@ async function evaluateOne(
           url: i.url,
           summary: i.summary,
           entityHash: i.hash,
-          origin: 'AUTO' as const,
+          origin: (i.manual ? 'MANUAL' : 'AUTO') as 'MANUAL' | 'AUTO',
           aiAssessment: assessments[`E${idx + 1}`] ?? null,
           inPeriod: i.inPeriod,
         })),

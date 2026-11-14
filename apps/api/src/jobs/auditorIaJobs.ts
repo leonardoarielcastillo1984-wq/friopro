@@ -58,7 +58,7 @@ async function processAuditorReviewJob(job: Job<AuditorReviewPayload>): Promise<
     const review = await prisma.auditorReview.findFirst({
       where: { id: reviewId, tenantId },
       select: {
-        id: true, tenantId: true, createdById: true, processIds: true,
+        id: true, tenantId: true, normativeId: true, createdById: true, processIds: true,
         sites: true, periodFrom: true, periodTo: true, config: true,
       },
     });
@@ -80,6 +80,7 @@ async function processAuditorReviewJob(job: Job<AuditorReviewPayload>): Promise<
         {
           tenantId,
           reviewId,
+          normativeId: review.normativeId,
           createdById: userId,
           userPerms,
           processIds: review.processIds ?? [],
@@ -107,6 +108,7 @@ async function processAuditorReviewJob(job: Job<AuditorReviewPayload>): Promise<
     const result = await runReview({
       tenantId,
       reviewId,
+      normativeId: review.normativeId,
       createdById: review.createdById,
       userPerms,
       processIds: review.processIds ?? [],

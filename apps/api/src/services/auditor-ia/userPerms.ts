@@ -20,7 +20,7 @@ interface UserPermsDb {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tenantMembership: { findFirst: (args: any) => Promise<{ role: string } | null> };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  user: { findUnique: (args: any) => Promise<{ permissions: unknown } | null> };
+  user: { findUnique: (args: any) => Promise<{ permissions: unknown; status?: string; employee?: { tenantId: string } | null } | null> };
 }
 
 async function resolveFromDb(db: UserPermsDb, userId: string | null, tenantId?: string): Promise<UserPerms> {
@@ -48,9 +48,11 @@ async function resolveFromDb(db: UserPermsDb, userId: string | null, tenantId?: 
   if (!platformUser.email) return {};
   const user = await db.user.findUnique({
     where: { email: platformUser.email },
-    select: { permissions: true },
+    select: { permissions: true, status: true, employee: { select: { tenantId: true } } },
   });
   if (!user) return {}; // no es empleado y no es admin → sin fuentes
+  // Permisos de otra organización o usuario inactivo → sin fuentes.
+  if (!tenantId || user.employee?.tenantId !== tenantId || user.status !== 'ACTIVE') return {};
   return (user.permissions as UserPerms) ?? {};
 }
 

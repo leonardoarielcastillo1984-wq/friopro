@@ -85,13 +85,24 @@ export async function markStaleEvaluations(
   tenantId: string,
   reviewId: string,
 ): Promise<number> {
+  // Solo el último intento por requisito: un intento viejo ya fue
+  // reemplazado y marcarlo STALE sería ruido (además los reintentos
+  // los saltean igualmente).
   const evaluations = await db.auditorEvaluation.findMany({
     where: { reviewId, tenantId, workStatus: 'EVALUATED' },
-    select: { id: true, sourceSnapshot: true },
+    orderBy: [{ requirementId: 'asc' }, { attempt: 'desc' }],
+    select: { id: true, requirementId: true, sourceSnapshot: true },
   });
+  const latestOnly: typeof evaluations = [];
+  const seen = new Set<string>();
+  for (const ev of evaluations) {
+    if (seen.has(ev.requirementId)) continue;
+    seen.add(ev.requirementId);
+    latestOnly.push(ev);
+  }
 
   let marked = 0;
-  for (const ev of evaluations) {
+  for (const ev of latestOnly) {
     const changed = await findChangedSources(db, tenantId, ev.sourceSnapshot);
     if (changed.length) {
       await db.auditorEvaluation.update({

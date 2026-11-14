@@ -269,7 +269,7 @@ export async function runExtraction(args: {
     orderBy: { revision: 'desc' },
     select: { id: true, status: true },
   });
-  if (existing && existing.status !== 'FAILED') {
+  if (existing && existing.status !== 'FAILED' && existing.status !== 'REJECTED') {
     const err = new Error('Ya existe una extracción para esta versión del archivo') as Error & {
       statusCode?: number;
       extractionId?: string;

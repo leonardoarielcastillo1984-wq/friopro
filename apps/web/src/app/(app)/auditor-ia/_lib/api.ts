@@ -240,7 +240,7 @@ export const searchConnector = (key: string, q: string) =>
     `${BASE}/conectores/${key}/buscar?q=${encodeURIComponent(q)}`,
   );
 
-export const addEvidence = (id: string, body: { connectorKey: string; entityType: string; entityId: string; note?: string }) =>
+export const addEvidence = (id: string, body: { connectorKey: string; entityType: string; entityId: string; title?: string; note?: string }) =>
   apiFetch<EvidenceLink>(`${BASE}/evaluaciones/${id}/evidencias`, { method: 'POST', json: body });
 
 export const removeEvidence = (id: string, linkId: string) =>

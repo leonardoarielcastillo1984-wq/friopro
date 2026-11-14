@@ -18,7 +18,7 @@ import {
 } from '../services/auditor-ia/authz.js';
 import { runExtraction } from '../services/auditor-ia/extraction.js';
 import { markStaleEvaluations } from '../services/auditor-ia/staleness.js';
-import { getConnector } from '../services/auditor-ia/connectors/index.js';
+import { getConnector, hasModuleAccess, CONNECTOR_KEYS } from '../services/auditor-ia/connectors/index.js';
 import { getStorage } from '../services/storage.js';
 
 const idSchema = z.string().uuid();
@@ -138,6 +138,9 @@ export async function auditorIaRoutes(app: FastifyInstance) {
           userId: ctx.userId,
           getBuffer: async () => buffer,
         }),
+        // El parse del PDF es lo más lento; el default de Prisma
+        // (5s) abortaría normas largas.
+        { timeout: 60_000 },
       );
 
       return reply.code(202).send(result);
@@ -210,7 +213,14 @@ export async function auditorIaRoutes(app: FastifyInstance) {
     verificationTypes: z
       .array(z.enum(['DOCUMENT', 'RECORD', 'OBSERVATION', 'INTERVIEW']))
       .optional(),
-    connectorKeys: z.array(z.string().max(60)).max(10).optional(),
+    connectorKeys: z
+      .array(z.string().max(60))
+      .max(10)
+      .refine(
+        (keys) => keys.every((k) => CONNECTOR_KEYS.includes(k)),
+        { message: `connectorKeys válidas: ${CONNECTOR_KEYS.join(', ')}` },
+      )
+      .optional(),
     status: z.enum(['PROPOSED', 'APPROVED', 'DISCARDED']).optional(),
     page: z.number().int().min(1).nullable().optional(),
   });
@@ -266,8 +276,9 @@ export async function auditorIaRoutes(app: FastifyInstance) {
       select: {
         id: true,
         status: true,
-        _count: {
-          select: { requirements: { where: { status: 'PROPOSED' } } },
+        requirements: {
+          where: { status: { in: ['PROPOSED', 'APPROVED'] } },
+          select: { status: true },
         },
       },
     });
@@ -280,11 +291,19 @@ export async function auditorIaRoutes(app: FastifyInstance) {
         message: `No se puede aprobar una extracción en estado ${extraction.status}`,
       });
     }
-    if (extraction._count.requirements > 0) {
+    const pending = extraction.requirements.filter((r) => r.status === 'PROPOSED').length;
+    if (pending > 0) {
       return reply.code(422).send({
         error: 'REQUIREMENTS_PENDING',
         message: 'Quedan requisitos en estado PROPOSED; aprobálos o descartalos',
-        pending: extraction._count.requirements,
+        pending,
+      });
+    }
+    const approved = extraction.requirements.filter((r) => r.status === 'APPROVED').length;
+    if (approved === 0) {
+      return reply.code(422).send({
+        error: 'NO_REQUIREMENTS',
+        message: 'La extracción no tiene requisitos aprobados; no hay nada que revisar',
       });
     }
 
@@ -780,6 +799,9 @@ export async function auditorIaRoutes(app: FastifyInstance) {
 
     const { resolveUserPermsForRequest } = await import('../services/auditor-ia/userPerms.js');
     const userPerms = await resolveUserPermsForRequest(app, ctx.userId, ctx.tenantId);
+    if (!hasModuleAccess(userPerms, connector.permissionModule)) {
+      return reply.code(403).send({ error: 'PERMISSION_DENIED', module: connector.permissionModule });
+    }
     const candidates = await connector.search(
       {
         tenantId: ctx.tenantId,
@@ -804,6 +826,7 @@ export async function auditorIaRoutes(app: FastifyInstance) {
         connectorKey: z.string().min(1).max(60),
         entityType: z.string().min(1).max(80),
         entityId: idSchema,
+        title: z.string().max(300).optional(),
         note: z.string().max(500).optional(),
       })
       .parse(req.body);
@@ -817,8 +840,21 @@ export async function auditorIaRoutes(app: FastifyInstance) {
     const connector = getConnector(body.connectorKey);
     if (!connector) return reply.code(404).send({ error: 'CONNECTOR_NOT_FOUND' });
 
+    const { resolveUserPermsForRequest } = await import('../services/auditor-ia/userPerms.js');
+    const userPerms = await resolveUserPermsForRequest(app, ctx.userId, ctx.tenantId);
+    if (!hasModuleAccess(userPerms, connector.permissionModule)) {
+      return reply.code(403).send({ error: 'PERMISSION_DENIED', module: connector.permissionModule });
+    }
+
     const snap = await connector.snapshot(app.prisma, ctx.tenantId, body.entityId);
     if (!snap) return reply.code(404).send({ error: 'ENTITY_NOT_FOUND' });
+    // Tipo real de la entidad (el snapshot lo resuelve); el body no es confiable.
+    const entityType = snap.type;
+    const duplicate = await app.prisma.auditorEvidenceLink.findFirst({
+      where: { evaluationId: id, tenantId: ctx.tenantId, entityId: body.entityId },
+      select: { id: true },
+    });
+    if (duplicate) return reply.code(409).send({ error: 'ALREADY_LINKED', linkId: duplicate.id });
 
     const inPeriod = snap.updatedAt
       ? (!evaluation.review.periodFrom || new Date(snap.updatedAt) >= evaluation.review.periodFrom) &&
@@ -830,11 +866,12 @@ export async function auditorIaRoutes(app: FastifyInstance) {
         tenantId: ctx.tenantId,
         evaluationId: id,
         connectorKey: body.connectorKey,
-        entityType: body.entityType,
+        entityType,
         entityId: body.entityId,
         entityUpdatedAt: snap.updatedAt ? new Date(snap.updatedAt) : null,
         entityHash: snap.hash,
-        title: body.note ?? `${body.entityType} ${body.entityId.slice(0, 8)}`,
+        title: (body.title ?? body.note ?? `${entityType} ${body.entityId.slice(0, 8)}`).slice(0, 300),
+        summary: body.note,
         origin: 'MANUAL',
         addedById: ctx.userId,
         inPeriod,
@@ -845,7 +882,7 @@ export async function auditorIaRoutes(app: FastifyInstance) {
         tenantId: ctx.tenantId,
         evaluationId: id,
         axis: 'evidenceLink',
-        toValue: `MANUAL:${body.entityType}:${body.entityId.slice(0, 8)}`,
+        toValue: `MANUAL:${entityType}:${body.entityId.slice(0, 8)}`,
         actorId: ctx.userId,
         comment: body.note,
       },
@@ -1335,12 +1372,13 @@ ${buildReportHtml(data)}
     });
     if (!review) return reply.code(404).send({ error: 'NOT_FOUND' });
 
-    // Contexto acotado: últimas evaluaciones con su requisito y evidencias
-    const evaluations = await app.prisma.auditorEvaluation.findMany({
+    // Contexto acotado: solo el último intento por requisito (los
+    // intentos viejos mezclarían dictámenes ya reemplazados).
+    const allEvals = await app.prisma.auditorEvaluation.findMany({
       where: { reviewId: id, tenantId: ctx.tenantId },
-      orderBy: { createdAt: 'asc' },
-      take: 120,
+      orderBy: [{ requirementId: 'asc' }, { attempt: 'desc' }],
       select: {
+        requirementId: true,
         workStatus: true, evidenceStatus: true, aiVerdict: true,
         humanDecision: true, explanation: true, limitations: true,
         requirement: { select: { code: true, clauseNumber: true, statement: true } },
@@ -1350,6 +1388,11 @@ ${buildReportHtml(data)}
         },
       },
     });
+    const latestByReq = new Map<string, (typeof allEvals)[number]>();
+    for (const ev of allEvals) {
+      if (!latestByReq.has(ev.requirementId)) latestByReq.set(ev.requirementId, ev);
+    }
+    const evaluations = [...latestByReq.values()].slice(0, 120);
 
     // Construir refs R1..Rn (por evaluación) + subrefs de evidencia
     const context: Array<{ ref: string; text: string }> = [];

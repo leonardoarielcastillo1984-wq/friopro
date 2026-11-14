@@ -157,7 +157,9 @@ export async function buildReportData(
   rows.sort((a, b) => a.clauseNumber.localeCompare(b.clauseNumber, undefined, { numeric: true }) || a.code.localeCompare(b.code));
 
   // AiFinding.evaluationId es escalar (sin relación): filtrar por ids
-  const evalIds = review.evaluations.map((e) => e.id);
+  // del último intento por requisito — los hallazgos de intentos
+  // reemplazados no deben aparecer en el reporte.
+  const evalIds = latest.map((e) => e.id);
   const findings = evalIds.length
     ? await prisma.aiFinding.findMany({
         where: {

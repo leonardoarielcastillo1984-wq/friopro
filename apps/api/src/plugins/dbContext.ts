@@ -17,7 +17,8 @@ declare module 'fastify' {
   interface FastifyInstance {
     runWithDbContext<T>(
       req: FastifyRequest,
-      fn: (tx: Prisma.TransactionClient) => Promise<T>
+      fn: (tx: Prisma.TransactionClient) => Promise<T>,
+      options?: { timeout?: number; maxWait?: number }
     ): Promise<T>;
   }
 }
@@ -51,7 +52,8 @@ export const dbContextPlugin = fp(async (app: FastifyInstance) => {
 
   app.decorate('runWithDbContext', async <T>(
     req: FastifyRequest,
-    fn: (tx: Prisma.TransactionClient) => Promise<T>
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+    options?: { timeout?: number; maxWait?: number }
   ): Promise<T> => {
     if (!req.db) {
       const err: any = new Error('DB context not initialized');
@@ -77,7 +79,7 @@ export const dbContextPlugin = fp(async (app: FastifyInstance) => {
         await tx.$executeRaw`SELECT set_config('app.global_role', ${req.auth.globalRole}, true)`;
       }
       return fn(tx);
-    });
+    }, options);
   });
 
   app.addHook('preHandler', async (req: FastifyRequest, reply: FastifyReply) => {

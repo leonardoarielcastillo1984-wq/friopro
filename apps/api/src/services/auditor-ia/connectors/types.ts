@@ -18,6 +18,8 @@ export type UserPerms = Record<string, string> | 'admin';
 export interface ConnectorContext {
   tenantId: string;
   userPerms: UserPerms;
+  /** Norma de la revisión: filtra los mapeos documento↔cláusula. */
+  normativeId?: string;
   /** Filtro de alcance: ids de Process del mapa de procesos. Vacío = todos. */
   processIds: string[];
   /** Sedes (strings libres como Process.sites). Vacío = todas. */
@@ -49,6 +51,8 @@ export interface EvidenceItem {
   updatedAt?: Date;
   url: string; // ruta web para que el humano la abra
   inPeriod: boolean;
+  /** true = evidencia vinculada manualmente arrastrada a este intento. */
+  manual?: boolean;
   summary: string; // ≤800 chars, campos seleccionados
   hash: string; // huella para detectar cambios (staleness)
 }

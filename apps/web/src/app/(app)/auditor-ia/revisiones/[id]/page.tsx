@@ -598,7 +598,7 @@ function EvidencePicker({ evaluationId, onAdded }: { evaluationId: string; onAdd
   };
 
   const add = async (c: { entityType: string; entityId: string; title: string }) => {
-    await addEvidence(evaluationId, { connectorKey: key, entityType: c.entityType, entityId: c.entityId, note: c.title });
+    await addEvidence(evaluationId, { connectorKey: key, entityType: c.entityType, entityId: c.entityId, title: c.title });
     onAdded();
   };
 

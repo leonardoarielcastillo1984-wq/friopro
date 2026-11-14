@@ -18,6 +18,17 @@ function itemHash(d: { status: string; version: number; updatedAt?: Date | null 
 
 const MAX_SNIPPET = 400;
 
+// Palabras vacías frecuentes en enunciados de normas: no aportan
+// señal a la búsqueda por título y generan falsos positivos.
+const STOPWORDS = new Set([
+  'organización', 'debe', 'deben', 'deberá', 'tener', 'cuenta',
+  'asegurar', 'asegurarse', 'determinar', 'establecer', 'mantener',
+  'conservar', 'realizar', 'cuando', 'donde', 'según', 'sobre',
+  'entre', 'para', 'como', 'esto', 'estos', 'estas', 'todas',
+  'todos', 'parte', 'partes', 'forma', 'medida', 'necesario',
+  'necesarios', 'pertinente', 'pertinentes', 'aplicable', 'aplicables',
+]);
+
 /** Busca el fragmento más relevante del texto para el requisito. */
 function bestSnippet(text: string, requirement: RequirementRef): string {
   const lower = text.toLowerCase();
@@ -52,11 +63,18 @@ export const documentsConnector: EvidenceConnector = {
     try {
       // 1) Documentos mapeados a la cláusula (DocumentClauseMapping).
       // El mapping no tiene tenantId propio: se filtra por document/clause.
+      // clause.normativeId evita mezclar cláusulas homónimas de otras
+      // normas; NO_APLICA no aporta evidencia de cumplimiento.
       const mappings = await ctx.db.documentClauseMapping.findMany({
         where: {
           deletedAt: null,
+          complianceType: { not: 'NO_APLICA' },
           document: { tenantId: ctx.tenantId, deletedAt: null },
-          clause: { clauseNumber: requirement.clauseNumber, deletedAt: null },
+          clause: {
+            clauseNumber: requirement.clauseNumber,
+            deletedAt: null,
+            ...(ctx.normativeId ? { normativeId: ctx.normativeId } : {}),
+          },
         },
         select: { documentId: true },
       });
@@ -69,7 +87,7 @@ export const documentsConnector: EvidenceConnector = {
         .toLowerCase()
         .replace(/[^a-záéíóúñü\s]/g, ' ')
         .split(/\s+/)
-        .filter((w) => w.length > (ctx.relaxed ? 4 : 5))
+        .filter((w) => w.length > (ctx.relaxed ? 4 : 5) && !STOPWORDS.has(w))
         .slice(0, ctx.relaxed ? 6 : 3);
 
       const docs = await ctx.db.document.findMany({
@@ -91,13 +109,18 @@ export const documentsConnector: EvidenceConnector = {
           ],
         },
         orderBy: { updatedAt: 'desc' },
-        take: 30,
+        take: 60,
         select: {
           id: true, title: true, documentCode: true, type: true, status: true,
           version: true, filePath: true, approvedAt: true, reviewDate: true,
           nextReviewDate: true, updatedAt: true, content: true,
         },
       });
+
+      // Los documentos mapeados a la cláusula van primero: son
+      // evidencia curada, más relevante que un match de texto.
+      const mappedSet = new Set(mappedIds);
+      docs.sort((a, b) => Number(mappedSet.has(b.id)) - Number(mappedSet.has(a.id)));
 
       const items: EvidenceItem[] = [];
       for (const d of docs.slice(0, MAX_ITEMS)) {

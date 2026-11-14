@@ -52,6 +52,7 @@ type EmployeeAccess = 'none' | 'view' | 'edit';
 async function employeeAccess(
   app: FastifyInstance,
   userId: string,
+  tenantId: string,
 ): Promise<EmployeeAccess | null> {
   const platformUser = await app.prisma.platformUser.findUnique({
     where: { id: userId },
@@ -61,9 +62,11 @@ async function employeeAccess(
 
   const user = await app.prisma.user.findUnique({
     where: { email: platformUser.email },
-    select: { permissions: true },
+    select: { permissions: true, status: true, employee: { select: { tenantId: true } } },
   });
   if (!user) return null; // no es empleado → se decide por rol de tenant
+  // Los permisos del empleado son de SU organización: no se heredan a otra.
+  if (user.employee?.tenantId !== tenantId || user.status !== 'ACTIVE') return 'none';
 
   const permissions = (user.permissions as Record<string, unknown>) || {};
   const raw = permissions[MODULE_KEY];
@@ -109,7 +112,7 @@ export async function requireAuditorAccess(
   if (isAdmin) return { tenantId, userId: auth.userId };
 
   // Usuario de tenant: verificar permiso del módulo
-  const access = await employeeAccess(app, auth.userId);
+  const access = await employeeAccess(app, auth.userId, tenantId);
 
   if (access === null) {
     // Empleado sin registro interno → solo rol TENANT_ADMIN (ya evaluado).
