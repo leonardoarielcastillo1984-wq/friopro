@@ -62,13 +62,15 @@ export const documentsConnector: EvidenceConnector = {
       });
       const mappedIds = mappings.map((m) => m.documentId);
 
-      // 2) Búsqueda por texto: términos del statement sobre título/código
+      // 2) Búsqueda por texto: términos del statement sobre título/código.
+      // En modo relaxed (segunda pasada autónoma) se amplía: más términos,
+      // documentCode por número de cláusula y contenido del documento.
       const terms = requirement.statement
         .toLowerCase()
         .replace(/[^a-záéíóúñü\s]/g, ' ')
         .split(/\s+/)
-        .filter((w) => w.length > 5)
-        .slice(0, 3);
+        .filter((w) => w.length > (ctx.relaxed ? 4 : 5))
+        .slice(0, ctx.relaxed ? 6 : 3);
 
       const docs = await ctx.db.document.findMany({
         where: {
@@ -77,8 +79,14 @@ export const documentsConnector: EvidenceConnector = {
           status: { in: ['EFFECTIVE', 'REVIEW'] },
           OR: [
             { id: { in: mappedIds.length ? mappedIds : ['00000000-0000-0000-0000-000000000000'] } },
+            ...(ctx.relaxed
+              ? [{ documentCode: { contains: requirement.clauseNumber, mode: 'insensitive' as const } }]
+              : []),
             ...(terms.length
               ? terms.map((t) => ({ title: { contains: t, mode: 'insensitive' as const } }))
+              : []),
+            ...(ctx.relaxed && terms.length
+              ? terms.slice(0, 3).map((t) => ({ content: { contains: t, mode: 'insensitive' as const } }))
               : []),
           ],
         },

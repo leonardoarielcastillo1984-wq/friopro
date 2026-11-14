@@ -23,6 +23,11 @@ import { getStorage } from '../services/storage.js';
 
 const idSchema = z.string().uuid();
 
+// Watchdog STALE al abrir una revisión: throttle de 10 min por revisión
+// (el snapshot de fuentes es costoso y la UI hace polling).
+const STALE_CHECK_TTL_MS = 10 * 60 * 1000;
+const STALE_CHECK_CACHE = new Map<string, number>();
+
 async function guard(
   req: FastifyRequest,
   reply: FastifyReply,
@@ -499,6 +504,23 @@ export async function auditorIaRoutes(app: FastifyInstance) {
     if (!ctx) return;
 
     const { id } = z.object({ id: idSchema }).parse(req.params);
+
+    // Watchdog autónomo: si la revisión terminó, verificar en cada carga
+    // que las fuentes de evidencia no hayan cambiado (marca STALE).
+    // Throttle por revisión para no repetir snapshots en polling continuo.
+    const status = await app.prisma.auditorReview.findFirst({
+      where: { id, tenantId: ctx.tenantId },
+      select: { status: true },
+    });
+    if (status && ['COMPLETED', 'PARTIAL'].includes(status.status)) {
+      const lastCheck = STALE_CHECK_CACHE.get(id) ?? 0;
+      if (Date.now() - lastCheck > STALE_CHECK_TTL_MS) {
+        STALE_CHECK_CACHE.set(id, Date.now());
+        try { await markStaleEvaluations(app.prisma, ctx.tenantId, id); }
+        catch { /* best-effort: la UI sigue respondiendo aunque falle */ }
+      }
+    }
+
     const review = await app.prisma.auditorReview.findFirst({
       where: { id, tenantId: ctx.tenantId },
       include: {
@@ -881,6 +903,46 @@ export async function auditorIaRoutes(app: FastifyInstance) {
       requestedById: ctx.userId,
     });
     return reply.code(202).send({ queued: true, attempt: evaluation.attempt + 1 });
+  });
+
+  // POST /revisiones/:id/reevaluar-todas — encola un intento nuevo por cada
+  // requisito evaluado de la revisión. Regenera explicaciones, gaps y
+  // propuestas con el prompt vigente (p.ej. en español) y re-colecta
+  // evidencia fresca.
+  app.post('/revisiones/:id/reevaluar-todas', async (req, reply) => {
+    const ctx = await guard(req, reply, app, 'runReview');
+    if (!ctx) return;
+
+    const { id } = z.object({ id: idSchema }).parse(req.params);
+    const review = await app.prisma.auditorReview.findFirst({
+      where: { id, tenantId: ctx.tenantId },
+      select: { id: true },
+    });
+    if (!review) return reply.code(404).send({ error: 'NOT_FOUND' });
+
+    // Último intento por requisito
+    const evals = await app.prisma.auditorEvaluation.findMany({
+      where: { reviewId: id, tenantId: ctx.tenantId },
+      select: { requirementId: true, attempt: true },
+    });
+    const latest = new Map<string, number>();
+    for (const e of evals) {
+      latest.set(e.requirementId, Math.max(latest.get(e.requirementId) ?? 0, e.attempt));
+    }
+
+    const { getAuditorIaQueue } = await import('../jobs/auditorIaJobs.js');
+    let queued = 0;
+    for (const [requirementId, attempt] of latest) {
+      await getAuditorIaQueue().add('reevaluate-evaluation', {
+        reviewId: id,
+        tenantId: ctx.tenantId,
+        requirementId,
+        attempt: attempt + 1,
+        requestedById: ctx.userId,
+      });
+      queued++;
+    }
+    return reply.code(202).send({ queued });
   });
 
   // POST /revisiones/:id/verificar-staleness — marca STALE las evaluaciones

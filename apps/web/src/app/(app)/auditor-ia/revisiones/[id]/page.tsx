@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import {
   getReview, getEvaluation, decideEvaluation, proposeNA, approveNA,
-  reevaluate, checkStaleness, searchConnector, addEvidence, removeEvidence,
+  reevaluate, reevaluateAll, checkStaleness, searchConnector, addEvidence, removeEvidence,
   createFinding, listFindings, validateFinding, findingToNCR, findingToPlan,
   consultar, cancelReview, retryReview, L,
   type ReviewDetail, type EvaluationDetail, type Finding, type EvaluationRow,
@@ -135,6 +135,16 @@ export default function ReviewDetailPage() {
                   className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] font-medium text-neutral-600 hover:border-violet-300"
                 >
                   Verificar obsoletas
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!confirm('Re-evaluar todos los requisitos? Cada uno crea un intento nuevo y consume tokens.')) return;
+                    const r = await reevaluateAll(id);
+                    if (r.queued) await load();
+                  }}
+                  className="flex items-center gap-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] font-medium text-neutral-600 hover:border-violet-300"
+                >
+                  <Sparkles className="h-3.5 w-3.5" /> Re-evaluar todo
                 </button>
                 <button onClick={() => retryReview(id).then(load)} className="flex items-center gap-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] font-medium text-neutral-600 hover:border-violet-300">
                   <RefreshCw className="h-3.5 w-3.5" /> Reintentar

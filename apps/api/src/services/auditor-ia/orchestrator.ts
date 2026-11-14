@@ -133,6 +133,26 @@ async function evaluateOne(
       }
     }
 
+    // 2b) Segunda pasada autónoma: si no se localizó evidencia, el agente
+    // reintenta el conector de documentos con criterios más amplios
+    // (más términos del enunciado, número de cláusula, contenido).
+    let relaxedTried = false;
+    if (items.length === 0 && !unavailable.some((u) => u.key === 'documents')) {
+      const docConnector = getConnector('documents');
+      if (docConnector) {
+        relaxedTried = true;
+        try {
+          const retry = await docConnector.collect({ ...connectorCtx, relaxed: true }, requirement);
+          if (retry.items.length) {
+            items.push(...retry.items);
+            if (!consulted.includes('documents')) consulted.push('documents');
+          }
+        } catch {
+          // la segunda pasada es best-effort: si falla, se sigue con ABSENT
+        }
+      }
+    }
+
     // 3) evidenceStatus determinista
     const evidenceStatus = computeEvidenceStatus(items, consulted.length > 0);
 
@@ -172,9 +192,12 @@ async function evaluateOne(
       explanation =
         'No se encontró evidencia digital para este requisito en el alcance configurado. ' +
         'Esto no implica incumplimiento: verificar en sitio o cargar evidencia.';
-      limitations = unavailable.length
-        ? unavailable.map((u) => `fuente ${u.key}: ${u.reason}`)
-        : ['sin evidencia localizada'];
+      limitations = [
+        ...(unavailable.length
+          ? unavailable.map((u) => `fuente ${u.key}: ${u.reason}`)
+          : ['sin evidencia localizada']),
+        ...(relaxedTried ? ['búsqueda ampliada de documentos sin resultados'] : []),
+      ];
     } else {
       // 6) Llamada al modelo
       const result = await ctx.llm.evaluate({ requirement, evidence: items });
@@ -246,6 +269,39 @@ async function evaluateOne(
         tokens,
       },
     });
+
+    // Comportamiento autónomo: cuando el dictamen marca una brecha
+    // posible, el agente convierte sus propuestas ACTION_PLAN en
+    // planes de acción DRAFT (el humano los valida/cierra después).
+    // sourceRef evita duplicados en reevaluaciones del mismo intento.
+    if (aiVerdict === 'POSSIBLE_GAP') {
+      const actionProposals = (proposals as Array<{ action?: string; target?: string }>)
+        .filter((p) => p?.target === 'ACTION_PLAN' && typeof p.action === 'string' && p.action.length > 10)
+        .slice(0, 3);
+      const firstGap = (gaps as Array<{ description?: string }>)
+        .find((g) => typeof g?.description === 'string')?.description;
+      for (let i = 0; i < actionProposals.length; i++) {
+        const sourceRef = `auditor-ia:${evaluation.id}:${i}`;
+        const exists = await prisma.actionPlan.findFirst({
+          where: { tenantId, sourceRef },
+          select: { id: true },
+        });
+        if (exists) continue;
+        await prisma.actionPlan.create({
+          data: {
+            tenantId,
+            origin: 'AUDIT',
+            type: 'CORRECTIVE',
+            status: 'DRAFT',
+            requirement: `Cláusula ${requirement.clauseNumber}`,
+            findingDescription: (firstGap ?? explanation).slice(0, 2000),
+            plannedAction: actionProposals[i].action!.slice(0, 4000),
+            sourceRef,
+            createdById: ctx.createdById,
+          },
+        });
+      }
+    }
 
     return { tokens };
   } catch (e) {

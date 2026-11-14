@@ -25,6 +25,12 @@ export interface ConnectorContext {
   periodFrom?: Date;
   periodTo?: Date;
   db: ConnectorDb;
+  /**
+   * Segunda pasada autónoma: cuando la primera no encuentra evidencia,
+   * el orquestador reintenta con criterios más amplios (más términos,
+   * número de cláusula, contenido del documento).
+   */
+  relaxed?: boolean;
 }
 
 export interface RequirementRef {

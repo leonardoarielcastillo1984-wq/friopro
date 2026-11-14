@@ -225,6 +225,11 @@ export const approveNA = (id: string, approve: boolean, comment?: string) =>
 export const reevaluate = (id: string) =>
   apiFetch(`${BASE}/evaluaciones/${id}/reevaluar`, { method: 'POST', json: {} });
 
+export const reevaluateAll = (reviewId: string) =>
+  apiFetch<{ queued: number }>(`${BASE}/revisiones/${reviewId}/reevaluar-todas`, {
+    method: 'POST', json: {},
+  });
+
 export const checkStaleness = (reviewId: string) =>
   apiFetch<{ markedStale: number }>(`${BASE}/revisiones/${reviewId}/verificar-staleness`, {
     method: 'POST', json: {},
