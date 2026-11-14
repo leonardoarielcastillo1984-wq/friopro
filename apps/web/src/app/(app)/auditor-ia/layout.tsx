@@ -1,6 +1,6 @@
 'use client';
 // ============================================================
-// Auditor IA — shell con sub-nav propio + guard por permiso.
+// Auditor IA — shell con nav superior (sin sidebar) + guard.
 // ============================================================
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -8,7 +8,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { hasModulePermission } from '@/hooks/useModulePermission';
 import {
-  ScanSearch, BookOpenCheck, History, ClipboardList, ArrowLeft, Lock, Bot,
+  ScanSearch, BookOpenCheck, History, ArrowLeft, Lock, Bot,
 } from 'lucide-react';
 
 const ITEMS = [
@@ -29,46 +29,42 @@ export default function AuditorIaLayout({ children }: { children: React.ReactNod
   }, [loading, user?.globalRole, tenantRole]);
 
   return (
-    <div className="flex gap-0 -m-4 sm:-m-6 min-h-[calc(100vh-4rem)]">
-      <aside className="hidden lg:flex flex-col w-[230px] shrink-0 bg-[#0a1628] py-4 px-2.5 sticky top-0 h-screen">
-        <div className="flex items-center gap-2 px-2.5 mb-1 pb-3 border-b border-white/10">
-          <Bot className="h-4 w-4 text-violet-400 shrink-0" />
-          <span className="font-bold text-white text-lg tracking-tight">
-            Auditor <span className="text-violet-400">IA</span>
+    <div className="-m-4 sm:-m-6 min-h-[calc(100vh-4rem)]">
+      {/* Nav superior */}
+      <div className="flex items-center gap-1.5 px-3 sm:px-5 pt-3 pb-2.5 border-b border-neutral-200 bg-white sticky top-0 z-20">
+        <span className="flex items-center gap-1.5 mr-3">
+          <Bot className="h-4 w-4 text-blue-600" />
+          <span className="font-semibold text-neutral-900 text-[15px] tracking-tight">
+            Auditor <span className="text-blue-600">IA</span>
           </span>
-        </div>
+        </span>
+        {ITEMS.map((item) => {
+          const active = item.exact ? pathname === item.href : pathname?.startsWith(item.href);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-medium transition-colors ${
+                active
+                  ? 'bg-blue-600 text-white'
+                  : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900'
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
         <Link
           href="/dashboard"
-          className="flex items-center gap-2 px-2.5 py-1.5 mb-2 rounded-md text-[12.5px] text-violet-300 hover:bg-white/5 hover:text-white transition-colors"
+          className="ml-auto flex items-center gap-1 text-[12px] text-neutral-400 hover:text-neutral-700"
         >
-          <ArrowLeft className="h-3.5 w-3.5 shrink-0" />
-          <span>Volver al SGI</span>
+          <ArrowLeft className="h-3.5 w-3.5" /> Volver al SGI
         </Link>
-        <nav className="flex flex-col gap-0.5">
-          {ITEMS.map((item) => {
-            const active = item.exact ? pathname === item.href : pathname?.startsWith(item.href);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12.5px] transition-colors ${
-                  active ? 'bg-violet-600 text-white font-medium' : 'text-slate-300 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5 shrink-0" />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="px-2.5 pt-3 mt-2 border-t border-white/10 text-[10px] text-slate-500">
-          <ClipboardList className="h-3 w-3 inline mr-1 -mt-0.5" />
-          La IA asiste — las decisiones de conformidad son humanas
-        </div>
-      </aside>
+      </div>
 
-      <div className="flex-1 min-w-0 p-3 sm:p-5">
+      <div className="p-3 sm:p-5">
         {allowed === null && (
           <div className="flex items-center justify-center min-h-[50vh] text-sm text-slate-400">Verificando permisos…</div>
         )}
@@ -81,7 +77,7 @@ export default function AuditorIaLayout({ children }: { children: React.ReactNod
                 No tenés permiso para usar Auditor IA. Pedile al administrador
                 que lo habilite en tus permisos de módulo.
               </p>
-              <Link href="/dashboard" className="text-[13px] text-violet-400">← Volver al inicio</Link>
+              <Link href="/dashboard" className="text-[13px] text-blue-500">← Volver al inicio</Link>
             </div>
           </div>
         )}

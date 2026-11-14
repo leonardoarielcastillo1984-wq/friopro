@@ -62,6 +62,25 @@ export default function NormaDetailPage() {
     load();
   };
 
+  const bulkSetStatus = async (status: 'APPROVED' | 'DISCARDED') => {
+    const targets = (extraction?.requirements ?? []).filter((r) => r.status === 'PROPOSED');
+    if (!targets.length) return;
+    const verb = status === 'APPROVED' ? 'aprobar' : 'descartar';
+    if (!window.confirm(`¿Confirmás ${verb} ${targets.length} requisitos propuestos?`)) return;
+    setBusy(true);
+    try {
+      // Lotes de 10 para no saturar la API
+      for (let i = 0; i < targets.length; i += 10) {
+        await Promise.all(
+          targets.slice(i, i + 10).map((r) => patchRequirement(r.id, { status })),
+        );
+      }
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleApproveAll = async () => {
     setBusy(true);
     await approveExtraction(extraction!.id);
@@ -170,9 +189,33 @@ export default function NormaDetailPage() {
             </div>
 
             {editable && counts.PROPOSED > 0 && (
-              <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[12px] text-amber-700 flex items-center gap-2">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                Hay {counts.PROPOSED} requisitos propuestos sin revisar. Aprobá o descartá cada uno para poder aprobar la extracción.
+              <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[12px] text-amber-700 flex items-center justify-between gap-3">
+                <span className="flex items-center gap-2">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  Hay {counts.PROPOSED} requisitos propuestos sin revisar. Aprobá o descartá cada uno para poder aprobar la extracción.
+                </span>
+                <span className="flex gap-2 shrink-0">
+                  {busy ? (
+                    <span className="flex items-center gap-1.5 text-[12px] text-amber-700">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Actualizando…
+                    </span>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => bulkSetStatus('APPROVED')}
+                        className="flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-700"
+                      >
+                        <Check className="h-3.5 w-3.5" /> Aprobar todos
+                      </button>
+                      <button
+                        onClick={() => bulkSetStatus('DISCARDED')}
+                        className="flex items-center gap-1 rounded-md border border-neutral-300 px-2.5 py-1.5 text-[11px] font-medium text-neutral-600 hover:bg-white"
+                      >
+                        <X className="h-3.5 w-3.5" /> Descartar todos
+                      </button>
+                    </>
+                  )}
+                </span>
               </div>
             )}
           </div>
