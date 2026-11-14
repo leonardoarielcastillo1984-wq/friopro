@@ -18,6 +18,7 @@ import {
   invalidRefs,
   parseModelJson,
   normalizeEvaluationJson,
+  truncateEvaluationJson,
   zodSummary,
   type ExtractionOutput,
   type EvaluationOutput,
@@ -186,7 +187,7 @@ export class AuditorLLM {
       }
       try {
         const parsed = EvaluationOutputSchema.parse(
-          normalizeEvaluationJson(parseModelJson(r.text)),
+          truncateEvaluationJson(normalizeEvaluationJson(parseModelJson(r.text))),
         );
         const bad = invalidRefs(parsed, validRefs);
         if (bad.length) {
@@ -276,19 +277,29 @@ export class AuditorLLM {
   private async call(system: string, user: string, maxTokens: number): Promise<{
     text: string; tokens: number; model?: string; error?: string;
   }> {
-    try {
-      const res = await this.provider.chat(
-        [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-        maxTokens,
-        true, // jsonMode
-      );
-      return { text: res.text, tokens: res.tokensUsed, model: res.model };
-    } catch (e) {
-      return { text: '', tokens: 0, error: (e as Error).message?.slice(0, 300) };
+    // Rate limit del proveedor (p.ej. ráfaga de "re-evaluar todo"):
+    // hasta 2 reintentos con espera creciente antes de rendirse.
+    const backoffs = [15_000, 45_000];
+    let lastErr = '';
+    for (let i = 0; i <= backoffs.length; i++) {
+      try {
+        const res = await this.provider.chat(
+          [
+            { role: 'system', content: system },
+            { role: 'user', content: user },
+          ],
+          maxTokens,
+          true, // jsonMode
+        );
+        return { text: res.text, tokens: res.tokensUsed, model: res.model };
+      } catch (e) {
+        lastErr = (e as Error).message?.slice(0, 300) ?? 'error';
+        const isRateLimit = /429|rate.?limit|too many/i.test(lastErr);
+        if (!isRateLimit || i === backoffs.length) break;
+        await new Promise((r) => setTimeout(r, backoffs[i]));
+      }
     }
+    return { text: '', tokens: 0, error: lastErr };
   }
 }
 

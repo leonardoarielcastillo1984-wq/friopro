@@ -75,17 +75,43 @@ export const EvaluationOutputSchema = z.object({
 });
 export type EvaluationOutput = z.infer<typeof EvaluationOutputSchema>;
 
+// Aliases que los modelos chicos usan en vez de los enums del schema.
+const VERDICT_ALIASES: Record<string, string> = {
+  SUPPORTS: 'EVIDENCE_SUPPORTS', SUPPORTED: 'EVIDENCE_SUPPORTS',
+  CONFORM: 'EVIDENCE_SUPPORTS', COMPLIANT: 'EVIDENCE_SUPPORTS',
+  CONFORME: 'EVIDENCE_SUPPORTS', CUMPLE: 'EVIDENCE_SUPPORTS',
+  GAP: 'POSSIBLE_GAP', NON_CONFORMITY: 'POSSIBLE_GAP', NONCOMPLIANT: 'POSSIBLE_GAP',
+  NOT_SUPPORTS: 'POSSIBLE_GAP', NO_CUMPLE: 'POSSIBLE_GAP',
+  EXTERNAL: 'REQUIRES_EXTERNAL_VERIFICATION',
+  NEEDS_EXTERNAL_VERIFICATION: 'REQUIRES_EXTERNAL_VERIFICATION',
+  OBSERVATION: 'REQUIRES_EXTERNAL_VERIFICATION',
+  NO_EVIDENCE: 'INSUFFICIENT_EVIDENCE', INSUFFICIENT: 'INSUFFICIENT_EVIDENCE',
+  ABSENT: 'INSUFFICIENT_EVIDENCE',
+};
+
+const ASSESSMENT_ALIASES: Record<string, string> = {
+  CONTRADICTS: 'NOT_SUPPORTS', DOES_NOT_SUPPORT: 'NOT_SUPPORTS',
+  UNCLEAR: 'INCONCLUSIVE', PARTIAL: 'INCONCLUSIVE', AMBIGUOUS: 'INCONCLUSIVE',
+};
+
 /**
  * Normaliza errores típicos de modelos locales antes de validar:
+ *  - verdict/assessment con aliases → enum del schema
  *  - campos array en null/undefined → []
  *  - campos array-de-string como string suelto → [string]
  *  - items no-objeto en arrays de objetos → filtrados
  *  - gaps[].relatedRefs null → []
- * Evita que `"limitations": null` tumbe toda la evaluación.
+ * Evita que `"limitations": null` o `verdict: "SUPPORTS"` tumben
+ * toda la evaluación.
  */
 export function normalizeEvaluationJson(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
   const o = { ...(raw as Record<string, unknown>) };
+
+  if (typeof o.verdict === 'string') {
+    const v = o.verdict.toUpperCase();
+    o.verdict = VERDICT_ALIASES[v] ?? v;
+  }
 
   for (const f of ['limitations', 'externalChecks', 'auditQuestions']) {
     if (o[f] == null) o[f] = [];
@@ -100,6 +126,50 @@ export function normalizeEvaluationJson(raw: unknown): unknown {
   if (Array.isArray(o.gaps)) {
     o.gaps = (o.gaps as Record<string, unknown>[]).map((g) =>
       g && typeof g === 'object' && g.relatedRefs == null ? { ...g, relatedRefs: [] } : g,
+    );
+  }
+  if (Array.isArray(o.evidence)) {
+    o.evidence = (o.evidence as Record<string, unknown>[]).map((e) => {
+      if (!e || typeof e !== 'object') return e;
+      if (typeof e.assessment !== 'string') return e;
+      const a = e.assessment.toUpperCase();
+      return a === 'SUPPORTS' || a === 'NOT_SUPPORTS' || a === 'INCONCLUSIVE'
+        ? { ...e, assessment: a }
+        : { ...e, assessment: ASSESSMENT_ALIASES[a] ?? a };
+    });
+  }
+  return o;
+}
+
+/** Trunca strings a los máximos del schema (evita errores too_big). */
+export function truncateEvaluationJson(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  const o = raw as Record<string, unknown>;
+  const cut = (v: unknown, n: number) => (typeof v === 'string' ? v.slice(0, n) : v);
+  const cutArr = (v: unknown, itemN: number, arrN: number) =>
+    Array.isArray(v) ? v.slice(0, arrN).map((s) => cut(s, itemN)) : v;
+
+  o.explanation = cut(o.explanation, 1200);
+  o.limitations = cutArr(o.limitations, 300, 10);
+  o.externalChecks = cutArr(o.externalChecks, 300, 10);
+  o.auditQuestions = cutArr(o.auditQuestions, 300, 5);
+  if (Array.isArray(o.evidence)) {
+    o.evidence = (o.evidence as Record<string, unknown>[]).slice(0, 15).map((e) =>
+      e && typeof e === 'object'
+        ? { ...e, ref: cut(e.ref, 80), aspect: cut(e.aspect, 200), note: cut(e.note, 300) }
+        : e,
+    );
+  }
+  if (Array.isArray(o.gaps)) {
+    o.gaps = (o.gaps as Record<string, unknown>[]).slice(0, 10).map((g) =>
+      g && typeof g === 'object'
+        ? { ...g, description: cut(g.description, 400), relatedRefs: cutArr(g.relatedRefs, 80, 10) }
+        : g,
+    );
+  }
+  if (Array.isArray(o.proposals)) {
+    o.proposals = (o.proposals as Record<string, unknown>[]).slice(0, 5).map((p) =>
+      p && typeof p === 'object' ? { ...p, action: cut(p.action, 400) } : p,
     );
   }
   return o;

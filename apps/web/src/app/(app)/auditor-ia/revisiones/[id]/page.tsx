@@ -79,11 +79,22 @@ export default function ReviewDetailPage() {
     return () => clearInterval(t);
   }, [review?.status, load]);
 
-  const total = review?.evaluations.length ?? 0;
-  const done = review?.evaluations.filter((e) => e.workStatus === 'EVALUATED').length ?? 0;
-  const pendingDecisions = review?.evaluations.filter(
+  // Solo el intento más reciente por requisito: las re-evaluaciones
+  // crean intentos nuevos y la matriz mostraba filas duplicadas.
+  const evals = (() => {
+    const latest = new Map<string, EvaluationRow>();
+    for (const e of review?.evaluations ?? []) {
+      const prev = latest.get(e.requirementId);
+      if (!prev || e.attempt > prev.attempt) latest.set(e.requirementId, e);
+    }
+    return [...latest.values()];
+  })();
+
+  const total = evals.length;
+  const done = evals.filter((e) => e.workStatus === 'EVALUATED').length;
+  const pendingDecisions = evals.filter(
     (e) => e.workStatus === 'EVALUATED' && e.humanDecision === 'PENDING',
-  ).length ?? 0;
+  ).length;
 
   if (loading) {
     return <div className="flex items-center justify-center py-16 text-sm text-neutral-400"><Loader2 className="h-4 w-4 animate-spin mr-2" /> Cargando…</div>;
@@ -202,7 +213,7 @@ export default function ReviewDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {review.evaluations.map((ev) => (
+                {evals.map((ev) => (
                   <tr
                     key={ev.id}
                     onClick={() => setSelected(selected === ev.id ? null : ev.id)}
@@ -243,7 +254,7 @@ export default function ReviewDetailPage() {
                 ))}
               </tbody>
             </table>
-            {review.evaluations.length === 0 && (
+            {evals.length === 0 && (
               <div className="py-12 text-center text-[13px] text-neutral-400">Sin evaluaciones todavía.</div>
             )}
           </div>
