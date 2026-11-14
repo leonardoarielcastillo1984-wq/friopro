@@ -73,8 +73,31 @@ export interface LLMCallResult<T> {
   ok: boolean;
   output?: T;
   error?: string;
+  /** Falla transitoria del proveedor (429/timeout/5xx): reintentar, no dictaminar. */
+  transient?: boolean;
   tokens: number;
   model?: string;
+}
+
+export interface AuditorLLMOptions {
+  /** Esperas entre reintentos ante rate limit (ms). */
+  backoffMs?: number[];
+}
+
+/** Máximo de evidencias enviadas al modelo y caracteres por evidencia. */
+export const MAX_MODEL_EVIDENCE = 12;
+const MAX_SUMMARY_CHARS = 700;
+const MAX_EVIDENCE_BLOCK = 9000;
+
+const TRANSIENT_RE = /429|rate.?limit|too many|timeout|timed out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|socket hang up|overloaded|\b50[234]\b|service unavailable/i;
+
+function retryHintMs(msg: string): number | undefined {
+  const m = msg.match(/try again in\s+(?:(\d+)m)?\s*([\d.]+)\s*(ms|s)/i);
+  if (!m) return undefined;
+  const mins = m[1] ? Number(m[1]) : 0;
+  const val = Number(m[2]);
+  const ms = (m[3].toLowerCase() === 'ms' ? val : val * 1000) + mins * 60_000;
+  return Number.isFinite(ms) ? Math.min(ms + 250, 90_000) : undefined;
 }
 
 interface ProviderCtx {
@@ -82,7 +105,11 @@ interface ProviderCtx {
 }
 
 export class AuditorLLM {
-  private constructor(private provider: LLMProvider) {}
+  private backoffMs: number[];
+
+  private constructor(private provider: LLMProvider, opts: AuditorLLMOptions = {}) {
+    this.backoffMs = opts.backoffMs ?? [15_000, 45_000];
+  }
 
   /**
    * Resuelve el proveedor del tenant con logging en AIUsageLog.
@@ -99,8 +126,8 @@ export class AuditorLLM {
   }
 
   /** Para tests: inyectar un provider stub directamente. */
-  static fromProvider(provider: LLMProvider): AuditorLLM {
-    return new AuditorLLM(provider);
+  static fromProvider(provider: LLMProvider, opts?: AuditorLLMOptions): AuditorLLM {
+    return new AuditorLLM(provider, opts);
   }
 
   // ── Extracción: requisitos propuestos por cláusula ──────────
@@ -127,7 +154,7 @@ export class AuditorLLM {
       dataBlock(`clausula-${args.clauseNumber}`, args.clauseText.slice(0, 8000));
 
     const r = await this.call(system, user, 2000);
-    if (!r.text) return { ok: false, error: r.error ?? 'sin respuesta', tokens: r.tokens, model: r.model };
+    if (!r.text) return { ok: false, error: r.error ?? 'sin respuesta', transient: r.transient, tokens: r.tokens, model: r.model };
 
     try {
       const parsed = ExtractionOutputSchema.parse(parseModelJson(r.text));
@@ -143,8 +170,11 @@ export class AuditorLLM {
     clauseText?: string;
     evidence: EvidenceItem[]; // con refs asignados E1..En
   }): Promise<LLMCallResult<EvaluationOutput>> {
+    // Payload acotado: evita rate limits por tokens/minuto y que el
+    // modelo cite evidencias que quedaron cortadas fuera del bloque.
+    const evidence = args.evidence.slice(0, MAX_MODEL_EVIDENCE);
     // refs que el modelo puede citar: "E1".."En"
-    const validRefs = new Set(args.evidence.map((_, i) => `E${i + 1}`));
+    const validRefs = new Set(evidence.map((_, i) => `E${i + 1}`));
 
     const system =
       'Sos un auditor de sistemas de gestión ISO. Evaluás si la evidencia presentada ' +
@@ -159,10 +189,16 @@ export class AuditorLLM {
       'evidencia respalda, no que se "cumple". ' +
       '(6) Redactá TODOS los campos de texto en español rioplatense: explanation, ' +
       'gaps, limitations, externalChecks, proposals, auditQuestions, aspect y note. ' +
+      '(7) "verdict" debe ser EXACTAMENTE uno de: EVIDENCE_SUPPORTS (la evidencia respalda ' +
+      'el requisito), POSSIBLE_GAP (posible no conformidad), REQUIRES_EXTERNAL_VERIFICATION ' +
+      '(hay que verificar en sitio), INSUFFICIENT_EVIDENCE (no alcanza para concluir). ' +
+      'No uses SUPPORTS/NOT_SUPPORTS en verdict: esos valores son solo para evidence[].assessment. ' +
+      '(8) Si hay POSSIBLE_GAP, describí la brecha en gaps y proponé al menos una acción ' +
+      'concreta en proposals. ' +
       UNTRUSTED_NOTICE;
 
-    const evBlock = args.evidence
-      .map((e, i) => `[E${i + 1}] ${e.title} (${e.entityType}, ${e.inPeriod ? 'en período' : 'FUERA de período'})\n${e.summary}`)
+    const evBlock = evidence
+      .map((e, i) => `[E${i + 1}] ${e.title} (${e.entityType}, ${e.inPeriod ? 'en período' : 'FUERA de período'})\n${(e.summary ?? '').slice(0, MAX_SUMMARY_CHARS)}`)
       .join('\n\n');
 
     const user =
@@ -170,32 +206,48 @@ export class AuditorLLM {
       `Tipos de verificación esperados: ${args.requirement.verificationTypes.join(', ')}.\n` +
       `Requiere información documentada: ${args.requirement.requiresDocumentedInfo ? 'sí' : 'no'}.\n` +
       (args.clauseText ? `\nTexto de la cláusula:\n${dataBlock('clausula', args.clauseText.slice(0, 3000))}\n` : '') +
-      `\nEvidencia recolectada (${args.evidence.length} ítems):\n` +
-      dataBlock('evidencias', evBlock.slice(0, 14000)) +
-      '\n\nDevolvé JSON: {"verdict","explanation" (≤1200),' +
+      `\nEvidencia recolectada (${evidence.length} ítems):\n` +
+      dataBlock('evidencias', evBlock.slice(0, MAX_EVIDENCE_BLOCK)) +
+      '\n\nDevolvé JSON: {"verdict":"EVIDENCE_SUPPORTS|POSSIBLE_GAP|REQUIRES_EXTERNAL_VERIFICATION|INSUFFICIENT_EVIDENCE","explanation" (≤1200),' +
       '"evidence":[{"ref":"E1","assessment":"SUPPORTS|NOT_SUPPORTS|INCONCLUSIVE","aspect","note" (≤300)}],' +
       '"gaps":[{"description","relatedRefs":[]}],"limitations":[],"externalChecks":[],' +
       '"proposals":[{"action","target":"NCR|ACTION_PLAN|DOCUMENT|OTHER"}],"auditQuestions":[]}';
 
-    // Hasta 2 intentos: el segundo se dispara si hay refs inválidos.
+    // Hasta 2 intentos: el segundo recibe feedback del error del primero.
     let lastError = '';
+    let spent = 0;
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const r = await this.call(system, attempt === 1 ? user : `${user}\n\nATENCIÓN: en la respuesta anterior citaste refs inexistentes. Solo usá refs E1..E${args.evidence.length}.`, 2500);
+      const prompt = attempt === 1
+        ? user
+        : lastError.startsWith('refs')
+          ? `${user}\n\nATENCIÓN: en la respuesta anterior citaste refs inexistentes. Solo usá refs E1..E${evidence.length}.`
+          : `${user}\n\nATENCIÓN: tu respuesta anterior no respetó el formato (${lastError.slice(0, 160)}). Devolvé SOLO el JSON pedido con los valores enum exactos.`;
+      const r = await this.call(system, prompt, 2500);
+      spent += r.tokens;
       if (!r.text) {
+        // El reintento interno de call() ya agotó las esperas: no insistir.
+        if (r.transient) return { ok: false, error: r.error, transient: true, tokens: spent };
         lastError = r.error ?? 'sin respuesta';
         continue;
       }
       try {
-        const parsed = EvaluationOutputSchema.parse(
+        let parsed = EvaluationOutputSchema.parse(
           truncateEvaluationJson(normalizeEvaluationJson(parseModelJson(r.text))),
         );
         const bad = invalidRefs(parsed, validRefs);
         if (bad.length) {
           lastError = `refs inválidos: ${bad.join(', ')}`;
-          continue;
+          if (attempt === 1) continue;
+          // Segundo intento: descartar las citas inexistentes y conservar el resto.
+          parsed = {
+            ...parsed,
+            evidence: parsed.evidence.filter((e) => validRefs.has(e.ref)),
+            gaps: parsed.gaps.map((g) => ({ ...g, relatedRefs: g.relatedRefs.filter((x) => validRefs.has(x)) })),
+            limitations: [...parsed.limitations, 'se descartaron citas a evidencias inexistentes'].slice(0, 10),
+          };
         }
         let output = sanitizeEvaluation(parsed);
-        let tokens = r.tokens;
+        let tokens = spent;
         // Red de seguridad: si el modelo ignoró la orden de responder en
         // español (pasa con modelos locales), traducimos el JSON completo.
         if (looksEnglish(evaluationFreeText(output))) {
@@ -208,7 +260,7 @@ export class AuditorLLM {
         lastError = `salida inválida: ${zodSummary(e)}`.slice(0, 300);
       }
     }
-    return { ok: false, error: lastError || 'salida inválida del modelo', tokens: 0 };
+    return { ok: false, error: lastError || 'salida inválida del modelo', tokens: spent };
   }
 
   /**
@@ -229,8 +281,23 @@ export class AuditorLLM {
     const r = await this.call(system, JSON.stringify(output), 2500);
     if (!r.text) return { tokens: r.tokens };
     try {
-      const parsed = EvaluationOutputSchema.parse(parseModelJson(r.text));
-      return { output: sanitizeEvaluation(parsed), tokens: r.tokens };
+      const parsed = EvaluationOutputSchema.parse(
+        truncateEvaluationJson(normalizeEvaluationJson(parseModelJson(r.text))),
+      );
+      // La traducción nunca puede alterar el dictamen ni las citas.
+      const sameRefs =
+        parsed.evidence.length === output.evidence.length &&
+        parsed.evidence.every((e, i) => e.ref === output.evidence[i].ref);
+      if (!sameRefs) return { tokens: r.tokens };
+      return {
+        output: sanitizeEvaluation({
+          ...parsed,
+          verdict: output.verdict,
+          evidence: parsed.evidence.map((e, i) => ({ ...e, assessment: output.evidence[i].assessment })),
+          proposals: parsed.proposals.map((p, i) => ({ ...p, target: output.proposals[i]?.target ?? p.target })),
+        }),
+        tokens: r.tokens,
+      };
     } catch {
       return { tokens: r.tokens };
     }
@@ -262,7 +329,7 @@ export class AuditorLLM {
 
     for (let attempt = 1; attempt <= 2; attempt++) {
       const r = await this.call(system, user, 1500);
-      if (!r.text) return { ok: false, error: r.error ?? 'sin respuesta', tokens: r.tokens, model: r.model };
+      if (!r.text) return { ok: false, error: r.error ?? 'sin respuesta', transient: r.transient, tokens: r.tokens, model: r.model };
       try {
         const parsed = AnswerOutputSchema.parse(parseModelJson(r.text));
         if (invalidRefs(parsed, validRefs).length) continue;
@@ -275,12 +342,13 @@ export class AuditorLLM {
   }
 
   private async call(system: string, user: string, maxTokens: number): Promise<{
-    text: string; tokens: number; model?: string; error?: string;
+    text: string; tokens: number; model?: string; error?: string; transient?: boolean;
   }> {
     // Rate limit del proveedor (p.ej. ráfaga de "re-evaluar todo"):
-    // hasta 2 reintentos con espera creciente antes de rendirse.
-    const backoffs = [15_000, 45_000];
+    // reintentos respetando el "try again in Xs" del proveedor si viene.
+    const backoffs = this.backoffMs;
     let lastErr = '';
+    let transient = false;
     for (let i = 0; i <= backoffs.length; i++) {
       try {
         const res = await this.provider.chat(
@@ -294,12 +362,13 @@ export class AuditorLLM {
         return { text: res.text, tokens: res.tokensUsed, model: res.model };
       } catch (e) {
         lastErr = (e as Error).message?.slice(0, 300) ?? 'error';
-        const isRateLimit = /429|rate.?limit|too many/i.test(lastErr);
-        if (!isRateLimit || i === backoffs.length) break;
-        await new Promise((r) => setTimeout(r, backoffs[i]));
+        transient = TRANSIENT_RE.test(lastErr);
+        if (!transient || i === backoffs.length) break;
+        const wait = retryHintMs(lastErr) ?? backoffs[i];
+        await new Promise((r) => setTimeout(r, wait));
       }
     }
-    return { text: '', tokens: 0, error: lastErr };
+    return { text: '', tokens: 0, error: lastErr, transient };
   }
 }
 

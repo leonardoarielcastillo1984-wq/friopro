@@ -40,7 +40,7 @@ export function getAuditorIaQueue(): Queue<AuditorReviewPayload> {
       connection: getRedisConnection(),
       defaultJobOptions: {
         attempts: 2,
-        backoff: { type: 'exponential', delay: 10000 },
+        backoff: { type: 'exponential', delay: 30000 },
         removeOnComplete: { count: 100 },
         removeOnFail: { count: 50 },
       },
@@ -120,8 +120,9 @@ async function processAuditorReviewJob(job: Job<AuditorReviewPayload>): Promise<
 
     console.log(`[auditor-ia] revisión ${reviewId}: ${result.status} (${result.evaluated} eval, ${result.failed} err, ${result.tokensUsed} tok)`);
   } catch (e) {
-    // Marcar la revisión como fallida si el job muere
-    await prisma.auditorReview.updateMany({
+    // Marcar la revisión como fallida si muere el job de la revisión.
+    // Una re-evaluación puntual que falla no invalida la revisión entera.
+    if (job.name === 'run-review') await prisma.auditorReview.updateMany({
       where: { id: reviewId, tenantId, status: { in: ['QUEUED', 'RUNNING'] } },
       data: { status: 'FAILED', finishedAt: new Date(), error: (e as Error).message?.slice(0, 500) },
     }).catch(() => {});

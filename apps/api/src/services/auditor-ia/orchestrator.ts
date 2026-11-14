@@ -79,6 +79,12 @@ async function evaluateOne(
       },
     },
   });
+  if (evaluation && evaluation.workStatus !== 'IN_PROGRESS') {
+    evaluation = await prisma.auditorEvaluation.update({
+      where: { id: evaluation.id },
+      data: { workStatus: 'IN_PROGRESS', limitations: [] },
+    });
+  }
   evaluation ??= await prisma.auditorEvaluation.create({
     data: {
       tenantId,
@@ -153,6 +159,10 @@ async function evaluateOne(
       }
     }
 
+    // Evidencia en período primero: el modelo recibe las primeras
+    // MAX_MODEL_EVIDENCE y los refs E# se asignan por este orden.
+    items.sort((a, b) => Number(b.inPeriod) - Number(a.inPeriod));
+
     // 3) evidenceStatus determinista
     const evidenceStatus = computeEvidenceStatus(items, consulted.length > 0);
 
@@ -203,6 +213,11 @@ async function evaluateOne(
       const result = await ctx.llm.evaluate({ requirement, evidence: items });
       tokens += result.tokens;
       model = result.model;
+      if (!result.ok && result.transient) {
+        // Proveedor saturado/caído: no es un dictamen. Queda PENDING
+        // (markError) para que el reintento de la cola o "Reintentar" lo retome.
+        throw new Error(`proveedor IA no disponible temporalmente, se reintentará (${result.error ?? ''})`);
+      }
       if (!result.ok || !result.output) {
         // Sin dictamen por defecto (spec §9): CANNOT_EVALUATE va en workStatus
         workStatus = 'CANNOT_EVALUATE';
@@ -389,7 +404,6 @@ export async function runReview(ctx: ReviewRunContext): Promise<{
     requirements = requirements.filter((r) => wanted.has(r.id));
   }
 
-  const attempt = 1; // reevaluar crea attempt N+1 por evaluación (E6)
   let tokensUsed = review.usedTokens ?? 0;
   let evaluated = 0;
   let failed = 0;
@@ -415,18 +429,16 @@ export async function runReview(ctx: ReviewRunContext): Promise<{
       return { status: 'CANCELLED', evaluated, failed, tokensUsed };
     }
 
-    // Saltar los ya evaluados en este intento (reintento retoma)
-    const done = await prisma.auditorEvaluation.findUnique({
-      where: {
-        reviewId_requirementId_attempt: {
-          reviewId,
-          requirementId: req.id,
-          attempt,
-        },
-      },
-      select: { workStatus: true },
+    // Retomar sobre el último intento del requisito (reevaluar crea
+    // attempt N+1): si ya está EVALUATED se salta, si quedó pendiente
+    // o falló se completa ese mismo intento.
+    const latest = await prisma.auditorEvaluation.findFirst({
+      where: { reviewId, requirementId: req.id },
+      orderBy: { attempt: 'desc' },
+      select: { workStatus: true, attempt: true },
     });
-    if (done?.workStatus === 'EVALUATED') {
+    const attempt = latest?.attempt ?? 1;
+    if (latest?.workStatus === 'EVALUATED' || latest?.workStatus === 'STALE') {
       evaluated++;
       continue;
     }

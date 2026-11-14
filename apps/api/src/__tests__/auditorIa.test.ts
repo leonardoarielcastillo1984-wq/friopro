@@ -10,8 +10,13 @@ import {
   EvaluationOutputSchema,
   AnswerOutputSchema,
   ExtractionOutputSchema,
+  normalizeEvaluationJson,
+  truncateEvaluationJson,
 } from '../services/auditor-ia/schemas.js';
 import { suggestedConnectorKeys } from '../services/auditor-ia/connectors/seed-iso9001.js';
+import { AuditorLLM } from '../services/auditor-ia/llm-adapter.js';
+import type { LLMProvider } from '../services/llm/types.js';
+import type { EvidenceItem } from '../services/auditor-ia/connectors/types.js';
 
 // ── parseModelJson ─────────────────────────────────────────
 
@@ -119,4 +124,102 @@ test('suggestedConnectorKeys: fallback a documents', () => {
   const keys = suggestedConnectorKeys('4.4.4.4');
   assert.ok(keys.length >= 1);
   assert.ok(keys.includes('documents'));
+});
+
+// ── normalize / truncate ────────────────────────────────────
+
+const baseEval = {
+  verdict: 'EVIDENCE_SUPPORTS',
+  explanation: 'La política de calidad está documentada y vigente en el período.',
+  evidence: [{ ref: 'E1', assessment: 'SUPPORTS', aspect: 'política', note: 'vigente' }],
+  gaps: [],
+  limitations: [],
+  externalChecks: [],
+  proposals: [],
+  auditQuestions: [],
+};
+
+test('normalize: verdict alias SUPPORTS → EVIDENCE_SUPPORTS y nulls → []', () => {
+  const raw = { ...baseEval, verdict: 'supports', limitations: null, gaps: null, auditQuestions: 'una pregunta' };
+  const r = EvaluationOutputSchema.safeParse(normalizeEvaluationJson(raw));
+  assert.equal(r.success, true);
+  if (r.success) {
+    assert.equal(r.data.verdict, 'EVIDENCE_SUPPORTS');
+    assert.deepEqual(r.data.auditQuestions, ['una pregunta']);
+  }
+});
+
+test('truncate: strings y arrays largos no rompen el schema', () => {
+  const raw = {
+    ...baseEval,
+    explanation: 'x'.repeat(5000),
+    proposals: Array(9).fill({ action: 'y'.repeat(900), target: 'ACTION_PLAN' }),
+  };
+  const r = EvaluationOutputSchema.safeParse(truncateEvaluationJson(normalizeEvaluationJson(raw)));
+  assert.equal(r.success, true);
+});
+
+// ── AuditorLLM.evaluate con provider stub ───────────────────
+
+function stub(responses: Array<string | Error>): LLMProvider & { calls: number } {
+  const p = {
+    calls: 0,
+    async chat() {
+      const r = responses[Math.min(p.calls, responses.length - 1)];
+      p.calls++;
+      if (r instanceof Error) throw r;
+      return { text: r, tokensUsed: 10, model: 'stub' };
+    },
+  };
+  return p;
+}
+
+const evItem: EvidenceItem = {
+  entityType: 'Document',
+  entityId: 'd1',
+  title: 'Política de calidad',
+  summary: 'Documento vigente',
+  inPeriod: true,
+  hash: 'h',
+} as EvidenceItem;
+
+const req = {
+  id: 'r1',
+  clauseNumber: '5.2',
+  statement: 'La alta dirección debe establecer la política de calidad',
+  verificationTypes: ['DOCUMENT'],
+  connectorKeys: ['documents'],
+  requiresDocumentedInfo: true,
+};
+
+test('evaluate: acepta verdict alias del modelo', async () => {
+  const p = stub([JSON.stringify({ ...baseEval, verdict: 'SUPPORTS' })]);
+  const r = await AuditorLLM.fromProvider(p, { backoffMs: [0, 0] }).evaluate({ requirement: req, evidence: [evItem] });
+  assert.equal(r.ok, true);
+  assert.equal(r.output?.verdict, 'EVIDENCE_SUPPORTS');
+});
+
+test('evaluate: refs inválidos persistentes se descartan en vez de fallar', async () => {
+  const bad = JSON.stringify({
+    ...baseEval,
+    evidence: [...baseEval.evidence, { ref: 'E9', assessment: 'SUPPORTS', aspect: 'a', note: 'n' }],
+  });
+  const p = stub([bad, bad]);
+  const r = await AuditorLLM.fromProvider(p, { backoffMs: [0, 0] }).evaluate({ requirement: req, evidence: [evItem] });
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.output?.evidence.map((e) => e.ref), ['E1']);
+});
+
+test('evaluate: 429 se reintenta y luego responde', async () => {
+  const p = stub([new Error('429 Rate limit reached. Please try again in 0.01s'), JSON.stringify(baseEval)]);
+  const r = await AuditorLLM.fromProvider(p, { backoffMs: [0, 0] }).evaluate({ requirement: req, evidence: [evItem] });
+  assert.equal(r.ok, true);
+  assert.equal(p.calls, 2);
+});
+
+test('evaluate: 429 persistente → transient (reintentable), no dictamen', async () => {
+  const p = stub([new Error('429 Rate limit reached')]);
+  const r = await AuditorLLM.fromProvider(p, { backoffMs: [0, 0] }).evaluate({ requirement: req, evidence: [evItem] });
+  assert.equal(r.ok, false);
+  assert.equal(r.transient, true);
 });

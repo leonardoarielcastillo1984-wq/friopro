@@ -73,11 +73,6 @@ export default function ReviewDetailPage() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => {
-    if (review?.status !== 'RUNNING' && review?.status !== 'QUEUED') return;
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
-  }, [review?.status, load]);
 
   // Solo el intento más reciente por requisito: las re-evaluaciones
   // crean intentos nuevos y la matriz mostraba filas duplicadas.
@@ -89,6 +84,15 @@ export default function ReviewDetailPage() {
     }
     return [...latest.values()];
   })();
+
+  const hasActiveEval = evals.some(
+    (e) => e.workStatus === 'IN_PROGRESS' || (e.workStatus === 'PENDING' && !e.limitations?.length),
+  );
+  useEffect(() => {
+    if (review?.status !== 'RUNNING' && review?.status !== 'QUEUED' && !hasActiveEval) return;
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+  }, [review?.status, hasActiveEval, load]);
 
   const total = evals.length;
   const done = evals.filter((e) => e.workStatus === 'EVALUATED').length;
@@ -232,7 +236,12 @@ export default function ReviewDetailPage() {
                       <Badge axis="workStatus" value={ev.workStatus} />
                       {ev.workStatus === 'IN_PROGRESS' && (
                         <div className="mt-0.5 text-[10px] text-blue-600 font-medium">
-                          {review.progress}% de avance
+                          {review.status === 'RUNNING' ? `${review.progress}% de avance` : 'Evaluando…'}
+                        </div>
+                      )}
+                      {ev.workStatus === 'PENDING' && ev.limitations?.[0] && (
+                        <div className="mt-0.5 text-[10px] text-amber-600 leading-snug" title={ev.limitations.join(' · ')}>
+                          {ev.limitations[0].length > 60 ? `${ev.limitations[0].slice(0, 57)}…` : ev.limitations[0]}
                         </div>
                       )}
                       {ev.workStatus === 'CANNOT_EVALUATE' && (

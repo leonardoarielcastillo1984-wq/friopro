@@ -894,15 +894,27 @@ export async function auditorIaRoutes(app: FastifyInstance) {
     });
     if (!evaluation) return reply.code(404).send({ error: 'NOT_FOUND' });
 
+    const maxAttempt = await app.prisma.auditorEvaluation.aggregate({
+      where: { reviewId: evaluation.reviewId, requirementId: evaluation.requirementId, tenantId: ctx.tenantId },
+      _max: { attempt: true },
+    });
+    const nextAttempt = (maxAttempt._max.attempt ?? evaluation.attempt) + 1;
+    await app.prisma.auditorEvaluation.createMany({
+      data: [{
+        tenantId: ctx.tenantId, reviewId: evaluation.reviewId,
+        requirementId: evaluation.requirementId, attempt: nextAttempt, workStatus: 'PENDING',
+      }],
+      skipDuplicates: true,
+    });
     const { getAuditorIaQueue } = await import('../jobs/auditorIaJobs.js');
     await getAuditorIaQueue().add('reevaluate-evaluation', {
       reviewId: evaluation.reviewId,
       tenantId: ctx.tenantId,
       requirementId: evaluation.requirementId,
-      attempt: evaluation.attempt + 1,
+      attempt: nextAttempt,
       requestedById: ctx.userId,
-    });
-    return reply.code(202).send({ queued: true, attempt: evaluation.attempt + 1 });
+    }, { jobId: `reeval-${evaluation.reviewId}-${evaluation.requirementId}-${nextAttempt}` });
+    return reply.code(202).send({ queued: true, attempt: nextAttempt });
   });
 
   // POST /revisiones/:id/reevaluar-todas — encola un intento nuevo por cada
@@ -923,23 +935,34 @@ export async function auditorIaRoutes(app: FastifyInstance) {
     // Último intento por requisito
     const evals = await app.prisma.auditorEvaluation.findMany({
       where: { reviewId: id, tenantId: ctx.tenantId },
-      select: { requirementId: true, attempt: true },
+      select: { requirementId: true, attempt: true, workStatus: true, limitations: true },
     });
-    const latest = new Map<string, number>();
+    const latest = new Map<string, (typeof evals)[number]>();
     for (const e of evals) {
-      latest.set(e.requirementId, Math.max(latest.get(e.requirementId) ?? 0, e.attempt));
+      const prev = latest.get(e.requirementId);
+      if (!prev || e.attempt > prev.attempt) latest.set(e.requirementId, e);
     }
 
     const { getAuditorIaQueue } = await import('../jobs/auditorIaJobs.js');
     let queued = 0;
-    for (const [requirementId, attempt] of latest) {
+    for (const [requirementId, last] of latest) {
+      // Ya en cola (PENDING sin motivo) o en curso: no duplicar.
+      const hasReason = Array.isArray(last.limitations) && last.limitations.length > 0;
+      if (last.workStatus === 'IN_PROGRESS' || (last.workStatus === 'PENDING' && !hasReason)) continue;
+      const attempt = last.attempt;
+      await app.prisma.auditorEvaluation.createMany({
+        data: [{ tenantId: ctx.tenantId, reviewId: id, requirementId, attempt: attempt + 1, workStatus: 'PENDING' }],
+        skipDuplicates: true,
+      });
+      // jobId fijo por requisito+intento: si ya hay un job encolado para
+      // ese intento (doble click), BullMQ lo ignora.
       await getAuditorIaQueue().add('reevaluate-evaluation', {
         reviewId: id,
         tenantId: ctx.tenantId,
         requirementId,
         attempt: attempt + 1,
         requestedById: ctx.userId,
-      });
+      }, { jobId: `reeval-${id}-${requirementId}-${attempt + 1}` });
       queued++;
     }
     return reply.code(202).send({ queued });
