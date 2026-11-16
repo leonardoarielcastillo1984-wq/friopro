@@ -4292,6 +4292,9 @@ ${pregunta
       method: 'POST',
       headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ auth: { pass: { rut, clave } } }),
+      // Sin timeout el request cuelga indefinido si APIGateway/SII traban
+      // la sesión (visto 16-nov-2026: outage dejó /sii-sync colgado 15+ min).
+      signal: AbortSignal.timeout(120_000),
     });
     const json: any = await resp.json().catch(() => null);
     if (!resp.ok || json?.success === false) {
@@ -4299,6 +4302,10 @@ ${pregunta
     }
     return Array.isArray(json?.data) ? json.data : (json?.data?.datos || []);
   }
+
+  // Dedup en-vuelo: dos syncs concurrentes abrirían dos sesiones SII
+  // (la segunda espera o responde 400). Mismo patrón que /f29.
+  const siiSyncInFlight = new Map<string, Promise<any>>();
 
   app.post('/sii-sync', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
@@ -4327,22 +4334,25 @@ ${pregunta
 
     const user = await resolveUser(app.prisma, (req as any).auth?.userId);
     const p = prisma();
-    const tipos: Array<'compra' | 'venta'> = tipo === 'AMBOS' ? ['venta', 'compra'] : [tipo === 'VENTAS' ? 'venta' : 'compra'];
-    const resultado: Record<string, any> = {};
-
-    for (const tipoRcv of tipos) {
-      try {
-        const datos = await fetchRcvDatos(normalizarRut(sii.rut), clave, sii.rutEmpresa ? normalizarRut(sii.rutEmpresa) : null, periodo, tipoRcv);
-        const filas = rcvDatosToFilas(datos);
-        const r = await ingestarFilasRcv(p, tenantId, user, {
-          tipo: tipoRcv === 'venta' ? 'VENTAS' : 'COMPRAS', moneda, centroCostoId,
-          diasVencimiento, categoriaDefault, tipoGastoDefault, filas, origen: 'IMPORT_SII_AUTO',
-        });
-        resultado[tipoRcv] = { documentos: datos.length, filasValidas: filas.length, ...r };
-      } catch (e: any) {
-        resultado[tipoRcv] = { error: e?.message?.slice(0, 200) || 'error' };
+    const syncKey = `${tenantId}:${periodo}:${tipo}`;
+    const resultado: Record<string, any> = await deduped(siiSyncInFlight, syncKey, async () => {
+      const tipos: Array<'compra' | 'venta'> = tipo === 'AMBOS' ? ['venta', 'compra'] : [tipo === 'VENTAS' ? 'venta' : 'compra'];
+      const res: Record<string, any> = {};
+      for (const tipoRcv of tipos) {
+        try {
+          const datos = await fetchRcvDatos(normalizarRut(sii.rut), clave, sii.rutEmpresa ? normalizarRut(sii.rutEmpresa) : null, periodo, tipoRcv);
+          const filas = rcvDatosToFilas(datos);
+          const r = await ingestarFilasRcv(p, tenantId, user, {
+            tipo: tipoRcv === 'venta' ? 'VENTAS' : 'COMPRAS', moneda, centroCostoId,
+            diasVencimiento, categoriaDefault, tipoGastoDefault, filas, origen: 'IMPORT_SII_AUTO',
+          });
+          res[tipoRcv] = { documentos: datos.length, filasValidas: filas.length, ...r };
+        } catch (e: any) {
+          res[tipoRcv] = { error: e?.message?.slice(0, 200) || 'error' };
+        }
       }
-    }
+      return res;
+    });
     return reply.send({ ok: true, periodo, resultado });
   });
 
