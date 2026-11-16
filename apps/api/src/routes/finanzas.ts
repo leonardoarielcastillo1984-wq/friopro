@@ -73,10 +73,15 @@ async function syncFacturaEstado(prisma: any, facturaId: string) {
 
 // Estado efectivo para lectura: VENCIDA es dinámico por fecha de vencimiento.
 // Una nota de crédito no tiene obligación de cobro → nunca VENCIDA.
+// Sin vencimiento cargado se asume "contado" (convención de las ventas
+// importadas): vence en la misma fecha de emisión — el mismo criterio que
+// usa el aging de /cuentas-por-cobrar. Antes quedaba EMITIDA para siempre
+// y la deuda vencida quedaba invisible.
 function estadoEfectivo(f: any): string {
   if (f.estado === 'ANULADA' || f.estado === 'COBRADA') return f.estado;
   if (f.tipoComprobante === 'NOTA_CREDITO') return f.estado;
-  if (f.fechaVencimiento && new Date(f.fechaVencimiento) < new Date()) return 'VENCIDA';
+  const venc = f.fechaVencimiento || f.fechaEmision;
+  if (venc && new Date(venc) < new Date()) return 'VENCIDA';
   return f.estado;
 }
 
@@ -2100,7 +2105,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     // ── COSTO DE PERSONAL (dedup Conductor↔Employee por DNI) ────
     const empleados = await p.employee.findMany({
       where: { tenantId, deletedAt: null, status: 'ACTIVE' },
-      select: { id: true, firstName: true, lastName: true, dni: true, costoMensual: true, centroCostoId: true },
+      select: { id: true, firstName: true, lastName: true, dni: true, costoMensual: true, centroCostoId: true, hireDate: true },
     }).catch(() => []);
     const dnisEmpleados = new Set<string>(empleados.map((e: any) => (e.dni || '').trim()).filter(Boolean));
     // Sueldos importados desde la planilla de liquidaciones: si existe un
@@ -2110,24 +2115,29 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       select: { employeeId: true, anio: true, mes: true, monto: true, tipoGasto: true },
     }).catch(() => []);
     const sueldoMes = new Map<string, { monto: number; tipoGasto: string }>();
-    const conImport = new Set<string>();
     for (const s of sueldosImp) {
       sueldoMes.set(`${s.employeeId}:${s.anio}-${s.mes}`, { monto: num(s.monto), tipoGasto: s.tipoGasto || 'ESTRUCTURA' });
-      conImport.add(s.employeeId);
     }
     for (const e of empleados) {
       const costo = num(e.costoMensual);
-      const tieneImport = conImport.has(e.id);
       const concepto = `Sueldo ${`${e.firstName || ''} ${e.lastName || ''}`.trim()}`;
+      // hireDate acota la serie: sin ello, alguien incorporado a mitad de año
+      // proyectaba sueldo en meses previos a su contratación.
+      const hd = e.hireDate ? new Date(e.hireDate) : null;
+      const hireMes = hd ? new Date(Date.UTC(hd.getUTCFullYear(), hd.getUTCMonth(), 1)) : null;
       for (const ms of monthStarts(desde, hasta)) {
+        if (hireMes && ms < hireMes) continue;
         const imp = sueldoMes.get(`${e.id}:${ms.getFullYear()}-${ms.getMonth() + 1}`);
-        // Si el empleado tiene planilla importada, solo cobra los meses que
-        // figuran en ella — sin proyección por costoMensual (mes sin datos = 0).
-        // costoMensual solo aplica a empleados sin ninguna planilla cargada.
-        const importe = imp ? imp.monto : (tieneImport ? 0 : costo);
+        // La planilla importada gana. Un mes sin fila importada cae al
+        // fallback costoMensual marcado "(est.)" — nunca $0 silencioso
+        // (antes un empleado con planilla parcial mostraba $0 ese mes).
+        const estimado = !imp;
+        const importe = imp ? imp.monto : costo;
         if (importe <= 0 || !ccOk(e.centroCostoId)) continue;
-        const grupo = 'ESTRUCTURA';
-        add({ fecha: ms, concepto, importe, grupo, fuente: 'PERSONAL', modulo: 'RRHH', origenId: e.id, origenUrl: '/rrhh', centroCostoId: e.centroCostoId });
+        // El tipoGasto de la planilla decide el bucket (OPERATIVO → costo
+        // directo); el fallback costoMensual se trata como estructura.
+        const grupo = !estimado && imp!.tipoGasto === 'OPERATIVO' ? 'COSTO_OP' : 'ESTRUCTURA';
+        add({ fecha: ms, concepto: estimado ? `${concepto} (est.)` : concepto, importe, grupo, fuente: 'PERSONAL', modulo: 'RRHH', origenId: e.id, origenUrl: '/rrhh', centroCostoId: e.centroCostoId, ...(estimado ? { estimado: true } : {}) });
       }
     }
     const conductores = await p.conductor.findMany({
@@ -2208,6 +2218,17 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       }
     }
 
+    // Las líneas de módulos internos (sueldos, OT, combustible…) no traen
+    // moneda: con monOk pasaban cualquier filtro de moneda (un filtro USD
+    // incluía sueldos CLP) y en el consolidado quedaban como base sin
+    // merecerlo. Se asume la moneda local del tenant.
+    const cfgMon = await configMoneda(tenantId).catch(() => null);
+    const monedaModulos = cfgMon?.monedaLocal || cfgMon?.monedaDefault || null;
+    if (monedaModulos) for (const l of lineas) if (!l.moneda) l.moneda = monedaModulos;
+    // Filtro estricto final: con moneda conocida, solo pasan las líneas que
+    // coinciden. Si el tenant no tiene moneda local/default no se puede
+    // determinar la moneda de los módulos y se mantiene el pase anterior.
+    if (moneda && monedaModulos) return lineas.filter(l => l.moneda === moneda);
     return lineas;
   }
 
@@ -2446,6 +2467,9 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       c.pendientes.push({
         id: f.id, numero: [f.puntoVenta, f.numero].filter(Boolean).join('-') || null, fechaEmision: f.fechaEmision,
         fechaVencimiento: f.fechaVencimiento, fechaCobroEstimada: f.fechaCobroEstimada, total, cobrado, saldo, diasAtraso: Math.max(0, atraso), moneda: f.moneda,
+        // Sin vencimiento se asume contado (vence en la emisión) — la UI lo
+        // marca para que el aging no se lea como dato contractual.
+        vencimientoEstimado: !f.fechaVencimiento,
         fileUrl: f.fileUrl, diasDesdeEmision: Math.floor((hoy - new Date(f.fechaEmision).getTime()) / DIA),
       });
     }
@@ -2548,6 +2572,17 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const q = req.query as any;
     const items = await obtenerCxPInterno(prisma(), tenantId, q.moneda || null);
+    // Punto ciego: docs sin vencimiento ni pagos se asumen pagados al
+    // contado y no aparecen en la lista — se cuantifican para que la
+    // cobertura real de la vista sea explícita.
+    const [gSinSeg, fSinSeg] = await Promise.all([
+      prisma().finanzaGasto.aggregate({ _count: { _all: true }, _sum: { total: true }, where: { tenantId, deletedAt: null, tipoComprobante: { not: 'NOTA_CREDITO' }, fechaVencimiento: null, pagos: { none: {} }, ...(q.moneda ? { moneda: q.moneda } : {}) } }).catch(() => null),
+      prisma().flotaFactura.aggregate({ _count: { _all: true }, _sum: { total: true }, where: { tenantId, tipoComprobante: { notIn: ['PRESUPUESTO', 'NOTA_CREDITO'] }, fechaVencimiento: null, pagadaAt: null, ...(q.moneda ? { moneda: q.moneda } : {}) } }).catch(() => null),
+    ]);
+    const sinSeguimiento = {
+      cantidad: (gSinSeg?._count?._all || 0) + (fSinSeg?._count?._all || 0),
+      total: num(gSinSeg?._sum?.total) + num(fSinSeg?._sum?.total),
+    };
     const pend = items.filter(i => i.saldo > 0.5);
     const totales = {
       porPagar: pend.reduce((s, i) => s + i.saldo, 0),
@@ -2564,7 +2599,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     }
     const ranking = [...porProveedor.values()].sort((a, b) => b.saldo - a.saldo);
     const actualizadoEn = await ultimaAct(tenantId, q.moneda || null);
-    return reply.send({ items, totales, ranking, actualizadoEn });
+    return reply.send({ items, totales, ranking, sinSeguimiento, actualizadoEn });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -3435,6 +3470,26 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (vencidoCxp > 0) push('CRITICA', 'CXP_VENCIDA', `${vencidoCxp.toLocaleString('es-AR', { maximumFractionDigits: 0 })} en obligaciones están vencidas`, vencidoCxp);
     if (prox7 > 0) push('ATENCION', 'CXP_7D', `En los próximos 7 días vencen ${prox7.toLocaleString('es-AR', { maximumFractionDigits: 0 })} en obligaciones`, prox7);
 
+    // Cobertura de sueldos del mes: un empleado activo con planillas en
+    // otros meses pero sin fila este mes ahora estima con costoMensual;
+    // si tampoco tiene costoMensual cargado, figura con $0 real.
+    const [empAct, sueldosEste, sueldosHist2] = await Promise.all([
+      p.employee.findMany({ where: { tenantId, deletedAt: null, status: 'ACTIVE' }, select: { id: true, hireDate: true, costoMensual: true } }).catch(() => []),
+      p.employeeSalary.findMany({ where: { tenantId, anio, mes }, select: { employeeId: true } }).catch(() => []),
+      p.employeeSalary.findMany({ where: { tenantId, NOT: { AND: [{ anio }, { mes }] } }, select: { employeeId: true }, distinct: ['employeeId'] }).catch(() => []),
+    ]);
+    const setMesEmp = new Set(sueldosEste.map((s: any) => s.employeeId));
+    const setHistEmp = new Set(sueldosHist2.map((s: any) => s.employeeId));
+    const vigentes = empAct.filter((e: any) => !e.hireDate || new Date(e.hireDate) < hasta);
+    const sinDato = vigentes.filter((e: any) => !setMesEmp.has(e.id) && num(e.costoMensual) <= 0);
+    const estimados = vigentes.filter((e: any) => !setMesEmp.has(e.id) && setHistEmp.has(e.id) && num(e.costoMensual) > 0);
+    if (sinDato.length)
+      push(esActual ? 'INFO' : 'ATENCION', 'SUELDOS_SIN_DATO',
+        `${sinDato.length} empleado(s) activos sin sueldo en ${mesNombre} — figuran con $0 (sin planilla ni costo mensual)`, 0, '/resultados?tab=importar');
+    else if (estimados.length)
+      push('INFO', 'SUELDOS_ESTIMADOS',
+        `${estimados.length} empleado(s) sin planilla importada en ${mesNombre} — se estimó con el costo mensual`, estimados.reduce((s: number, e: any) => s + num(e.costoMensual), 0), '/resultados?tab=importar');
+
     // IVA: no recuperado computa como costo; combustible sin desagregar
     // no evidencia el crédito fiscal que podría estarse perdiendo.
     const ivaNoRec = lineas.filter(l => l.ivaRecuperable === false && num(l.iva) > 0).reduce((s, l) => s + num(l.iva), 0);
@@ -3581,8 +3636,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   // responde una explicación estática igualmente correcta.
   // ═══════════════════════════════════════════════════════════════
   const EXPLICA_ESTATICO: Record<string, string> = {
-    'kpi-ventas': 'Ventas del año: suma de facturas emitidas (a valor neto, sin IVA — el IVA no es ingreso) más los ingresos operativos cargados en Flota 360. Viene del RCV de ventas del SII, de facturas cargadas a mano y del módulo Flota 360.',
-    'kpi-costos': 'Costos del año: todo lo operativo (facturas de proveedores del RCV de compras, combustible, mantenimiento, neumáticos, multas, sueldos, cuotas de financiación) más gastos de estructura y gastos cargados a mano. El IVA recuperable se descuenta porque no es costo real.',
+    'kpi-ventas': 'Ventas del año: suma de facturas emitidas (a valor neto, sin IVA — el IVA no es ingreso) más los ingresos operativos cargados en los módulos que uses (ej. Flota 360). Viene del RCV de ventas del SII, de facturas cargadas a mano y de los ingresos operativos.',
+    'kpi-costos': 'Costos del año: todo lo operativo (facturas de proveedores, combustible, mantenimiento, sueldos, cuotas de financiación) más gastos de estructura y gastos cargados a mano. El IVA recuperable se descuenta porque no es costo real.',
     'kpi-resultado': 'Resultado = ventas (netas de IVA) − costos operativos − estructura. Es resultado devengado (cuando se emite la factura / se consume el gasto), no caja. El margen es resultado ÷ ventas.',
     'kpi-cobrado': 'Cobrado = plata que efectivamente entró al banco: cobros registrados sobre facturas emitidas + ingresos de flota marcados como cobrados. Incluye IVA porque el cliente paga el total. Difiere de ventas porque facturar no es cobrar.',
     'resumen-mes': 'El resumen cruza ventas, costos y resultado del mes seleccionado, y compara contra el mes anterior y el mismo mes del año pasado. Si el mes está en curso, compara solo los primeros N días en los tres períodos (comparación justa).',
@@ -3590,7 +3645,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     drivers: 'Los drivers son los rubros que más movieron el resultado respecto del mes anterior: ingresos por fuente (facturación, ingresos de flota) y costos por rubro (combustible, sueldos, mantenimiento...). Verde = empujó el resultado arriba; rojo = lo tiró abajo.',
     alertas: 'Las alertas se generan comparando ventas/resultado del mes contra el anterior y el promedio de los últimos 6 meses. Si el mes está en curso, la comparación es por igual cantidad de días. Umbral de atención 10 %, crítica 25 % (configurable).',
     'iva-debito': 'IVA débito: el IVA que le cobraste a tus clientes en las facturas emitidas del mes (notas de crédito restan). Es plata que recaudás para el fisco, no ingreso. Sale del RCV de ventas del SII + facturas cargadas a mano.',
-    'iva-credito': 'IVA crédito: el IVA de tus compras y gastos marcado como recuperable (facturas del RCV de compras, facturas de flota, combustible con IVA desagregado). Se descuenta del débito en el F29.',
+    'iva-credito': 'IVA crédito: el IVA de tus compras y gastos marcado como recuperable (facturas de compra, combustible con IVA desagregado). Se descuenta del débito en el F29.',
     'iva-remanente': 'Remanente a favor: cuando el crédito del mes supera al débito, el excedente no se pierde — se arrastra y descuenta el débito del mes siguiente (lógica del F29, código 077).',
     'iva-apagar': 'A pagar estimado = débito − (crédito del mes + remanente acumulado). Es una estimación del IVA del F29: no incluye PPM ni retenciones, que el contador liquida aparte.',
     'iva-costo': 'IVA al costo: IVA de compras marcado como no recuperable — queda dentro del costo real del gasto y no descuenta débito.',
@@ -3598,7 +3653,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     'iva-cargas': 'Cargas sin IVA desagregado: cantidad de tickets de combustible donde no se cargó el IVA real — solo se puede estimar.',
     'iva-mes': 'La tabla por meses muestra la posición IVA de todo el año: débito (ventas), crédito (compras recuperable), remanente que se arrastra y a pagar estimado por mes.',
     f29: 'F29 real: la declaración efectivamente hecha en el SII para el período (folio, fecha y estado). El detalle compara lo declarado contra lo estimado por el sistema; diferencias típicas: documentos no válidos como crédito, PPM y retenciones que solo existen en el F29.',
-    movimientos: 'Movimientos del período: cada línea económica del mes con su módulo de origen (Resultados, Flota 360, Infraestructura). El ícono del lápiz edita; el enlace abre el documento de origen.',
+    movimientos: 'Movimientos del período: cada línea económica del mes con su módulo de origen (Resultados, Flota 360, Infraestructura — según los que uses). El ícono del lápiz edita; el enlace abre el documento de origen.',
     ytd: 'Acumulado del año (YTD): suma de enero hasta el mes seleccionado comparada contra el mismo tramo del año anterior. Permite ver la tendencia anual sin que un mes malo distorsione la foto.',
     'balance-activo': 'Activo: lo que la empresa tiene — caja estimada (saldo inicial + cobros − pagos del año) más cuentas por cobrar (facturas emitidas sin cobrar) más la flota a valor estimado.',
     'balance-caja': 'Caja estimada: saldo inicial configurado más todos los cobros registrados del año menos los pagos, hasta el corte del mes. Aproxima la plata disponible.',

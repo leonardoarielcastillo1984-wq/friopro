@@ -183,7 +183,9 @@ export default function CuentasPorCobrar({ moneda, canEdit = false, onIrFacturac
                       </td>
                       <td className="px-4 py-2 text-xs text-neutral-500">{fmtFecha(p.fechaEmision)}</td>
                       <td className="px-4 py-2 text-xs text-neutral-500">
-                        {fmtFecha(p.fechaVencimiento)}
+                        {p.vencimientoEstimado ? (
+                          <span className="text-amber-600" title="Sin fecha de vencimiento cargada — se asume pago al contado (vence en la emisión)">contado*</span>
+                        ) : fmtFecha(p.fechaVencimiento)}
                         {canEdit && (
                           <input type="date" value={(p.fechaCobroEstimada || '').slice(0, 10)} onChange={e => guardarEstimada(p.id, c.cliente, e.target.value)}
                             title="Fecha prometida de pago por el cliente — la proyección usa esta fecha si está"

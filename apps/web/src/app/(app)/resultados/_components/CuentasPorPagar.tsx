@@ -25,7 +25,7 @@ const ESTADO_STYLE: Record<string, string> = {
 
 export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }: { moneda: string; centros: any[]; canEdit: boolean; onChanged: () => void }) {
   const A = useAsistente({ moneda });
-  const [data, setData] = useState<{ items: Item[]; totales: any; ranking: any[]; actualizadoEn?: string } | null>(null);
+  const [data, setData] = useState<{ items: Item[]; totales: any; ranking: any[]; sinSeguimiento?: { cantidad: number; total: number }; actualizadoEn?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [soloPendientes, setSoloPendientes] = useState(true);
   const [desde, setDesde] = useState('');
@@ -130,6 +130,13 @@ export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }:
           </div>
         ))}
       </div>
+
+      {(data?.sinSeguimiento?.cantidad ?? 0) > 0 && (
+        <div className="px-4 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+          <strong>{data!.sinSeguimiento!.cantidad}</strong> gasto{data!.sinSeguimiento!.cantidad !== 1 ? 's' : ''} ({fmtMoney(data!.sinSeguimiento!.total, moneda)})
+          {' '}sin fecha de vencimiento ni pagos — asumidos pagados al contado. Cargá el vencimiento o un pago para que figuren como deuda.
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_18rem]">
         <div className="rounded-xl border border-neutral-200 bg-white">
