@@ -3924,7 +3924,7 @@ ${pregunta
       const tipoComprobante = tipoDesdeSii(f.tipoDoc);
       try {
         if (tipo === 'VENTAS') {
-          const existe = await p.finanzaFactura.findFirst({ where: { tenantId, deletedAt: null, numero: f.folio, tipoComprobante, ...(f.rut ? { clienteRut: f.rut } : {}) }, select: { id: true } });
+          const existe = await p.finanzaFactura.findFirst({ where: { tenantId, deletedAt: null, numero: f.folio, tipoComprobante, ...(f.rut ? { clienteRut: f.rut } : {}), OR: [{ total: f.total }, { fechaEmision: fecha }] }, select: { id: true } });
           if (existe) { duplicados++; continue; }
           await p.finanzaFactura.create({
             data: {
@@ -3936,7 +3936,7 @@ ${pregunta
             },
           });
         } else {
-          const existe = await p.finanzaGasto.findFirst({ where: { tenantId, deletedAt: null, numeroComprobante: f.folio, tipoComprobante, ...(f.rut ? { proveedorRut: f.rut } : {}) }, select: { id: true } });
+          const existe = await p.finanzaGasto.findFirst({ where: { tenantId, deletedAt: null, numeroComprobante: f.folio, tipoComprobante, ...(f.rut ? { proveedorRut: f.rut } : {}), OR: [{ total: f.total }, { fecha }] }, select: { id: true } });
           if (existe) { duplicados++; continue; }
           const prev = f.rut ? clasif.get(f.rut) : null;
           await p.finanzaGasto.create({
@@ -4297,10 +4297,23 @@ ${pregunta
       signal: AbortSignal.timeout(120_000),
     });
     const json: any = await resp.json().catch(() => null);
+    if (esSinCreditoApiGateway(resp.status, json)) {
+      const err: any = new Error('Falta de crédito para hacer la consulta');
+      err.sinCredito = true;
+      throw err;
+    }
     if (!resp.ok || json?.success === false) {
-      throw new Error(`SII/${tipo}: ${json?.message || json?.error || `HTTP ${resp.status}`}`);
+      throw new Error(`SII/${tipo}: ${json?.detail || json?.message || json?.error || `HTTP ${resp.status}`}`);
     }
     return Array.isArray(json?.data) ? json.data : (json?.data?.datos || []);
+  }
+
+  const APIGATEWAY_PAGO_URL = 'https://app.apigateway.cl/connections/manage';
+
+  // 402 = créditos insuficientes; "La conexión está inactiva" = suspendida por saldo
+  function esSinCreditoApiGateway(status: number, json: any): boolean {
+    const detail = String(json?.detail || '');
+    return status === 402 || /cr[eé]ditos insuficientes|conexi[oó]n est[aá] inactiva/i.test(detail);
   }
 
   // Dedup en-vuelo: dos syncs concurrentes abrirían dos sesiones SII
@@ -4348,6 +4361,10 @@ ${pregunta
           });
           res[tipoRcv] = { documentos: datos.length, filasValidas: filas.length, ...r };
         } catch (e: any) {
+          if (e?.sinCredito) {
+            res[tipoRcv] = { error: e.message, sinCredito: true, pagoUrl: APIGATEWAY_PAGO_URL };
+            break;
+          }
           res[tipoRcv] = { error: e?.message?.slice(0, 200) || 'error' };
         }
       }

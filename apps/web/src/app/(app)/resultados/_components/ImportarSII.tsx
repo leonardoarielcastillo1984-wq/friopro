@@ -314,7 +314,9 @@ export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChan
                 <span>
                   <b>{k === 'venta' ? 'Ventas' : 'Compras'}:</b>{' '}
                   {resultadoSync[k].error
-                    ? resultadoSync[k].error
+                    ? (resultadoSync[k].sinCredito
+                      ? <>{resultadoSync[k].error}.{' '}<a href={resultadoSync[k].pagoUrl} target="_blank" rel="noopener noreferrer" className="font-semibold underline">Cargar créditos en APIGateway</a></>
+                      : resultadoSync[k].error)
                     : `${resultadoSync[k].documentos ?? 0} docs en SII → ${resultadoSync[k].creados} cargados · ${resultadoSync[k].duplicados} ya existían${resultadoSync[k].errores?.length ? ` · ${resultadoSync[k].errores.length} errores` : ''}`}
                 </span>
               </div>
