@@ -12,12 +12,15 @@ type Factura = {
   neto: number; iva: number; total: number; moneda: string; estado: string; origen: string;
   cobrado: number; saldo: number; diasAtraso: number;
   fileUrl: string | null; fileName: string | null; mimeType: string | null; centroCostoId: string | null;
-  notas: string | null; cobros: any[]; aplicaAFacturaId: string | null;
+  notas: string | null; cobros: any[]; aplicaAFacturaId: string | null; dteTipo?: string | null;
 };
 
 // Chile: DTE 33 (afecta) y 34 (exenta) numeran por separado, así que el folio solo no identifica la factura
-const serieFiscal = (f: Pick<Factura, 'tipoComprobante' | 'moneda' | 'iva' | 'total'>): 'Afecta' | 'Exenta' | null =>
-  f.tipoComprobante === 'FACTURA' && f.moneda === 'CLP' && f.total > 0 ? (Number(f.iva) > 0 ? 'Afecta' : 'Exenta') : null;
+const serieFiscal = (f: Pick<Factura, 'tipoComprobante' | 'moneda' | 'iva' | 'total' | 'dteTipo'>): 'Afecta' | 'Exenta' | null => {
+  if (f.dteTipo === '33') return 'Afecta';
+  if (f.dteTipo === '34') return 'Exenta';
+  return f.tipoComprobante === 'FACTURA' && f.moneda === 'CLP' && f.total > 0 ? (Number(f.iva) > 0 ? 'Afecta' : 'Exenta') : null;
+};
 
 const hoy = () => new Date().toISOString().slice(0, 10);
 const sumarDias = (fecha: string, dias: number) => {

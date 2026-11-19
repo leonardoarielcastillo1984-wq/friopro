@@ -2009,15 +2009,22 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       add({ fecha: f.fechaEmision, concepto: `${label} ${[f.puntoVenta, f.numero].filter(Boolean).join('-') || 's/n'} — ${f.clienteNombre}`, importe: sign * base, iva: sign * num(f.iva), ivaRecuperable: false, grupo: 'FACTURADO', fuente: 'FACTURA_EMITIDA', modulo: 'Resultados', origenId: f.id, origenUrl: '/resultados?tab=facturacion', centroCostoId: f.centroCostoId, moneda: f.moneda });
     }
 
-    // Cobros de facturas emitidas (caja)
+    // Cobros de facturas emitidas (caja). Cada línea lleva el año de emisión
+    // de la factura (anioDoc) y su parte neta proporcional (netoCobrado), para
+    // que el dashboard distinga plata de períodos anteriores y muestre la
+    // "venta cobrada" sin IVA.
     const cobros = await p.finanzaCobro.findMany({
       where: { tenantId, fecha: { gte: desde, lt: hasta }, ...(moneda ? { moneda } : {}) },
-      include: { factura: { select: { clienteNombre: true, numero: true, puntoVenta: true, centroCostoId: true, deletedAt: true } } },
+      include: { factura: { select: { clienteNombre: true, numero: true, puntoVenta: true, centroCostoId: true, deletedAt: true, fechaEmision: true, neto: true, total: true } } },
     }).catch(() => []);
     for (const c of cobros) {
       if (c.factura?.deletedAt) continue;
       if (!ccOk(c.factura?.centroCostoId)) continue;
-      add({ fecha: c.fecha, concepto: `Cobro fact. ${[c.factura?.puntoVenta, c.factura?.numero].filter(Boolean).join('-') || ''} — ${c.factura?.clienteNombre || ''}`, importe: num(c.importe), grupo: 'COBRADO', fuente: 'COBRO', modulo: 'Resultados', origenId: c.facturaId, origenUrl: '/resultados?tab=facturacion', centroCostoId: c.factura?.centroCostoId, moneda: c.moneda || c.factura?.moneda });
+      const imp = num(c.importe);
+      const totalDoc = num(c.factura?.total);
+      const baseDoc = num(c.factura?.neto) > 0 ? num(c.factura.neto) : totalDoc;
+      const netoCobrado = totalDoc > 0 ? imp * (baseDoc / totalDoc) : imp;
+      add({ fecha: c.fecha, concepto: `Cobro fact. ${[c.factura?.puntoVenta, c.factura?.numero].filter(Boolean).join('-') || ''} — ${c.factura?.clienteNombre || ''}`, importe: imp, netoCobrado, anioDoc: c.factura?.fechaEmision ? new Date(c.factura.fechaEmision).getUTCFullYear() : null, grupo: 'COBRADO', fuente: 'COBRO', modulo: 'Resultados', origenId: c.facturaId, origenUrl: '/resultados?tab=facturacion', centroCostoId: c.factura?.centroCostoId, moneda: c.moneda || c.factura?.moneda });
     }
 
     // Ingresos operativos de flota (sin factura emitida)
@@ -2321,6 +2328,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
           ...l, importe: l.importe * tasa,
           ...(l.iva !== undefined ? { iva: num(l.iva) * tasa } : {}),
           ...(l.ivaBruto !== undefined ? { ivaBruto: num(l.ivaBruto) * tasa } : {}),
+          ...(l.netoCobrado !== undefined ? { netoCobrado: num(l.netoCobrado) * tasa } : {}),
           monedaOriginal: m, tasaAplicada: tasa,
         });
       } else { faltantes.add(`${m}·${mesKey}`); excluidas++; }
@@ -2404,6 +2412,15 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       const facturado = suma('FACTURADO');
       const ingresosOperativos = suma('INGRESO_OPERATIVO');
       const cobrado = suma('COBRADO');
+      // Cobros cuya factura fue emitida en años anteriores (ej. DTEs 2025
+      // pagados en 2026): se desagregan por año de emisión para que el
+      // dashboard muestre cuánto del "Cobrado" es arrastre de períodos previos.
+      const cobradoPorAnioDoc: Record<string, number> = {};
+      for (const l of lineas) {
+        if (l.grupo === 'COBRADO' && l.anioDoc && l.anioDoc < anio)
+          cobradoPorAnioDoc[l.anioDoc] = (cobradoPorAnioDoc[l.anioDoc] || 0) + l.importe;
+      }
+      const cobradoAniosPrevios = Object.values(cobradoPorAnioDoc).reduce((s, v) => s + v, 0);
       const costosOperativos = suma('COSTO_OP') + suma('GASTO_MANUAL');
       const estructura = suma('ESTRUCTURA');
       // IVA desagregado por mes: para el toggle "con IVA" del dashboard.
@@ -2423,7 +2440,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
 
       meses.push({
         mes: m, mesKey: `${anio}-${String(m).padStart(2, '0')}`,
-        facturado, ingresosOperativos, ventas, cobrado,
+        facturado, ingresosOperativos, ventas, cobrado, cobradoAniosPrevios, cobradoPorAnioDoc,
         costosOperativos, estructura, costosTotales: costosOperativos + estructura, ivaVentas, ivaCostos,
         resultado, margen, lineas: lineas.length, porRubro,
       });
@@ -2434,12 +2451,15 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       facturado: acc.facturado + m.facturado,
       ventas: acc.ventas + m.ventas,
       cobrado: acc.cobrado + m.cobrado,
+      cobradoAniosPrevios: acc.cobradoAniosPrevios + m.cobradoAniosPrevios,
       costos: acc.costos + m.costosTotales,
       resultado: acc.resultado + m.resultado,
-    }), { facturado: 0, ventas: 0, cobrado: 0, costos: 0, resultado: 0 });
+    }), { facturado: 0, ventas: 0, cobrado: 0, cobradoAniosPrevios: 0, costos: 0, resultado: 0 });
     totales.margen = totales.ventas > 0 ? Math.round((totales.resultado / totales.ventas) * 1000) / 10 : null;
     totales.porRubro = {} as Record<string, number>;
     for (const m of meses) for (const [r, v] of Object.entries(m.porRubro as Record<string, number>)) totales.porRubro[r] = (totales.porRubro[r] || 0) + v;
+    totales.cobradoPorAnioDoc = {} as Record<string, number>;
+    for (const m of meses) for (const [y, v] of Object.entries(m.cobradoPorAnioDoc as Record<string, number>)) totales.cobradoPorAnioDoc[y] = (totales.cobradoPorAnioDoc[y] || 0) + v;
     totales.mesesPositivos = meses.filter(m => m.resultado > 0).length;
     totales.mesesNegativos = meses.filter(m => m.resultado < 0).length;
 
@@ -4000,13 +4020,15 @@ ${pregunta
       const fecha = new Date(f.fecha);
       if (isNaN(fecha.getTime())) { errores.push(`Folio ${f.folio}: fecha inválida`); continue; }
       const tipoComprobante = tipoDesdeSii(f.tipoDoc);
+      const dteTipo = String(f.tipoDoc ?? '').trim() || null;
+      const mismoDte = { OR: [{ dteTipo }, { dteTipo: null }] };
       try {
         if (tipo === 'VENTAS') {
-          const existe = await p.finanzaFactura.findFirst({ where: { tenantId, deletedAt: null, numero: f.folio, tipoComprobante, ...(f.rut ? { clienteRut: f.rut } : {}), OR: [{ total: f.total }, { fechaEmision: fecha }] }, select: { id: true } });
+          const existe = await p.finanzaFactura.findFirst({ where: { tenantId, deletedAt: null, numero: f.folio, tipoComprobante, ...(f.rut ? { clienteRut: f.rut } : {}), AND: [{ OR: [{ total: f.total }, { fechaEmision: fecha }] }, mismoDte] }, select: { id: true } });
           if (existe) { duplicados++; continue; }
           await p.finanzaFactura.create({
             data: {
-              tenantId, numero: f.folio, tipoComprobante, fechaEmision: fecha,
+              tenantId, numero: f.folio, tipoComprobante, dteTipo, fechaEmision: fecha,
               fechaVencimiento: tipoComprobante === 'NOTA_CREDITO' ? null : new Date(fecha.getTime() + diasVencimiento * 86400000),
               clienteNombre: f.razonSocial || f.rut || 'Sin nombre', clienteRut: f.rut || null,
               neto: f.neto + f.exento, iva: f.iva, total: f.total, moneda, centroCostoId: centroCostoId || null,
@@ -4014,7 +4036,7 @@ ${pregunta
             },
           });
         } else {
-          const existe = await p.finanzaGasto.findFirst({ where: { tenantId, deletedAt: null, numeroComprobante: f.folio, tipoComprobante, ...(f.rut ? { proveedorRut: f.rut } : {}), OR: [{ total: f.total }, { fecha }] }, select: { id: true } });
+          const existe = await p.finanzaGasto.findFirst({ where: { tenantId, deletedAt: null, numeroComprobante: f.folio, tipoComprobante, ...(f.rut ? { proveedorRut: f.rut } : {}), AND: [{ OR: [{ total: f.total }, { fecha }] }, mismoDte] }, select: { id: true } });
           if (existe) { duplicados++; continue; }
           const prev = f.rut ? clasif.get(f.rut) : null;
           await p.finanzaGasto.create({
@@ -4025,7 +4047,7 @@ ${pregunta
               centroCostoId: prev?.centroCostoId ?? centroCostoId ?? null,
               // IVA no recuperable es costo; el recuperable no
               neto: f.neto + f.exento + f.ivaNoRecuperable, iva: f.iva, total: f.total, moneda,
-              tipoComprobante, numeroComprobante: f.folio, origen,
+              tipoComprobante, dteTipo, numeroComprobante: f.folio, origen,
               uploadedById: user.id, uploadedByNombre: user.nombre,
             },
           });

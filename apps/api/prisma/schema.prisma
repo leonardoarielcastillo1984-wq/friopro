@@ -13362,6 +13362,7 @@ model FinanzaFactura {
   numero             String?
   puntoVenta         String?
   tipoComprobante    String    @default("FACTURA") // FACTURA, NOTA_CREDITO, BOLETA, OTRO
+  dteTipo            String?
   fechaEmision       DateTime  @default(now()) @db.Timestamptz
   fechaVencimiento   DateTime? @db.Timestamptz
   // Cuándo prometió pagar el cliente (proyección de cobros). Si está,
@@ -13493,6 +13494,7 @@ model FinanzaGasto {
   ivaRecuperable Boolean @default(true)
 
   tipoComprobante   String? // FACTURA, NOTA_CREDITO, BOLETA, OTRO (NC resta)
+  dteTipo           String?
   numeroComprobante String?
   proveedorRut      String?
   origen            String  @default("MANUAL") // MANUAL | IMPORT_RCV

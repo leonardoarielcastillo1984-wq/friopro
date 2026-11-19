@@ -13,12 +13,14 @@ type Mes = {
   ventas: number; cobrado: number; costosOperativos: number; estructura: number;
   costosTotales: number; resultado: number; margen: number | null; lineas: number;
   ivaVentas?: number; ivaCostos?: number;
+  cobradoAniosPrevios?: number; cobradoPorAnioDoc?: Record<string, number>;
   porRubro: Record<string, number>;
 };
 type Linea = {
   fecha: string; concepto: string; importe: number; grupo: string; fuente: string; rubro: string;
   modulo: string; origenId: string | null; origenUrl: string | null;
   iva?: number; ivaBruto?: number; ivaRecuperable?: boolean;
+  anioDoc?: number | null;
 };
 type Comparativa = {
   actual: any; mesAnterior: any; mismoMesAnioAnterior: any;
@@ -293,7 +295,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
           { label: `Ventas ${anio}`, value: fmtMoney(totales.ventas, moneda), icon: DollarSign, color: 'text-blue-600', sub: 'sin IVA', explica: 'kpi-ventas' },
           { label: 'Costos', value: fmtMoney(totales.costos, moneda), icon: Building2, color: 'text-amber-600', sub: 'operativos + estructura', explica: 'kpi-costos' },
           { label: 'Resultado', value: fmtMoney(totales.resultado, moneda), icon: totales.resultado >= 0 ? TrendingUp : TrendingDown, color: totales.resultado >= 0 ? 'text-green-600' : 'text-red-600', sub: `margen ${fmtPct(totales.margen)}`, explica: 'kpi-resultado' },
-          { label: 'Cobrado', value: fmtMoney(totales.cobrado, moneda), icon: Wallet, color: 'text-emerald-600', sub: 'entró al banco (con IVA)', explica: 'kpi-cobrado' },
+          { label: 'Cobrado', value: fmtMoney(totales.cobrado, moneda), icon: Wallet, color: 'text-emerald-600', sub: (totales.cobradoAniosPrevios || 0) > 0 ? `con IVA · ${compact(totales.cobradoAniosPrevios)} de fact. ${Object.keys(totales.cobradoPorAnioDoc || {}).sort().join('/')}` : 'entró al banco (con IVA)', explica: 'kpi-cobrado' },
           { label: 'Meses en positivo', value: String(totales.mesesPositivos ?? 0), icon: TrendingUp, color: 'text-green-600', sub: mejor ? `mejor: ${MESES[mejor.mes - 1]} (${compact(mejor.resultado)})` : '', explica: 'kpi-resultado' },
           { label: 'Meses en negativo', value: String(totales.mesesNegativos ?? 0), icon: TrendingDown, color: 'text-red-600', sub: peor && peor.resultado < 0 ? `peor: ${MESES[peor.mes - 1]} (${compact(peor.resultado)})` : '', explica: 'kpi-resultado' },
         ].map((k, i) => (
@@ -816,7 +818,16 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
                   {fmtMoney(m.resultado, moneda)}
                 </td>
                 <td className="px-4 py-2.5 text-right text-neutral-500">{fmtPct(m.margen)}</td>
-                <td className="px-4 py-2.5 text-right text-emerald-700">{fmtMoney(m.cobrado, moneda)}</td>
+                <td className="px-4 py-2.5 text-right text-emerald-700">
+                  {fmtMoney(m.cobrado, moneda)}
+                  {m.cobradoPorAnioDoc && Object.keys(m.cobradoPorAnioDoc).length > 0 && (
+                    <div className="mt-0.5 space-y-px text-[10px] font-normal leading-tight text-neutral-400">
+                      {Object.entries(m.cobradoPorAnioDoc).sort(([a], [b]) => Number(a) - Number(b)).map(([y, v]) => (
+                        <div key={y}>de fact. {y}: {fmtMoney(v, moneda)}</div>
+                      ))}
+                    </div>
+                  )}
+                </td>
                 <td className="px-2 py-2.5 text-neutral-400"><ChevronRight size={14} /></td>
               </tr>
             ))}
@@ -829,14 +840,23 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
               <td className="px-4 py-2.5 text-right text-purple-700">{fmtMoney(meses.reduce((s, m) => s + m.estructura, 0), moneda)}</td>
               <td className={`px-4 py-2.5 text-right ${totales.resultado >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmtMoney(totales.resultado, moneda)}</td>
               <td className="px-4 py-2.5 text-right text-neutral-500">{fmtPct(totales.margen)}</td>
-              <td className="px-4 py-2.5 text-right text-emerald-700">{fmtMoney(totales.cobrado, moneda)}</td>
+              <td className="px-4 py-2.5 text-right text-emerald-700">
+                {fmtMoney(totales.cobrado, moneda)}
+                {totales.cobradoPorAnioDoc && Object.keys(totales.cobradoPorAnioDoc).length > 0 && (
+                  <div className="mt-0.5 space-y-px text-[10px] font-normal leading-tight text-neutral-400">
+                    {(Object.entries(totales.cobradoPorAnioDoc) as [string, number][]).sort(([a], [b]) => Number(a) - Number(b)).map(([y, v]) => (
+                      <div key={y}>de fact. {y}: {fmtMoney(v, moneda)}</div>
+                    ))}
+                  </div>
+                )}
+              </td>
               <td></td>
             </tr>
           </tfoot>
         </table>
       </div>
       <p className="text-xs text-neutral-400">
-        Resultado = ventas sin IVA − costos operativos − estructura (devengado: por fecha de factura). "Cobrado" es la plata que efectivamente entró, con IVA.
+        Resultado = ventas sin IVA − costos operativos − estructura (devengado: por fecha de factura). "Cobrado" es la plata que efectivamente entró, con IVA; bajo cada monto se indica cuánto corresponde a facturas emitidas en años anteriores.
       </p>
 
       {loadingDetalle && <div className="p-6 text-center text-neutral-400"><Loader2 className="inline animate-spin" size={16} /></div>}
@@ -859,12 +879,13 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
             <table className="w-full text-sm">
               <tbody>
                 {detalle.lineas.filter(l => !grupoFiltro || l.grupo === grupoFiltro).map((l, i) => (
-                  <tr key={i} data-explica="movimiento" data-explica-titulo={l.concepto} data-explica-datos={JSON.stringify({ fecha: fmtFecha(l.fecha), concepto: l.concepto, grupo: GRUPO_LABEL[l.grupo] || l.grupo, rubro: labelRubro(l.rubro), fuente: l.fuente, modulo: l.modulo, importe: Math.round(l.importe), iva: l.iva, ivaRecuperable: l.ivaRecuperable })}
+                  <tr key={i} data-explica="movimiento" data-explica-titulo={l.concepto} data-explica-datos={JSON.stringify({ fecha: fmtFecha(l.fecha), concepto: l.concepto, grupo: GRUPO_LABEL[l.grupo] || l.grupo, rubro: labelRubro(l.rubro), fuente: l.fuente, modulo: l.modulo, importe: Math.round(l.importe), iva: l.iva, ivaRecuperable: l.ivaRecuperable, anioDoc: l.anioDoc })}
                     className="border-b border-neutral-100 last:border-0">
                     <td className="w-24 px-4 py-2 text-xs text-neutral-400">{fmtFecha(l.fecha)}</td>
                     <td className="px-4 py-2 text-neutral-800">
                       {l.origenUrl ? <a href={l.origenUrl} className="hover:text-blue-600 hover:underline">{l.concepto}</a> : l.concepto}
                       <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500">{GRUPO_LABEL[l.grupo] || l.grupo}</span>
+                      {l.grupo === 'COBRADO' && l.anioDoc != null && l.anioDoc < anio && <span title={`Cobro de una factura emitida en ${l.anioDoc}`} className="ml-1.5 rounded bg-sky-50 px-1 py-0.5 text-[10px] text-sky-700">fact. {l.anioDoc}</span>}
                       {(l.iva ?? 0) > 0 && <span title={l.ivaRecuperable === false ? 'El IVA computa como costo' : 'IVA recuperado como crédito fiscal'} className={`ml-1.5 rounded px-1 py-0.5 text-[10px] ${l.ivaRecuperable === false ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>IVA {l.ivaRecuperable === false ? 'al costo' : 'recuperable'}</span>}
                       {l.fuente === 'COMBUSTIBLE' && l.ivaRecuperable !== false && !(l.iva && l.iva > 0) && <span title="El precio de surtidor incluye IVA — desagregalo para evidenciar el crédito" className="ml-1.5 rounded bg-neutral-100 px-1 py-0.5 text-[10px] text-neutral-500">IVA sin desagregar</span>}
                     </td>
