@@ -76,6 +76,7 @@ export default function Conciliacion({ moneda, canEdit, onChanged }: { moneda: s
     }
     if (fTipo) p.set('tipo', fTipo);
     if (fOrigen) p.set('origen', fOrigen);
+    p.set('limit', '5000');
     apiFetch<{ movs: Mov[]; resumen: any }>(`/finanzas/cartola-movs?${p}`)
       .then(d => { setMovs(d.movs); setResumen(d.resumen); })
       .catch((e: any) => setError(e?.message || 'No se pudo cargar'))

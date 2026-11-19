@@ -1125,7 +1125,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       if (q.hasta) where.fecha.lt = new Date(q.hasta);
     }
     const movs = await prisma().finanzaCartolaMov.findMany({
-      where, orderBy: { fecha: 'desc' }, take: Math.min(Number(q.limit) || 500, 2000),
+      where, orderBy: { fecha: 'desc' }, take: Math.min(Number(q.limit) || 500, 10000),
     });
     const resumen = { total: movs.length, conciliados: 0, sinMatch: 0, sugeridos: 0, internos: 0, manuales: 0, deshechos: 0 };
     for (const m of movs) {
