@@ -13383,6 +13383,10 @@ model FinanzaFactura {
 
   estado String @default("EMITIDA") // EMITIDA, PARCIALMENTE_COBRADA, COBRADA, VENCIDA, ANULADA
 
+  // Solo en NOTA_CREDITO: factura a la que se aplica. Su saldo descuenta
+  // de esa factura puntual en vez de netear la deuda más vieja del cliente.
+  aplicaAFacturaId String? @db.Uuid
+
   // Imputación económica (escalares, sin FK)
   centroCostoId String? @db.Uuid
   servicioId    String? @db.Uuid // FlotaServicio opcional

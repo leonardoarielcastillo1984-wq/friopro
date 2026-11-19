@@ -12,7 +12,7 @@ type Factura = {
   neto: number; iva: number; total: number; moneda: string; estado: string; origen: string;
   cobrado: number; saldo: number; diasAtraso: number;
   fileUrl: string | null; fileName: string | null; mimeType: string | null; centroCostoId: string | null;
-  notas: string | null; cobros: any[];
+  notas: string | null; cobros: any[]; aplicaAFacturaId: string | null;
 };
 
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -23,7 +23,7 @@ const sumarDias = (fecha: string, dias: number) => {
 const nuevoForm = (moneda: string) => ({
   numero: '', puntoVenta: '', tipoComprobante: 'FACTURA', fechaEmision: hoy(), fechaVencimiento: sumarDias(hoy(), 30),
   clienteNombre: '', clienteRut: '', neto: '', ivaRate: String(IVA_DEFAULT[moneda] ?? 0), iva: '', total: '',
-  moneda, centroCostoId: '', notas: '',
+  moneda, centroCostoId: '', notas: '', aplicaAFacturaId: '',
 });
 type Form = ReturnType<typeof nuevoForm>;
 
@@ -109,7 +109,7 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
       fechaEmision: toDateInput(f.fechaEmision), fechaVencimiento: toDateInput(f.fechaVencimiento),
       clienteNombre: f.clienteNombre, clienteRut: f.clienteRut || '', neto: f.neto ? String(f.neto) : '',
       ivaRate: String(rate), iva: f.iva ? String(f.iva) : '', total: String(f.total), moneda: f.moneda,
-      centroCostoId: f.centroCostoId || '', notas: f.notas || '',
+      centroCostoId: f.centroCostoId || '', notas: f.notas || '', aplicaAFacturaId: f.aplicaAFacturaId || '',
     });
     setFileData(f.fileUrl ? { url: f.fileUrl, name: f.fileName || 'comprobante', mimeType: f.mimeType || '' } : null);
     setShowForm(true); setError(null);
@@ -134,6 +134,7 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
         clienteNombre: form.clienteNombre.trim(), clienteRut: form.clienteRut.trim() || null,
         neto: Number(form.neto) || 0, iva: Number(form.iva) || 0, total: Number(form.total),
         moneda: form.moneda, centroCostoId: form.centroCostoId || null, notas: form.notas || null,
+        aplicaAFacturaId: form.tipoComprobante === 'NOTA_CREDITO' ? form.aplicaAFacturaId || null : null,
         fileUrl: fileData?.url || null, fileName: fileData?.name || null, mimeType: fileData?.mimeType || null,
       };
       await apiFetch(editId ? `/finanzas/facturas/${editId}` : '/finanzas/facturas', { method: editId ? 'PATCH' : 'POST', json });
@@ -222,6 +223,23 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
               <select value={form.tipoComprobante} onChange={e => set('tipoComprobante', e.target.value)} className={inputCls}>
                 {Object.entries(TIPO_COMPROBANTE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select></div>
+            {form.tipoComprobante === 'NOTA_CREDITO' && (
+              <div className="col-span-2"><label className={labelCls}>Aplica a factura</label>
+                <select value={form.aplicaAFacturaId} onChange={e => set('aplicaAFacturaId', e.target.value)} className={inputCls}>
+                  <option value="">Crédito general del cliente (sin factura)</option>
+                  {facturas
+                    .filter(x => x.id !== editId && x.tipoComprobante !== 'NOTA_CREDITO' && x.estado !== 'ANULADA' && x.moneda === form.moneda)
+                    .map(x => ({ x, mismoCli: (form.clienteRut && x.clienteRut === form.clienteRut) || (!!form.clienteNombre.trim() && x.clienteNombre.trim().toUpperCase() === form.clienteNombre.trim().toUpperCase()) }))
+                    .sort((a, b) => Number(b.mismoCli) - Number(a.mismoCli) || String(b.x.fechaEmision).localeCompare(String(a.x.fechaEmision)))
+                    .map(({ x }) => (
+                      <option key={x.id} value={x.id}>
+                        {[x.puntoVenta, x.numero].filter(Boolean).join('-') || 's/n'} · {x.clienteNombre} · {fmtFecha(x.fechaEmision)} · {fmtMoney(x.total, x.moneda)}
+                      </option>
+                    ))}
+                </select>
+                <div className="mt-1 text-[10px] text-neutral-400">La NC descuenta el saldo de esa factura. Sin vínculo, queda como crédito a favor del cliente.</div>
+              </div>
+            )}
             <div><label className={labelCls}>Folio / número</label><input value={form.numero} onChange={e => set('numero', e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Pto. venta (opcional)</label><input value={form.puntoVenta} onChange={e => set('puntoVenta', e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Emisión</label><input type="date" value={form.fechaEmision} onChange={e => set('fechaEmision', e.target.value)} className={inputCls} /></div>
@@ -286,6 +304,11 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
                         {nc ? 'NC ' : ''}{[f.puntoVenta, f.numero].filter(Boolean).join('-') || TIPO_COMPROBANTE[f.tipoComprobante]}
                         {f.fileUrl && <a href={f.fileUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="ml-1.5 inline-block text-blue-500" title="Ver PDF"><Paperclip size={12} /></a>}
                         {f.origen === 'IMPORT_RCV' && <span className="ml-1.5 rounded bg-sky-50 px-1 text-[10px] text-sky-600">SII</span>}
+                        {nc && f.aplicaAFacturaId && (
+                          <span className="ml-1.5 rounded bg-emerald-50 px-1 text-[10px] text-emerald-600" title="NC aplicada a una factura: descuenta su saldo">
+                            → Fac. {(() => { const t = facturas.find(x => x.id === f.aplicaAFacturaId); return t ? [t.puntoVenta, t.numero].filter(Boolean).join('-') || 's/n' : 'vinculada'; })()}
+                          </span>
+                        )}
                       </td>
                       <td className={`px-4 py-2.5 text-right ${nc ? 'text-red-600' : ''}`}>{nc ? '−' : ''}{fmtMoney(f.neto || f.total, f.moneda)}</td>
                       <td className={`px-4 py-2.5 text-right text-neutral-500 ${nc ? 'text-red-600' : ''}`}>{nc ? '−' : ''}{fmtMoney(f.iva, f.moneda)}</td>

@@ -64,10 +64,16 @@ async function syncFacturaEstado(prisma: any, facturaId: string) {
   const f = await prisma.finanzaFactura.findUnique({ where: { id: facturaId }, include: { cobros: true } });
   if (!f || f.estado === 'ANULADA') return;
   const cobrado = f.cobros.reduce((s: number, c: any) => s + num(c.importe), 0);
+  // Las NC vinculadas cubren el saldo igual que un cobro.
+  const ncs = await prisma.finanzaFactura.findMany({
+    where: { aplicaAFacturaId: facturaId, tenantId: f.tenantId, deletedAt: null, estado: { not: 'ANULADA' }, tipoComprobante: 'NOTA_CREDITO' },
+    select: { total: true },
+  });
+  const cubierto = cobrado + ncs.reduce((s: number, n: any) => s + num(n.total), 0);
   const total = num(f.total);
   let estado = 'EMITIDA';
-  if (total > 0 && cobrado >= total) estado = 'COBRADA';
-  else if (cobrado > 0) estado = 'PARCIALMENTE_COBRADA';
+  if (total > 0 && cubierto >= total) estado = 'COBRADA';
+  else if (cubierto > 0) estado = 'PARCIALMENTE_COBRADA';
   if (estado !== f.estado) await prisma.finanzaFactura.update({ where: { id: facturaId }, data: { estado } });
 }
 
@@ -101,6 +107,40 @@ async function validarRefs(p: any, tenantId: string, refs: { centroCostoId?: str
     const s = await p.flotaServicio.findFirst({ where: { id: refs.servicioId, tenantId, deletedAt: null }, select: { id: true } }).catch(() => null);
     if (!s) return 'servicioId';
   }
+  return null;
+}
+
+// Mapa facturaId → monto total de NC vinculadas (no anuladas). Su monto
+// descuenta el saldo de la factura a la que aplican.
+async function ncAplicadasMap(p: any, tenantId: string, facturaIds: string[]): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (!facturaIds.length) return map;
+  const ncs = await p.finanzaFactura.findMany({
+    where: { tenantId, deletedAt: null, estado: { not: 'ANULADA' }, tipoComprobante: 'NOTA_CREDITO', aplicaAFacturaId: { in: facturaIds } },
+    select: { aplicaAFacturaId: true, total: true },
+  }).catch(() => []);
+  for (const n of ncs) map.set(n.aplicaAFacturaId, (map.get(n.aplicaAFacturaId) || 0) + num(n.total));
+  return map;
+}
+
+// Valida el vínculo NC → factura: mismo tenant, no otra NC, no anulada,
+// misma moneda y mismo cliente. `doc` debe tener los valores efectivos
+// (en PATCH, ya fusionados con los datos previos).
+async function validarNCLink(p: any, tenantId: string, doc: any, selfId?: string): Promise<string | null> {
+  if (!doc.aplicaAFacturaId) return null;
+  if (doc.tipoComprobante !== 'NOTA_CREDITO') return 'Solo una nota de crédito puede aplicarse a una factura';
+  if (selfId && doc.aplicaAFacturaId === selfId) return 'La nota de crédito no puede aplicarse a sí misma';
+  const fac = await p.finanzaFactura.findFirst({
+    where: { id: doc.aplicaAFacturaId, tenantId, deletedAt: null },
+    select: { id: true, tipoComprobante: true, moneda: true, clienteRut: true, clienteNombre: true, estado: true },
+  });
+  if (!fac) return 'La factura a la que aplica la NC no existe en esta empresa';
+  if (fac.tipoComprobante === 'NOTA_CREDITO') return 'La NC solo puede aplicarse a una factura, no a otra NC';
+  if (fac.estado === 'ANULADA') return 'No se puede aplicar a una factura anulada';
+  if (doc.moneda && fac.moneda !== doc.moneda) return `La NC es en ${doc.moneda} y la factura en ${fac.moneda}`;
+  const cliDoc = (doc.clienteRut || doc.clienteNombre || '').trim().toUpperCase();
+  const cliFac = (fac.clienteRut || fac.clienteNombre || '').trim().toUpperCase();
+  if (cliDoc && cliFac && cliDoc !== cliFac) return 'La NC debe ser del mismo cliente que la factura';
   return null;
 }
 
@@ -213,6 +253,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     fechaEmision: z.string().optional(),
     fechaVencimiento: z.string().optional().nullable(),
     fechaCobroEstimada: z.string().optional().nullable(), // cuándo prometió pagar el cliente
+    aplicaAFacturaId: z.string().uuid().optional().nullable(), // solo en NC: factura que compensa
     clienteId: z.string().uuid().optional().nullable(),
     clienteNombre: z.string().min(1).max(200),
     clienteRut: z.string().max(20).optional().nullable(),
@@ -257,11 +298,18 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       orderBy: { fechaEmision: 'desc' },
       take: Math.min(Number(q.limit) || 500, 1000),
     });
+    // NC vinculadas: su monto descuenta el saldo de la factura a la que aplican.
+    const ncMap = await ncAplicadasMap(prisma(), tenantId, facturas.map((f: any) => f.id));
     const enriched = facturas.map((f: any) => {
       const cobrado = f.cobros.reduce((s: number, c: any) => s + num(c.importe), 0);
-      const estado = estadoEfectivo(f);
+      const ncAplicada = ncMap.get(f.id) || 0;
+      const saldo = Math.max(0, num(f.total) - cobrado - ncAplicada);
+      // Una factura cubierta por cobros + NC vinculadas queda COBRADA aunque
+      // el estado persistido no se haya sincronizado todavía.
+      const estado = f.tipoComprobante !== 'NOTA_CREDITO' && num(f.total) > 0 && saldo <= 0.5
+        ? 'COBRADA' : estadoEfectivo(f);
       return {
-        ...f, cobrado, saldo: Math.max(0, num(f.total) - cobrado), estado,
+        ...f, cobrado, ncAplicada, saldo, estado,
         diasAtraso: estado === 'VENCIDA' && f.fechaVencimiento
           ? Math.floor((Date.now() - new Date(f.fechaVencimiento).getTime()) / 86400000) : 0,
       };
@@ -277,6 +325,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const { items, ...data } = body.data;
     const refError = await validarRefs(prisma(), tenantId, data);
     if (refError) return reply.code(400).send({ error: `${refError} no existe en esta empresa` });
+    const ncLinkError = await validarNCLink(prisma(), tenantId, data);
+    if (ncLinkError) return reply.code(400).send({ error: ncLinkError });
     if (await rechazarSiCerrado(tenantId, data.fechaEmision ? new Date(data.fechaEmision) : new Date(), reply)) return;
     // Dedupe manual: mismo número + tipo + cliente (como hace el import RCV).
     if (data.numero) {
@@ -298,6 +348,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       },
       include: { items: true, cobros: true },
     });
+    if (factura.aplicaAFacturaId) await syncFacturaEstado(app.prisma, factura.aplicaAFacturaId);
     return reply.code(201).send({ factura });
   });
 
@@ -315,8 +366,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (data.fechaVencimiento !== undefined) update.fechaVencimiento = data.fechaVencimiento ? new Date(data.fechaVencimiento) : null;
     if (data.fechaCobroEstimada !== undefined) update.fechaCobroEstimada = data.fechaCobroEstimada ? new Date(data.fechaCobroEstimada) : null;
     // Cierre de período: no se edita un doc de un mes cerrado ni se lo mueve a uno.
-    const prev = await prisma().finanzaFactura.findFirst({ where: { id, tenantId, deletedAt: null }, select: { fechaEmision: true } });
+    const prev = await prisma().finanzaFactura.findFirst({ where: { id, tenantId, deletedAt: null }, select: { fechaEmision: true, tipoComprobante: true, moneda: true, clienteRut: true, clienteNombre: true, aplicaAFacturaId: true } });
     if (!prev) return reply.code(404).send({ error: 'Factura no encontrada' });
+    const ncLinkError = await validarNCLink(prisma(), tenantId, { ...prev, ...data }, id);
+    if (ncLinkError) return reply.code(400).send({ error: ncLinkError });
     if (await rechazarSiCerrado(tenantId, prev.fechaEmision, reply)) return;
     if (update.fechaEmision && await rechazarSiCerrado(tenantId, update.fechaEmision, reply)) return;
     const r = await prisma().finanzaFactura.updateMany({ where: { id, tenantId, deletedAt: null }, data: update });
@@ -327,6 +380,11 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     // Si cambió el total o la fecha de vencimiento, el estado de cobro puede
     // haber quedado viejo (ej. bajó el total y ya estaba cubierto).
     if (data.total !== undefined || data.fechaVencimiento !== undefined) await syncFacturaEstado(app.prisma, id);
+    // Re-vincular una NC mueve su crédito: se sincroniza la factura vieja y la nueva.
+    if (data.aplicaAFacturaId !== undefined) {
+      if (prev.aplicaAFacturaId && prev.aplicaAFacturaId !== data.aplicaAFacturaId) await syncFacturaEstado(app.prisma, prev.aplicaAFacturaId);
+      if (data.aplicaAFacturaId) await syncFacturaEstado(app.prisma, data.aplicaAFacturaId);
+    }
     const factura = await prisma().finanzaFactura.findFirst({ where: { id }, include: { items: true, cobros: true } });
     return reply.send({ factura });
   });
@@ -335,10 +393,11 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
-    const prev = await prisma().finanzaFactura.findFirst({ where: { id, tenantId, deletedAt: null }, select: { fechaEmision: true } });
+    const prev = await prisma().finanzaFactura.findFirst({ where: { id, tenantId, deletedAt: null }, select: { fechaEmision: true, aplicaAFacturaId: true } });
     if (prev && await rechazarSiCerrado(tenantId, prev.fechaEmision, reply)) return;
     const r = await prisma().finanzaFactura.updateMany({ where: { id, tenantId, deletedAt: null }, data: { estado: 'ANULADA' } });
     if (!r.count) return reply.code(404).send({ error: 'Factura no encontrada' });
+    if (prev?.aplicaAFacturaId) await syncFacturaEstado(app.prisma, prev.aplicaAFacturaId);
     return reply.send({ ok: true });
   });
 
@@ -346,10 +405,11 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
-    const prev = await prisma().finanzaFactura.findFirst({ where: { id, tenantId, deletedAt: null }, select: { fechaEmision: true } });
+    const prev = await prisma().finanzaFactura.findFirst({ where: { id, tenantId, deletedAt: null }, select: { fechaEmision: true, aplicaAFacturaId: true } });
     if (prev && await rechazarSiCerrado(tenantId, prev.fechaEmision, reply)) return;
     const r = await prisma().finanzaFactura.updateMany({ where: { id, tenantId }, data: { deletedAt: new Date() } });
     if (!r.count) return reply.code(404).send({ error: 'Factura no encontrada' });
+    if (prev?.aplicaAFacturaId) await syncFacturaEstado(app.prisma, prev.aplicaAFacturaId);
     return reply.send({ ok: true });
   });
 
@@ -382,7 +442,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     // que no se cobran — el frontend ya las excluye pero el API no asumía nada).
     if (factura.tipoComprobante !== 'NOTA_CREDITO') {
       const cobrosPrev = await prisma().finanzaCobro.findMany({ where: { facturaId: id }, select: { importe: true } });
-      const saldo = num(factura.total) - cobrosPrev.reduce((s: number, c: any) => s + num(c.importe), 0);
+      const ncAplPrev = (await ncAplicadasMap(prisma(), tenantId, [id])).get(id) || 0;
+      const saldo = num(factura.total) - cobrosPrev.reduce((s: number, c: any) => s + num(c.importe), 0) - ncAplPrev;
       if (body.data.importe > saldo + 0.5)
         return reply.code(400).send({ error: `El cobro supera el saldo pendiente (${factura.moneda} ${Math.max(0, saldo).toFixed(2)})` });
     }
@@ -398,7 +459,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     await syncFacturaEstado(app.prisma, id);
     const actualizada = await prisma().finanzaFactura.findFirst({ where: { id }, include: { items: true, cobros: { orderBy: { fecha: 'asc' } } } });
     const cobrado = actualizada.cobros.reduce((s: number, c: any) => s + num(c.importe), 0);
-    return reply.code(201).send({ cobro, factura: { ...actualizada, cobrado, saldo: Math.max(0, num(actualizada.total) - cobrado), estado: estadoEfectivo(actualizada) } });
+    const ncApl = (await ncAplicadasMap(prisma(), tenantId, [id])).get(id) || 0;
+    const saldoAct = Math.max(0, num(actualizada.total) - cobrado - ncApl);
+    const estadoAct = actualizada.tipoComprobante !== 'NOTA_CREDITO' && num(actualizada.total) > 0 && saldoAct <= 0.5 ? 'COBRADA' : estadoEfectivo(actualizada);
+    return reply.code(201).send({ cobro, factura: { ...actualizada, cobrado, ncAplicada: ncApl, saldo: saldoAct, estado: estadoAct } });
   });
 
   app.patch('/cobros/:id', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -566,13 +630,14 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       include: { cobros: true },
       orderBy: [{ fechaVencimiento: 'asc' }, { fechaEmision: 'asc' }],
     });
+    const ncPend = await ncAplicadasMap(prisma(), tenantId, facts.map((f: any) => f.id));
     const pend = facts.map((f: any) => ({
       id: f.id, numero: [f.puntoVenta, f.numero].filter(Boolean).join('-') || null,
       folioNums: folioNumsDe(f.numero),
       cliente: f.clienteNombre, rut: f.clienteRut ? normRutKey(f.clienteRut) : null,
       nombreNorm: normTxt(f.clienteNombre), moneda: f.moneda,
       fechaEmision: f.fechaEmision,
-      saldo: Math.max(0, num(f.total) - f.cobros.reduce((s: number, c: any) => s + num(c.importe), 0)),
+      saldo: Math.max(0, num(f.total) - f.cobros.reduce((s: number, c: any) => s + num(c.importe), 0) - (ncPend.get(f.id) || 0)),
     })).filter((f: any) => f.saldo > 0.5);
     const resto = new Map(pend.map((f: any) => [f.id, f.saldo]));
     const getResto = (f: any) => resto.get(f.id) ?? f.saldo;
@@ -1272,7 +1337,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       if (mov.tipo !== 'ABONO') return reply.code(400).send({ error: 'Un cargo se vincula a un gasto, no a una factura' });
       const f = await prisma().finanzaFactura.findFirst({ where: { id: docId, tenantId, deletedAt: null }, include: { cobros: true } });
       if (!f) return reply.code(404).send({ error: 'Factura no encontrada' });
-      const saldo = Math.max(0, num(f.total) - f.cobros.reduce((s: number, c: any) => s + num(c.importe), 0));
+      const ncApl = (await ncAplicadasMap(prisma(), tenantId, [f.id])).get(f.id) || 0;
+      const saldo = Math.max(0, num(f.total) - f.cobros.reduce((s: number, c: any) => s + num(c.importe), 0) - ncApl);
       if (saldo <= 0.5) return reply.code(409).send({ error: 'La factura no tiene saldo pendiente' });
       importe = Math.min(aplicar ?? Infinity, saldo, restante);
       if (importe <= 0.5) return reply.code(400).send({ error: 'Nada que imputar' });
@@ -2425,6 +2491,13 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const hoy = Date.now();
     const DIA = 86400000;
     const porCliente = new Map<string, any>();
+    // NC vinculadas a una factura puntual: descuentan el saldo de ESA factura
+    // en vez del pool global del cliente (evita descontarlas dos veces).
+    const ncPorFactura = new Map<string, number>();
+    for (const f of facturas) {
+      if (f.tipoComprobante === 'NOTA_CREDITO' && f.aplicaAFacturaId)
+        ncPorFactura.set(f.aplicaAFacturaId, (ncPorFactura.get(f.aplicaAFacturaId) || 0) + num(f.total));
+    }
     for (const f of facturas) {
       const key = (f.clienteRut || f.clienteNombre).trim().toUpperCase();
       if (!porCliente.has(key)) porCliente.set(key, {
@@ -2434,24 +2507,28 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       });
       const c = porCliente.get(key);
       const total = num(f.total);
-      if (f.tipoComprobante === 'NOTA_CREDITO') { c.notasCredito += total; continue; }
+      if (f.tipoComprobante === 'NOTA_CREDITO') { if (!f.aplicaAFacturaId) c.notasCredito += total; continue; }
       const cobrado = f.cobros.reduce((s: number, x: any) => s + num(x.importe), 0);
       c.facturado += total; c.cobrado += cobrado;
       for (const x of f.cobros) {
         c.fechasCobro.push(new Date(x.fecha).getTime());
         if (!c.ultimoCobro || x.fecha > c.ultimoCobro) c.ultimoCobro = x.fecha;
       }
-      const saldo = Math.max(0, total - cobrado);
-      if (saldo <= 0.5 && f.cobros.length) {
+      const ncAplicada = ncPorFactura.get(f.id) || 0;
+      const saldo = Math.max(0, total - cobrado - ncAplicada);
+      if (saldo <= 0.5 && (f.cobros.length || ncAplicada > 0)) {
         // Días de pago = emisión → cobro que la canceló
         const cancelo = f.cobros[f.cobros.length - 1];
-        const last = new Date(cancelo.fecha).getTime();
-        c.diasPago.push(Math.max(0, Math.round((last - new Date(f.fechaEmision).getTime()) / DIA)));
+        if (cancelo) {
+          const last = new Date(cancelo.fecha).getTime();
+          c.diasPago.push(Math.max(0, Math.round((last - new Date(f.fechaEmision).getTime()) / DIA)));
+        }
         // Consolidado de cobradas (para que el cliente no "desaparezca" al saldar)
         c.cobradas.push({
           id: f.id, numero: [f.puntoVenta, f.numero].filter(Boolean).join('-') || null,
-          fechaEmision: f.fechaEmision, fechaCobro: cancelo.fecha, total, moneda: f.moneda,
-          fileUrl: f.fileUrl, origen: (cancelo.referencia || '').startsWith('CARTOLA:') ? 'cartola' : 'manual',
+          fechaEmision: f.fechaEmision, fechaCobro: cancelo?.fecha || null, total, moneda: f.moneda,
+          fileUrl: f.fileUrl, origen: cancelo ? ((cancelo.referencia || '').startsWith('CARTOLA:') ? 'cartola' : 'manual') : 'nc',
+          ncAplicada: ncAplicada || undefined,
         });
         continue;
       }
@@ -2466,7 +2543,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       else c.aging.d90 += saldo;
       c.pendientes.push({
         id: f.id, numero: [f.puntoVenta, f.numero].filter(Boolean).join('-') || null, fechaEmision: f.fechaEmision,
-        fechaVencimiento: f.fechaVencimiento, fechaCobroEstimada: f.fechaCobroEstimada, total, cobrado, saldo, diasAtraso: Math.max(0, atraso), moneda: f.moneda,
+        fechaVencimiento: f.fechaVencimiento, fechaCobroEstimada: f.fechaCobroEstimada, total, cobrado, saldo, ncAplicada: ncAplicada || undefined, diasAtraso: Math.max(0, atraso), moneda: f.moneda,
         // Sin vencimiento se asume contado (vence en la emisión) — la UI lo
         // marca para que el aging no se lea como dato contractual.
         vencimientoEstimado: !f.fechaVencimiento,
@@ -2639,6 +2716,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       p.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } }).catch(() => null),
     ]);
 
+    const ncProy = await ncAplicadasMap(p, tenantId, facturasPend.map((f: any) => f.id));
     const entradas: { fecha: Date; importe: number }[] = [
       ...cobros.map((c: any) => ({ fecha: new Date(c.fecha), importe: num(c.importe) })),
       ...ingresosCobrados.map((i: any) => ({ fecha: new Date(i.cobradoAt), importe: num(i.monto) })),
@@ -2711,7 +2789,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const proximosCobros = [
       ...facturasPend.filter((f: any) => f.tipoComprobante !== 'NOTA_CREDITO').map((f: any) => {
         const cobrado = f.cobros.reduce((s: number, c: any) => s + num(c.importe), 0);
-        const saldo = Math.max(0, num(f.total) - cobrado);
+        const saldo = Math.max(0, num(f.total) - cobrado - (ncProy.get(f.id) || 0));
         const lag = lagCliente.get((f.clienteNombre || '').toLowerCase().trim());
         // Prioridad: fecha prometida manual > lag histórico del cliente > vencimiento.
         const via = f.fechaCobroEstimada ? 'ESTIMADA' : lag != null ? 'HISTORIAL' : 'VENCIMIENTO';
