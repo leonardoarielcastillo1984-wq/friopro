@@ -69,9 +69,17 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
     });
   }, [facturas, buscar, filtroEstado, desde, hasta]);
   const tot = visibles.reduce((t, f) => {
-    const s = f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
-    return { neto: t.neto + s * (f.neto || f.total), iva: t.iva + s * (f.iva || 0), total: t.total + s * f.total, saldo: t.saldo + (s > 0 ? f.saldo : 0) };
-  }, { neto: 0, iva: 0, total: 0, saldo: 0 });
+    const nc = f.tipoComprobante === 'NOTA_CREDITO';
+    const s = nc ? -1 : 1;
+    return {
+      // Neto de ventas (facturas − NC): lo que efectivamente vendimos
+      neto: t.neto + s * (f.neto || f.total), iva: t.iva + s * (f.iva || 0), total: t.total + s * f.total, saldo: t.saldo + (s > 0 ? f.saldo : 0),
+      // Desglose: ventas brutas vs notas de crédito emitidas
+      factNeto: t.factNeto + (nc ? 0 : f.neto || f.total), factIva: t.factIva + (nc ? 0 : f.iva || 0), factTotal: t.factTotal + (nc ? 0 : f.total),
+      ncNeto: t.ncNeto + (nc ? f.neto || f.total : 0), ncIva: t.ncIva + (nc ? f.iva || 0 : 0), ncTotal: t.ncTotal + (nc ? f.total : 0),
+      nFact: t.nFact + (nc ? 0 : 1), nNc: t.nNc + (nc ? 1 : 0),
+    };
+  }, { neto: 0, iva: 0, total: 0, saldo: 0, factNeto: 0, factIva: 0, factTotal: 0, ncNeto: 0, ncIva: 0, ncTotal: 0, nFact: 0, nNc: 0 });
 
   // Cálculo automático: neto + tasa → IVA y total; o total + tasa → neto
   const setNeto = (v: string) => setForm(f => {
@@ -368,11 +376,38 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
               })}
               {visibles.length === 0 && <tr><td colSpan={9} className="px-4 py-10 text-center text-neutral-400">Sin facturas en {moneda}. Cargalas a mano o importalas desde el SII.</td></tr>}
             </tbody>
-            {visibles.length > 0 && (
+            {visibles.length > 0 && tot.nNc === 0 && (
               <tfoot>
                 <tr data-explica="factura-total" data-explica-titulo={`Total facturación (${visibles.length} comprobantes)`} data-explica-datos={JSON.stringify({ cantidad: visibles.length, neto: Math.round(tot.neto), iva: Math.round(tot.iva), total: Math.round(tot.total), saldo: Math.round(tot.saldo), moneda })}
                   className="border-t border-neutral-200 bg-neutral-50 text-sm font-semibold">
                   <td colSpan={3} className="px-4 py-2.5 text-neutral-500">{visibles.length} comprobantes</td>
+                  <td className="px-4 py-2.5 text-right">{fmtMoney(tot.neto, moneda)}</td>
+                  <td className="px-4 py-2.5 text-right text-neutral-500">{fmtMoney(tot.iva, moneda)}</td>
+                  <td className="px-4 py-2.5 text-right">{fmtMoney(tot.total, moneda)}</td>
+                  <td className="px-4 py-2.5 text-right text-amber-700">{fmtMoney(tot.saldo, moneda)}</td>
+                  <td colSpan={2}></td>
+                </tr>
+              </tfoot>
+            )}
+            {visibles.length > 0 && tot.nNc > 0 && (
+              <tfoot className="border-t border-neutral-200 bg-neutral-50 text-sm">
+                <tr className="text-neutral-600" data-explica="factura-total-bruto" data-explica-titulo={`Vendido bruto (${tot.nFact} comprobantes)`} data-explica-datos={JSON.stringify({ cantidad: tot.nFact, neto: Math.round(tot.factNeto), iva: Math.round(tot.factIva), total: Math.round(tot.factTotal), saldo: Math.round(tot.saldo), moneda })}>
+                  <td colSpan={3} className="px-4 py-2 text-neutral-500">{tot.nFact} factura{tot.nFact === 1 ? '' : 's'} vendida{tot.nFact === 1 ? '' : 's'}</td>
+                  <td className="px-4 py-2 text-right">{fmtMoney(tot.factNeto, moneda)}</td>
+                  <td className="px-4 py-2 text-right text-neutral-500">{fmtMoney(tot.factIva, moneda)}</td>
+                  <td className="px-4 py-2 text-right">{fmtMoney(tot.factTotal, moneda)}</td>
+                  <td className="px-4 py-2 text-right text-amber-700">{fmtMoney(tot.saldo, moneda)}</td>
+                  <td colSpan={2}></td>
+                </tr>
+                <tr className="text-red-600" data-explica="factura-total-nc" data-explica-titulo={`Notas de crédito emitidas (${tot.nNc})`} data-explica-datos={JSON.stringify({ cantidad: tot.nNc, neto: Math.round(tot.ncNeto), iva: Math.round(tot.ncIva), total: Math.round(tot.ncTotal), moneda })}>
+                  <td colSpan={3} className="px-4 py-2 text-red-500">{tot.nNc} nota{tot.nNc === 1 ? '' : 's'} de crédito</td>
+                  <td className="px-4 py-2 text-right">−{fmtMoney(tot.ncNeto, moneda)}</td>
+                  <td className="px-4 py-2 text-right">−{fmtMoney(tot.ncIva, moneda)}</td>
+                  <td className="px-4 py-2 text-right">−{fmtMoney(tot.ncTotal, moneda)}</td>
+                  <td colSpan={3}></td>
+                </tr>
+                <tr className="border-t border-neutral-200 font-semibold" data-explica="factura-total" data-explica-titulo={`Venta neta = vendido − NC (${visibles.length} comprobantes)`} data-explica-datos={JSON.stringify({ cantidad: visibles.length, neto: Math.round(tot.neto), iva: Math.round(tot.iva), total: Math.round(tot.total), saldo: Math.round(tot.saldo), moneda })}>
+                  <td colSpan={3} className="px-4 py-2.5 text-neutral-500">= Venta neta ({visibles.length} comprobantes)</td>
                   <td className="px-4 py-2.5 text-right">{fmtMoney(tot.neto, moneda)}</td>
                   <td className="px-4 py-2.5 text-right text-neutral-500">{fmtMoney(tot.iva, moneda)}</td>
                   <td className="px-4 py-2.5 text-right">{fmtMoney(tot.total, moneda)}</td>
