@@ -15,6 +15,10 @@ type Factura = {
   notas: string | null; cobros: any[]; aplicaAFacturaId: string | null;
 };
 
+// Chile: DTE 33 (afecta) y 34 (exenta) numeran por separado, así que el folio solo no identifica la factura
+const serieFiscal = (f: Pick<Factura, 'tipoComprobante' | 'moneda' | 'iva' | 'total'>): 'Afecta' | 'Exenta' | null =>
+  f.tipoComprobante === 'FACTURA' && f.moneda === 'CLP' && f.total > 0 ? (Number(f.iva) > 0 ? 'Afecta' : 'Exenta') : null;
+
 const hoy = () => new Date().toISOString().slice(0, 10);
 const sumarDias = (fecha: string, dias: number) => {
   const d = new Date(fecha); d.setUTCDate(d.getUTCDate() + dias); return d.toISOString().slice(0, 10);
@@ -233,7 +237,7 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
                     .sort((a, b) => Number(b.mismoCli) - Number(a.mismoCli) || String(b.x.fechaEmision).localeCompare(String(a.x.fechaEmision)))
                     .map(({ x }) => (
                       <option key={x.id} value={x.id}>
-                        {[x.puntoVenta, x.numero].filter(Boolean).join('-') || 's/n'} · {x.clienteNombre} · {fmtFecha(x.fechaEmision)} · {fmtMoney(x.total, x.moneda)}
+                        {[x.puntoVenta, x.numero].filter(Boolean).join('-') || 's/n'}{serieFiscal(x) ? ` (${serieFiscal(x)})` : ''} · {x.clienteNombre} · {fmtFecha(x.fechaEmision)} · {fmtMoney(x.total, x.moneda)}
                       </option>
                     ))}
                 </select>
@@ -303,10 +307,16 @@ export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdi
                       <td className="px-4 py-2.5 text-neutral-600">
                         {nc ? 'NC ' : ''}{[f.puntoVenta, f.numero].filter(Boolean).join('-') || TIPO_COMPROBANTE[f.tipoComprobante]}
                         {f.fileUrl && <a href={f.fileUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="ml-1.5 inline-block text-blue-500" title="Ver PDF"><Paperclip size={12} /></a>}
+                        {serieFiscal(f) && (
+                          <span className={`ml-1.5 rounded px-1 text-[10px] ${serieFiscal(f) === 'Exenta' ? 'bg-violet-50 text-violet-600' : 'bg-neutral-100 text-neutral-600'}`}
+                            title={serieFiscal(f) === 'Exenta' ? 'Factura exenta (DTE 34): sin IVA' : 'Factura afecta (DTE 33): con IVA'}>
+                            {serieFiscal(f)}
+                          </span>
+                        )}
                         {f.origen === 'IMPORT_RCV' && <span className="ml-1.5 rounded bg-sky-50 px-1 text-[10px] text-sky-600">SII</span>}
                         {nc && f.aplicaAFacturaId && (
                           <span className="ml-1.5 rounded bg-emerald-50 px-1 text-[10px] text-emerald-600" title="NC aplicada a una factura: descuenta su saldo">
-                            → Fac. {(() => { const t = facturas.find(x => x.id === f.aplicaAFacturaId); return t ? [t.puntoVenta, t.numero].filter(Boolean).join('-') || 's/n' : 'vinculada'; })()}
+                            → Fac. {(() => { const t = facturas.find(x => x.id === f.aplicaAFacturaId); return t ? `${[t.puntoVenta, t.numero].filter(Boolean).join('-') || 's/n'}${serieFiscal(t) ? ` ${serieFiscal(t)!.toLowerCase()}` : ''}` : 'vinculada'; })()}
                           </span>
                         )}
                       </td>
