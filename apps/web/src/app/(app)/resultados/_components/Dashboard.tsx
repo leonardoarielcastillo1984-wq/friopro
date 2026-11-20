@@ -812,7 +812,10 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
                 <td className="px-4 py-2.5 font-medium text-neutral-900">{MESES[m.mes - 1]}</td>
                 <td className="px-4 py-2.5 text-right">{fmtMoney(m.ventas, moneda)}</td>
                 <td className="px-4 py-2.5 text-right text-amber-700">{fmtMoney(m.costosOperativos, moneda)}</td>
-                <td className="px-4 py-2.5 text-right text-purple-700">{fmtMoney(m.estructura, moneda)}</td>
+                <td className="px-4 py-2.5 text-right text-purple-700">
+                  {fmtMoney(m.estructura, moneda)}
+                  <div className="mt-0.5 text-[10px] font-normal leading-tight text-neutral-400">total costos: {fmtMoney(m.costosTotales, moneda)}</div>
+                </td>
                 <td className={`px-4 py-2.5 text-right font-semibold ${m.resultado >= 0 ? 'text-green-700' : 'text-red-600'}`}>
                   {m.lineas > 0 && (m.resultado >= 0 ? <TrendingUp size={12} className="mr-1 inline" /> : <TrendingDown size={12} className="mr-1 inline" />)}
                   {fmtMoney(m.resultado, moneda)}
@@ -837,7 +840,10 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
               <td className="px-4 py-2.5">Total</td>
               <td className="px-4 py-2.5 text-right">{fmtMoney(totales.ventas, moneda)}</td>
               <td className="px-4 py-2.5 text-right text-amber-700">{fmtMoney(meses.reduce((s, m) => s + m.costosOperativos, 0), moneda)}</td>
-              <td className="px-4 py-2.5 text-right text-purple-700">{fmtMoney(meses.reduce((s, m) => s + m.estructura, 0), moneda)}</td>
+              <td className="px-4 py-2.5 text-right text-purple-700">
+                {fmtMoney(meses.reduce((s, m) => s + m.estructura, 0), moneda)}
+                <div className="mt-0.5 text-[10px] font-normal leading-tight text-neutral-400">total costos: {fmtMoney(totales.costos, moneda)}</div>
+              </td>
               <td className={`px-4 py-2.5 text-right ${totales.resultado >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmtMoney(totales.resultado, moneda)}</td>
               <td className="px-4 py-2.5 text-right text-neutral-500">{fmtPct(totales.margen)}</td>
               <td className="px-4 py-2.5 text-right text-emerald-700">
