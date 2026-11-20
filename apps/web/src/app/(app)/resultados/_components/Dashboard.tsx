@@ -814,7 +814,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
                 <td className="px-4 py-2.5 text-right text-amber-700">{fmtMoney(m.costosOperativos, moneda)}</td>
                 <td className="px-4 py-2.5 text-right text-purple-700">
                   {fmtMoney(m.estructura, moneda)}
-                  <div className="mt-0.5 -translate-x-1/2 whitespace-nowrap text-center text-xs font-medium leading-tight text-neutral-800">total costos: {fmtMoney(m.costosTotales, moneda)}</div>
+                  <div className="mt-0.5 -translate-x-1/2 whitespace-nowrap text-center text-xs font-medium leading-tight text-neutral-800">{fmtMoney(m.costosTotales, moneda)}</div>
                 </td>
                 <td className={`px-4 py-2.5 text-right font-semibold ${m.resultado >= 0 ? 'text-green-700' : 'text-red-600'}`}>
                   {m.lineas > 0 && (m.resultado >= 0 ? <TrendingUp size={12} className="mr-1 inline" /> : <TrendingDown size={12} className="mr-1 inline" />)}
@@ -842,7 +842,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
               <td className="px-4 py-2.5 text-right text-amber-700">{fmtMoney(meses.reduce((s, m) => s + m.costosOperativos, 0), moneda)}</td>
               <td className="px-4 py-2.5 text-right text-purple-700">
                 {fmtMoney(meses.reduce((s, m) => s + m.estructura, 0), moneda)}
-                <div className="mt-0.5 -translate-x-1/2 whitespace-nowrap text-center text-xs font-medium leading-tight text-neutral-800">total costos: {fmtMoney(totales.costos, moneda)}</div>
+                <div className="mt-0.5 -translate-x-1/2 whitespace-nowrap text-center text-xs font-medium leading-tight text-neutral-800">{fmtMoney(totales.costos, moneda)}</div>
               </td>
               <td className={`px-4 py-2.5 text-right ${totales.resultado >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmtMoney(totales.resultado, moneda)}</td>
               <td className="px-4 py-2.5 text-right text-neutral-500">{fmtPct(totales.margen)}</td>
